@@ -1,0 +1,1181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cuQuantum Codebase Wiki · v26.3.2</title>
+<meta name="description" content="An interactive wiki of the NVIDIA cuQuantum SDK repository: libraries, algorithms, key components, and folder structure." />
+<style>
+  :root {
+    --bg: #0b1020;
+    --bg-2: #11172e;
+    --panel: #141b36;
+    --panel-2: #1a2244;
+    --text: #e6e9f4;
+    --muted: #9aa3c0;
+    --line: #283058;
+    --accent: #76b900;   /* NVIDIA green */
+    --accent-2: #21d4fd;
+    --warn: #ffb454;
+    --pink: #ff5d8f;
+    --code-bg: #0a0f24;
+    --code-border: #1f2750;
+    --tag-bg: rgba(118,185,0,.12);
+    --tag-fg: #b6e36b;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#f7f8fc; --bg-2:#eef1fa; --panel:#ffffff; --panel-2:#f1f4fb;
+      --text:#0c1330; --muted:#5b6485; --line:#dbe0f0;
+      --accent:#3b8a00; --accent-2:#0b76a8; --warn:#a5651b; --pink:#b13165;
+      --code-bg:#0d1330; --code-border:#222b54; --tag-bg:rgba(59,138,0,.1); --tag-fg:#2f6e00;
+    }
+    .code-block { color:#e6e9f4; }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font:15px/1.55 ui-sans-serif,-apple-system,Segoe UI,Inter,Roboto,Helvetica,Arial,sans-serif;}
+  a{color:var(--accent-2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  /* layout */
+  .app{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+  aside.sidebar{
+    position:sticky;top:0;height:100vh;overflow-y:auto;
+    background:linear-gradient(180deg,var(--bg-2),var(--bg));
+    border-right:1px solid var(--line);padding:18px 14px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .brand-mark{
+    width:34px;height:34px;border-radius:8px;
+    background:radial-gradient(circle at 30% 30%,#9ee04b,#3a7a00 70%);
+    display:grid;place-items:center;color:#0b1020;font-weight:800;
+  }
+  .brand h1{font-size:15px;margin:0;letter-spacing:.2px}
+  .brand small{display:block;color:var(--muted);font-size:11px}
+  .nav-section{margin-top:10px}
+  .nav-section h3{
+    font-size:11px;text-transform:uppercase;letter-spacing:.12em;
+    color:var(--muted);margin:14px 6px 6px;
+  }
+  .nav a{
+    display:block;color:var(--text);padding:7px 10px;border-radius:8px;
+    font-size:13.5px;border:1px solid transparent;
+  }
+  .nav a:hover{background:var(--panel);border-color:var(--line);text-decoration:none}
+  .nav a.tag{display:inline-block;margin:2px 4px 2px 0;padding:3px 8px;font-size:11.5px;
+    background:var(--tag-bg);color:var(--tag-fg);border-radius:999px;border:1px solid transparent}
+  main{padding:28px clamp(18px,4vw,48px);max-width:1180px}
+  header.hero{
+    background:
+      radial-gradient(900px 240px at 90% -40%,rgba(118,185,0,.22),transparent 60%),
+      radial-gradient(700px 220px at -10% -30%,rgba(33,212,253,.18),transparent 60%),
+      linear-gradient(180deg,var(--panel),var(--panel-2));
+    border:1px solid var(--line);border-radius:18px;padding:28px;margin-bottom:28px;
+  }
+  header.hero h1{margin:0 0 8px;font-size:30px;letter-spacing:-.2px}
+  header.hero p{margin:0;color:var(--muted);max-width:80ch}
+  .pill-row{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap}
+  .pill{background:var(--tag-bg);color:var(--tag-fg);
+    padding:5px 10px;border-radius:999px;font-size:12px;border:1px solid transparent}
+  .pill.warn{background:rgba(255,180,84,.13);color:var(--warn)}
+  .pill.info{background:rgba(33,212,253,.14);color:var(--accent-2)}
+  section.card{
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:22px;margin:18px 0;
+  }
+  section.card h2{margin:0 0 6px;font-size:22px;letter-spacing:-.1px}
+  section.card h2 .sub{color:var(--muted);font-size:13px;font-weight:500;margin-left:8px}
+  section.card h3{margin:18px 0 6px;font-size:16px}
+  section.card h4{margin:14px 0 4px;font-size:14px;color:var(--accent)}
+  .grid{display:grid;gap:14px}
+  .grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  @media (max-width:900px){
+    .app{grid-template-columns:1fr}
+    aside.sidebar{position:relative;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+    .grid.cols-2,.grid.cols-3,.grid.cols-4{grid-template-columns:1fr}
+  }
+  .tile{
+    background:var(--panel-2);border:1px solid var(--line);border-radius:12px;
+    padding:14px;display:flex;flex-direction:column;gap:6px;
+  }
+  .tile .name{font-weight:700;display:flex;align-items:center;gap:8px}
+  .tile .dot{width:10px;height:10px;border-radius:50%}
+  .tile .desc{color:var(--muted);font-size:13px}
+  .tile .meta{color:var(--muted);font-size:11.5px;margin-top:auto}
+  /* code refs styled like file pills */
+  .filepath{
+    display:inline-block;background:var(--code-bg);color:#cfd6ff;
+    border:1px solid var(--code-border);border-radius:6px;
+    padding:1px 6px;font-size:12.5px;font-family:ui-monospace,Menlo,Consolas,monospace;
+  }
+  pre.code-block{
+    background:var(--code-bg);color:#e6e9f4;border:1px solid var(--code-border);
+    border-radius:10px;padding:14px 16px;overflow:auto;font-size:12.5px;line-height:1.55;
+  }
+  pre.code-block .k{color:#ff79c6}
+  pre.code-block .s{color:#b6e36b}
+  pre.code-block .c{color:#7a89c0;font-style:italic}
+  pre.code-block .n{color:#9ad9ff}
+  /* tree */
+  .tree{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;
+    background:var(--code-bg);color:#cdd5ff;border:1px solid var(--code-border);
+    border-radius:10px;padding:14px 16px;overflow:auto;white-space:pre;}
+  .tree b{color:#b6e36b;font-weight:600}
+  .tree i{color:#9aa3c0;font-style:normal}
+  /* table */
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.06em}
+  tr:hover td{background:var(--panel-2)}
+  details{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
+    padding:10px 14px;margin:8px 0}
+  details>summary{cursor:pointer;font-weight:600}
+  .callout{
+    border-left:4px solid var(--accent);background:rgba(118,185,0,.07);
+    padding:10px 14px;border-radius:6px;margin:10px 0;
+  }
+  .callout.warn{border-color:var(--warn);background:rgba(255,180,84,.08)}
+  .callout.info{border-color:var(--accent-2);background:rgba(33,212,253,.07)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+  .legend .dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle}
+  /* svg defaults */
+  svg.diagram{width:100%;height:auto;display:block}
+  /* tabs */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .tab-btn{
+    padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel-2);
+    color:var(--text);font-size:12.5px;cursor:pointer;
+  }
+  .tab-btn.active{background:var(--accent);color:#0b1020;border-color:var(--accent);font-weight:600}
+  .tab-panel{display:none}
+  .tab-panel.active{display:block}
+  footer{color:var(--muted);font-size:12px;padding:30px 0;text-align:center}
+  hr.sep{border:none;border-top:1px dashed var(--line);margin:18px 0}
+  .kbd{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;
+    background:var(--panel-2);border:1px solid var(--line);padding:1px 6px;border-radius:5px}
+</style>
+</head>
+<body>
+<div class="app">
+
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark">cQ</div>
+    <div>
+      <h1>cuQuantum Wiki</h1>
+      <small>NVIDIA SDK · v26.3.2</small>
+    </div>
+  </div>
+
+  <nav class="nav">
+    <div class="nav-section">
+      <h3>Overview</h3>
+      <a href="#repo">Repository at a glance</a>
+      <a href="#arch">SDK architecture</a>
+      <a href="#libmap">Library map</a>
+      <a href="#tree">Top-level tree</a>
+    </div>
+    <div class="nav-section">
+      <h3>Core C/C++ Libraries</h3>
+      <a href="#custatevec">cuStateVec</a>
+      <a href="#cutensornet">cuTensorNet</a>
+      <a href="#cudensitymat">cuDensityMat</a>
+      <a href="#cupauliprop">cuPauliProp</a>
+      <a href="#custabilizer">cuStabilizer</a>
+    </div>
+    <div class="nav-section">
+      <h3>Python Package</h3>
+      <a href="#py-overview">cuquantum-python</a>
+      <a href="#py-bindings">bindings/</a>
+      <a href="#py-tensornet">tensornet/</a>
+      <a href="#py-densitymat">densitymat/</a>
+      <a href="#py-stabilizer">stabilizer/</a>
+      <a href="#py-pauliprop">pauliprop/</a>
+    </div>
+    <div class="nav-section">
+      <h3>Tools</h3>
+      <a href="#benchmarks">Benchmark suite</a>
+      <a href="#samples">Samples</a>
+      <a href="#extra">extra/</a>
+    </div>
+    <div class="nav-section">
+      <h3>Reference</h3>
+      <a href="#algos">Algorithms reference</a>
+      <a href="#workflow">End-to-end workflow</a>
+      <a href="#glossary">Glossary</a>
+    </div>
+  </nav>
+</aside>
+
+<main>
+
+<header class="hero">
+  <h1>cuQuantum Codebase Wiki</h1>
+  <p>
+    A guided, interactive map of the
+    <a href="https://developer.nvidia.com/cuquantum-sdk" target="_blank" rel="noopener">NVIDIA cuQuantum SDK</a>
+    repository. Five GPU-accelerated quantum simulation libraries, their algorithms,
+    the unifying Python package, the benchmark suite, and C/C++ samples — all in one place.
+  </p>
+  <div class="pill-row">
+    <span class="pill">Python 26.3.2</span>
+    <span class="pill">CUDA 12.x / 13.x</span>
+    <span class="pill info">Compute capability ≥ 7.5</span>
+    <span class="pill">BSD 3-Clause</span>
+    <span class="pill warn">cudensitymat.h · NVIDIA Proprietary</span>
+  </div>
+</header>
+
+<!-- ============================ REPO ============================ -->
+<section class="card" id="repo">
+  <h2>Repository at a glance <span class="sub">/home/ysha/cuQuantum</span></h2>
+  <p>
+    The public <code>cuQuantum</code> repo is a thin envelope around four shipping
+    deliverables: the open-source <b>Python</b> bindings + high-level layer, the
+    NVIDIA <b>Quantum Performance Benchmark Suite</b>, C/C++ <b>samples</b> for each
+    library, and a few <b>extras</b> (containers, demo wheels). The actual closed-source
+    C libraries (cuStateVec, cuTensorNet, cuDensityMat, cuPauliProp, cuStabilizer)
+    are distributed via conda-forge / PyPI wheels and the cuQuantum Appliance container.
+  </p>
+
+  <div class="grid cols-4" style="margin-top:14px">
+    <div class="tile"><div class="name"><span class="dot" style="background:#76b900"></span>python/</div>
+      <div class="desc">Open-source Python package <code>cuquantum</code> — Cython bindings + Pythonic API.</div>
+      <div class="meta">~5 sub-packages · pyproject.toml</div></div>
+    <div class="tile"><div class="name"><span class="dot" style="background:#21d4fd"></span>samples/</div>
+      <div class="desc">C/C++ samples for all five core libraries (low-level API usage).</div>
+      <div class="meta">5 sub-dirs · CMake + Makefile</div></div>
+    <div class="tile"><div class="name"><span class="dot" style="background:#ffb454"></span>benchmarks/</div>
+      <div class="desc">NVIDIA Quantum Performance Benchmark Suite, a multi-framework comparison harness.</div>
+      <div class="meta">setup.py · CLI <code class="mono">nv-quantum-benchmarks</code></div></div>
+    <div class="tile"><div class="name"><span class="dot" style="background:#ff5d8f"></span>extra/</div>
+      <div class="desc">custatevec helpers + a <code>demo_build_with_wheels</code> example.</div>
+      <div class="meta">Misc support assets</div></div>
+  </div>
+</section>
+
+<!-- ============================ ARCHITECTURE ============================ -->
+<section class="card" id="arch">
+  <h2>SDK architecture <span class="sub">how the pieces fit together</span></h2>
+  <p>
+    cuQuantum follows a three-layer model. Quantum frameworks (Qiskit, Cirq, PennyLane,
+    CUDA-Q…) sit on top. They (optionally via the <code>cuquantum</code> Python
+    package) call into one of five purpose-built CUDA libraries, each tuned for a
+    different simulation paradigm. Those libraries in turn lean on lower-level
+    primitives — cuBLAS, cuTENSOR, cuSPARSE, NCCL, MPI.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 920 430" role="img" aria-label="cuQuantum architecture stack">
+    <defs>
+      <linearGradient id="gFw" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0" stop-color="#21d4fd" stop-opacity=".25"/>
+        <stop offset="1" stop-color="#21d4fd" stop-opacity=".05"/>
+      </linearGradient>
+      <linearGradient id="gPy" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0" stop-color="#b6e36b" stop-opacity=".35"/>
+        <stop offset="1" stop-color="#76b900" stop-opacity=".05"/>
+      </linearGradient>
+      <linearGradient id="gLib" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0" stop-color="#1a2244"/><stop offset="1" stop-color="#0e1430"/>
+      </linearGradient>
+      <linearGradient id="gHw" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0" stop-color="#ffb454" stop-opacity=".25"/>
+        <stop offset="1" stop-color="#ffb454" stop-opacity=".05"/>
+      </linearGradient>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#9aa3c0"/>
+      </marker>
+    </defs>
+
+    <!-- Frameworks -->
+    <rect x="20" y="20" width="880" height="60" rx="12" fill="url(#gFw)" stroke="#283058"/>
+    <text x="40" y="45" fill="#cfd6ff" font-size="13" font-weight="700">Quantum frameworks</text>
+    <g font-size="12" fill="#e6e9f4">
+      <rect x="180" y="32" width="90" height="30" rx="8" fill="#11172e" stroke="#283058"/>
+      <text x="225" y="52" text-anchor="middle">Qiskit</text>
+      <rect x="285" y="32" width="90" height="30" rx="8" fill="#11172e" stroke="#283058"/>
+      <text x="330" y="52" text-anchor="middle">Cirq</text>
+      <rect x="390" y="32" width="100" height="30" rx="8" fill="#11172e" stroke="#283058"/>
+      <text x="440" y="52" text-anchor="middle">PennyLane</text>
+      <rect x="505" y="32" width="100" height="30" rx="8" fill="#11172e" stroke="#283058"/>
+      <text x="555" y="52" text-anchor="middle">CUDA-Q</text>
+      <rect x="620" y="32" width="100" height="30" rx="8" fill="#11172e" stroke="#283058"/>
+      <text x="670" y="52" text-anchor="middle">Qulacs</text>
+      <rect x="735" y="32" width="145" height="30" rx="8" fill="#11172e" stroke="#283058"/>
+      <text x="807" y="52" text-anchor="middle">user code (NumPy / CuPy / Torch)</text>
+    </g>
+
+    <!-- Python layer -->
+    <rect x="20" y="100" width="880" height="70" rx="12" fill="url(#gPy)" stroke="#283058"/>
+    <text x="40" y="124" fill="#cfd6ff" font-size="13" font-weight="700">cuquantum Python package <tspan fill="#9aa3c0" font-weight="400">(Cython + Pythonic API)</tspan></text>
+    <g font-size="12" fill="#e6e9f4">
+      <rect x="40" y="132" width="160" height="28" rx="6" fill="#11172e" stroke="#283058"/>
+      <text x="120" y="151" text-anchor="middle">bindings/ (low-level)</text>
+      <rect x="210" y="132" width="120" height="28" rx="6" fill="#11172e" stroke="#283058"/>
+      <text x="270" y="151" text-anchor="middle">tensornet/</text>
+      <rect x="340" y="132" width="120" height="28" rx="6" fill="#11172e" stroke="#283058"/>
+      <text x="400" y="151" text-anchor="middle">densitymat/</text>
+      <rect x="470" y="132" width="120" height="28" rx="6" fill="#11172e" stroke="#283058"/>
+      <text x="530" y="151" text-anchor="middle">stabilizer/</text>
+      <rect x="600" y="132" width="120" height="28" rx="6" fill="#11172e" stroke="#283058"/>
+      <text x="660" y="151" text-anchor="middle">pauliprop/</text>
+      <rect x="730" y="132" width="150" height="28" rx="6" fill="#11172e" stroke="#283058"/>
+      <text x="805" y="151" text-anchor="middle">memory · _internal</text>
+    </g>
+
+    <!-- Core libraries -->
+    <rect x="20" y="190" width="880" height="110" rx="12" fill="url(#gLib)" stroke="#283058"/>
+    <text x="40" y="214" fill="#cfd6ff" font-size="13" font-weight="700">Core CUDA libraries</text>
+    <g font-size="12" fill="#e6e9f4">
+      <g><rect x="40" y="225" width="160" height="60" rx="10" fill="#0b1020" stroke="#76b900"/>
+        <text x="120" y="245" text-anchor="middle" font-weight="700">cuStateVec</text>
+        <text x="120" y="263" text-anchor="middle" fill="#9aa3c0">state-vector sim</text>
+        <text x="120" y="278" text-anchor="middle" fill="#9aa3c0">gates · sampling · meas</text></g>
+      <g><rect x="210" y="225" width="160" height="60" rx="10" fill="#0b1020" stroke="#21d4fd"/>
+        <text x="290" y="245" text-anchor="middle" font-weight="700">cuTensorNet</text>
+        <text x="290" y="263" text-anchor="middle" fill="#9aa3c0">tensor networks</text>
+        <text x="290" y="278" text-anchor="middle" fill="#9aa3c0">contraction · MPS · SVD</text></g>
+      <g><rect x="380" y="225" width="160" height="60" rx="10" fill="#0b1020" stroke="#ff5d8f"/>
+        <text x="460" y="245" text-anchor="middle" font-weight="700">cuDensityMat</text>
+        <text x="460" y="263" text-anchor="middle" fill="#9aa3c0">open-system / Lindblad</text>
+        <text x="460" y="278" text-anchor="middle" fill="#9aa3c0">operator action · TDVP</text></g>
+      <g><rect x="550" y="225" width="160" height="60" rx="10" fill="#0b1020" stroke="#ffb454"/>
+        <text x="630" y="245" text-anchor="middle" font-weight="700">cuPauliProp</text>
+        <text x="630" y="263" text-anchor="middle" fill="#9aa3c0">Heisenberg-picture sim</text>
+        <text x="630" y="278" text-anchor="middle" fill="#9aa3c0">Pauli expansion + trunc</text></g>
+      <g><rect x="720" y="225" width="160" height="60" rx="10" fill="#0b1020" stroke="#b06bff"/>
+        <text x="800" y="245" text-anchor="middle" font-weight="700">cuStabilizer</text>
+        <text x="800" y="263" text-anchor="middle" fill="#9aa3c0">Clifford / Pauli-frame</text>
+        <text x="800" y="278" text-anchor="middle" fill="#9aa3c0">DEM sampling</text></g>
+    </g>
+
+    <!-- Hardware -->
+    <rect x="20" y="320" width="880" height="90" rx="12" fill="url(#gHw)" stroke="#283058"/>
+    <text x="40" y="344" fill="#cfd6ff" font-size="13" font-weight="700">Underlying primitives + hardware</text>
+    <g font-size="12" fill="#e6e9f4">
+      <rect x="40" y="354" width="120" height="44" rx="8" fill="#11172e" stroke="#283058"/>
+      <text x="100" y="372" text-anchor="middle">cuBLAS</text><text x="100" y="388" text-anchor="middle" fill="#9aa3c0">dense BLAS</text>
+      <rect x="170" y="354" width="120" height="44" rx="8" fill="#11172e" stroke="#283058"/>
+      <text x="230" y="372" text-anchor="middle">cuTENSOR</text><text x="230" y="388" text-anchor="middle" fill="#9aa3c0">tensor contractions</text>
+      <rect x="300" y="354" width="120" height="44" rx="8" fill="#11172e" stroke="#283058"/>
+      <text x="360" y="372" text-anchor="middle">cuSPARSE</text><text x="360" y="388" text-anchor="middle" fill="#9aa3c0">sparse linalg</text>
+      <rect x="430" y="354" width="120" height="44" rx="8" fill="#11172e" stroke="#283058"/>
+      <text x="490" y="372" text-anchor="middle">NCCL</text><text x="490" y="388" text-anchor="middle" fill="#9aa3c0">multi-GPU</text>
+      <rect x="560" y="354" width="120" height="44" rx="8" fill="#11172e" stroke="#283058"/>
+      <text x="620" y="372" text-anchor="middle">MPI</text><text x="620" y="388" text-anchor="middle" fill="#9aa3c0">multi-node</text>
+      <rect x="690" y="354" width="190" height="44" rx="8" fill="#11172e" stroke="#283058"/>
+      <text x="785" y="372" text-anchor="middle" font-weight="700">NVIDIA GPUs (SM 7.5+)</text>
+      <text x="785" y="388" text-anchor="middle" fill="#9aa3c0">Volta · Turing · Ampere · Hopper · Blackwell</text>
+    </g>
+  </svg>
+  <div class="legend">
+    <span><span class="dot" style="background:#76b900"></span>cuStateVec</span>
+    <span><span class="dot" style="background:#21d4fd"></span>cuTensorNet</span>
+    <span><span class="dot" style="background:#ff5d8f"></span>cuDensityMat</span>
+    <span><span class="dot" style="background:#ffb454"></span>cuPauliProp</span>
+    <span><span class="dot" style="background:#b06bff"></span>cuStabilizer</span>
+  </div>
+</section>
+
+<!-- ============================ LIB MAP ============================ -->
+<section class="card" id="libmap">
+  <h2>Library map <span class="sub">pick the right tool for the simulation paradigm</span></h2>
+  <table>
+    <thead>
+      <tr><th>Library</th><th>Paradigm</th><th>Best for</th><th>Scales to</th><th>State representation</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b style="color:#9ee04b">cuStateVec</b></td>
+        <td>Full state-vector</td>
+        <td>Universal noisy/noiseless circuits, exact amplitudes</td>
+        <td>≈ 30–40 qubits (single node), multi-GPU/MPI for &gt;</td>
+        <td>Dense complex vector of size 2<sup>n</sup></td>
+      </tr>
+      <tr>
+        <td><b style="color:#7fe2ff">cuTensorNet</b></td>
+        <td>Tensor networks · MPS / MPO</td>
+        <td>Low-entanglement circuits, expectation values, amplitudes</td>
+        <td>100s–1000s of qubits if structure permits</td>
+        <td>Network of small tensors</td>
+      </tr>
+      <tr>
+        <td><b style="color:#ffb1c8">cuDensityMat</b></td>
+        <td>Density matrix / Lindblad</td>
+        <td>Open quantum systems, noisy dynamics, MPS-TDVP</td>
+        <td>Smaller Hilbert spaces; MPS form for larger</td>
+        <td>ρ, MPS, or matrix-product operators</td>
+      </tr>
+      <tr>
+        <td><b style="color:#ffd28a">cuPauliProp</b></td>
+        <td>Heisenberg-picture Pauli propagation</td>
+        <td>Observable expectations under noisy Clifford+T circuits</td>
+        <td>100s+ qubits with operator-weight truncation</td>
+        <td>Sum of Pauli strings with complex coefficients</td>
+      </tr>
+      <tr>
+        <td><b style="color:#d1a9ff">cuStabilizer</b></td>
+        <td>Pauli-frame / stabilizer</td>
+        <td>Clifford circuits, QEC decoding, DEM sampling</td>
+        <td>1000s of qubits (polynomial in n)</td>
+        <td>Binary tableau / Pauli frame</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout info">
+    <b>Heuristic:</b> if the circuit is dominated by Clifford gates → <b>cuStabilizer</b>;
+    low entanglement → <b>cuTensorNet</b>; noise modeling → <b>cuDensityMat</b>;
+    observables only → <b>cuPauliProp</b>; everything else → <b>cuStateVec</b>.
+  </div>
+</section>
+
+<!-- ============================ TREE ============================ -->
+<section class="card" id="tree">
+  <h2>Top-level repository tree</h2>
+  <pre class="tree"><b>cuQuantum/</b>
+├── <b>benchmarks/</b>                       <i># NVIDIA Quantum Performance Benchmark Suite</i>
+│   ├── nv_quantum_benchmarks/
+│   │   ├── backends/    <i>cirq · cudaq · cutn · qiskit · qsim · qulacs · pennylane</i>
+│   │   ├── frontends/   <i>circuit object builders for each framework</i>
+│   │   ├── benchmarks/  <i>QFT · QPE · QAOA · QV · GHZ · Simon · …</i>
+│   │   ├── run.py · run_interface.py · config.py · constants.py
+│   │   └── __main__.py  <i># `python -m nv_quantum_benchmarks`</i>
+│   ├── tests/
+│   └── setup.py
+│
+├── <b>extra/</b>
+│   ├── custatevec/
+│   └── demo_build_with_wheels/
+│
+├── <b>python/</b>                            <i># open-source cuquantum-python package</i>
+│   ├── cuquantum/
+│   │   ├── bindings/   <i>Cython .pyx / .pxd for each C library</i>
+│   │   ├── tensornet/  <i>circuit_converter · tensor_network · experimental/</i>
+│   │   ├── densitymat/ <i>operators · state · time_propagation · spectrum</i>
+│   │   ├── stabilizer/ <i>FrameSimulator · PauliTable · DEMSampler</i>
+│   │   ├── pauliprop/experimental/ <i>handles · operators · pauli_expansion · truncation</i>
+│   │   ├── _internal/  <i>tensor_ifc_{numpy,cupy,torch} · package_ifc</i>
+│   │   ├── memory.py · _version.py · __main__.py
+│   ├── extensions/     <i># nvmath-style extensions</i>
+│   ├── samples/        <i># Python samples (low- and high-level)</i>
+│   ├── tests/
+│   ├── builder/        <i># custom build helpers</i>
+│   ├── pyproject.toml · setup.py
+│
+├── <b>samples/</b>                           <i># C/C++ samples per library</i>
+│   ├── custatevec/{custatevec, custatevecex}/
+│   ├── cutensornet/{legacy, high_level, approxTN}/
+│   ├── cudensitymat/   <i>operator action · MPI/NCCL · TDVP · eigenspectrum</i>
+│   ├── cupauliprop/    <i>kicked-Ising forward + backward-diff</i>
+│   └── custabilizer/   <i>Bell-state pauli-frame demo</i>
+│
+├── data/
+├── LICENSE  · NV.LICENSE  · CITATION.cff
+├── README.md  · CONTRIBUTING.md  · CODE_OF_CONDUCT.md  · SECURITY.md
+</pre>
+</section>
+
+<!-- ============================ CUSTATEVEC ============================ -->
+<section class="card" id="custatevec">
+  <h2><span style="color:#9ee04b">cuStateVec</span> <span class="sub">full state-vector simulation</span></h2>
+  <p>
+    cuStateVec accelerates the canonical model: keep the full complex state vector
+    \( |\psi\rangle \in \mathbb{C}^{2^n} \) on the GPU(s) and apply gates as in-place
+    sparse-matrix updates. Memory is the bottleneck — a 30-qubit fp64 statevector is
+    16 GiB; scaling beyond requires multi-GPU + MPI.
+  </p>
+
+  <div class="grid cols-2">
+    <div>
+      <h3>Key APIs (from the C/C++ samples)</h3>
+      <table>
+        <tr><td><span class="filepath">initialize_sv.cu</span></td><td>Allocate / reset state vector</td></tr>
+        <tr><td><span class="filepath">gate_application.cu</span></td><td><code>custatevecApplyMatrix</code> — dense gate on N qubits</td></tr>
+        <tr><td><span class="filepath">diagonal_matrix.cu</span></td><td><code>custatevecApplyMatrixDiagonal</code> — fast path for diagonal gates</td></tr>
+        <tr><td><span class="filepath">exponential_pauli.cu</span></td><td><code>custatevecApplyExpPauli</code> — \(e^{i\theta P}\) Trotter blocks</td></tr>
+        <tr><td><span class="filepath">permutation_matrix.cu</span></td><td>Permutation / generalized-permutation gates</td></tr>
+        <tr><td><span class="filepath">expectation.cu</span> · <span class="filepath">expectation_pauli.cu</span></td><td>⟨ψ|H|ψ⟩, including sums of Pauli strings</td></tr>
+        <tr><td><span class="filepath">sampler.cu</span> · <span class="filepath">batch_measure.cu</span></td><td>Bit-string sampling, Z-basis measurement</td></tr>
+        <tr><td><span class="filepath">accessor_get.cu</span> · <span class="filepath">accessor_set.cu</span></td><td>Read/write arbitrary slices of the state</td></tr>
+        <tr><td><span class="filepath">mgpu_*.cu</span></td><td>Multi-GPU sampling, bit-index swap, measurement</td></tr>
+        <tr><td><span class="filepath">subsv_migration.cu</span></td><td>Out-of-core / paged sub-state-vector movement</td></tr>
+        <tr><td><span class="filepath">memory_handler.cu</span></td><td>Custom device-memory allocator handle</td></tr>
+      </table>
+    </div>
+
+    <div>
+      <h3>Core algorithms</h3>
+      <h4>Gate application kernel</h4>
+      <p>
+        For a k-qubit gate with target indices \(t_1,\dots,t_k\), the kernel iterates
+        over all \(2^{n-k}\) "outer" indices, gathers the \(2^k\) inner amplitudes,
+        multiplies by the gate matrix (cached in shared memory), and scatters them
+        back. Single-qubit gates collapse to the well-known strided pair update.
+      </p>
+      <h4>Batched / controlled gates</h4>
+      <p>
+        Controls are implemented by skipping outer indices whose control bits don't
+        match — no extra memory traffic. <span class="filepath">batched_gate_application.cu</span>
+        applies <i>different</i> gates per batch index in one launch, which is the
+        primitive backing variational/expectation pipelines.
+      </p>
+      <h4>Pauli exponentials</h4>
+      <p>
+        <code>ApplyExpPauli</code> exploits the structure of \(e^{i\theta P}\) for a
+        Pauli string \(P\): only \(\cos\theta\,I + i\sin\theta\,P\) terms appear, so
+        the kernel is two passes over the relevant index pairs, no dense matrix.
+      </p>
+      <h4>Sampling</h4>
+      <p>
+        cuStateVec builds a cumulative |amplitude|² table (parallel prefix-sum) and
+        binary-searches sorted random draws into it — the foundation of
+        <code>custatevecSampler</code> and the multi-GPU sibling
+        <code>mgpu_sampler</code>.
+      </p>
+      <h4>Multi-GPU strategy</h4>
+      <p>
+        The state vector is distributed across GPUs by "global index bits". Gates
+        acting only on local index bits are pure compute; gates touching global bits
+        require a swap-index-bit collective (cuStateVec ships an explicit
+        <code>SwapIndexBits</code> primitive) followed by a local gate apply.
+      </p>
+    </div>
+  </div>
+
+  <h3>Where it lives</h3>
+  <ul>
+    <li>C/C++ samples: <span class="filepath">samples/custatevec/custatevec/*.cu</span> &amp; <span class="filepath">samples/custatevec/custatevecex/</span></li>
+    <li>Python low-level binding: <span class="filepath">python/cuquantum/bindings/custatevec.pyx</span> + <span class="filepath">cycustatevec.pyx</span></li>
+    <li>Distribution: <code>custatevec-cu12</code> / <code>custatevec-cu13</code> on PyPI; <code>custatevec</code> on conda-forge.</li>
+  </ul>
+</section>
+
+<!-- ============================ CUTENSORNET ============================ -->
+<section class="card" id="cutensornet">
+  <h2><span style="color:#7fe2ff">cuTensorNet</span> <span class="sub">tensor networks · contraction · MPS</span></h2>
+  <p>
+    cuTensorNet treats a quantum circuit as a tensor network and answers queries
+    (amplitudes, marginals, expectations, samples) by contracting it. Two API
+    surfaces are exposed: a <b>legacy</b> low-level "build a network, find a path,
+    contract slices" flow, and a newer <b>high-level</b> network-state API
+    (amplitudes / sampling / expectation / MPS / DMRG).
+  </p>
+
+  <div class="grid cols-2">
+    <div>
+      <h3>Algorithm pipeline</h3>
+      <svg class="diagram" viewBox="0 0 520 320" aria-label="cuTensorNet pipeline">
+        <defs>
+          <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#7fe2ff"/>
+          </marker>
+        </defs>
+        <g font-size="12" fill="#e6e9f4">
+        <rect x="20" y="20" width="220" height="40" rx="8" fill="#11172e" stroke="#21d4fd"/>
+        <text x="130" y="45" text-anchor="middle">1. CreateNetworkDescriptor</text>
+
+        <rect x="280" y="20" width="220" height="40" rx="8" fill="#11172e" stroke="#21d4fd"/>
+        <text x="390" y="45" text-anchor="middle">2. ContractionOptimize (path)</text>
+
+        <rect x="280" y="80" width="220" height="40" rx="8" fill="#11172e" stroke="#21d4fd"/>
+        <text x="390" y="105" text-anchor="middle">3. CreateContractionPlan</text>
+
+        <rect x="280" y="140" width="220" height="40" rx="8" fill="#11172e" stroke="#21d4fd"/>
+        <text x="390" y="165" text-anchor="middle">4. ContractionAutotune (opt.)</text>
+
+        <rect x="280" y="200" width="220" height="40" rx="8" fill="#11172e" stroke="#21d4fd"/>
+        <text x="390" y="225" text-anchor="middle">5. ContractSlices (over slice IDs)</text>
+
+        <rect x="20" y="200" width="220" height="40" rx="8" fill="#11172e" stroke="#21d4fd"/>
+        <text x="130" y="225" text-anchor="middle">5b. (MPI) reduce slices</text>
+
+        <rect x="20" y="260" width="480" height="40" rx="8" fill="#0b1020" stroke="#283058"/>
+        <text x="260" y="285" text-anchor="middle" fill="#9aa3c0">Reuse intermediates · gradient back-prop · cache workspace</text>
+
+        <line x1="240" y1="40" x2="280" y2="40" stroke="#7fe2ff" marker-end="url(#arr2)"/>
+        <line x1="390" y1="60" x2="390" y2="80" stroke="#7fe2ff" marker-end="url(#arr2)"/>
+        <line x1="390" y1="120" x2="390" y2="140" stroke="#7fe2ff" marker-end="url(#arr2)"/>
+        <line x1="390" y1="180" x2="390" y2="200" stroke="#7fe2ff" marker-end="url(#arr2)"/>
+        <line x1="280" y1="220" x2="240" y2="220" stroke="#7fe2ff" marker-end="url(#arr2)"/>
+        </g>
+      </svg>
+      <p>
+        The optimizer (step 2) is the heart: it searches for a contraction order with
+        small intermediate tensors. Large/expensive intermediates get <b>sliced</b>
+        — fixed indices that turn one contraction into many smaller, embarrassingly
+        parallel ones, perfect for slice-based MPI distribution
+        (<span class="filepath">tensornet_example_mpi.cu</span>).
+      </p>
+    </div>
+    <div>
+      <h3>Capabilities by sample folder</h3>
+      <details open>
+        <summary><b>legacy/</b> — low-level builder API</summary>
+        <ul>
+          <li><span class="filepath">tensornet_example_legacy.cu</span> — single-GPU end-to-end</li>
+          <li><span class="filepath">tensornet_example_mpi_legacy.cu</span> — manual slice MPI</li>
+          <li><span class="filepath">tensornet_example_mpi_auto_legacy.cu</span> — automatic distributed</li>
+          <li><span class="filepath">tensornet_example_reuse_legacy.cu</span> — constant tensors + cache workspace</li>
+        </ul>
+      </details>
+      <details open>
+        <summary><b>high_level/</b> — NetworkState / NetworkOperator API</summary>
+        <ul>
+          <li>amplitudes, marginal, sampling, expectation (+ gradient)</li>
+          <li>MPS variants: <span class="filepath">mps_amplitudes_example.cu</span>, <span class="filepath">mps_sampling_example.cu</span>, …</li>
+          <li><span class="filepath">mpo_mps_sampling_example.cu</span> — MPO-on-MPS evolution</li>
+          <li><span class="filepath">qft_mps_sampling_example.cu</span> — QFT sampling via MPS</li>
+          <li><span class="filepath">proj_mps_circuit_dmrg_example.cu</span> — projected MPS / DMRG</li>
+          <li><span class="filepath">sampling_mpi_example.cu</span> — distributed sampling</li>
+        </ul>
+      </details>
+      <details>
+        <summary><b>approxTN/</b> — approximate primitives</summary>
+        <ul>
+          <li><span class="filepath">tensor_qr_example.cu</span> — tensor QR (<code>cutensornetTensorQR</code>)</li>
+          <li><span class="filepath">tensor_svd_example.cu</span> — truncated SVD with <code>cutensornetTensorSVDConfig</code></li>
+          <li><span class="filepath">gate_split_example.cu</span> — gate-split via SVD</li>
+          <li><span class="filepath">mps_example.cu</span> — MPS simulator using <code>MPSHelper</code></li>
+        </ul>
+      </details>
+    </div>
+  </div>
+
+  <h3>The contraction-path finder</h3>
+  <p>
+    The optimizer combines greedy / dynamic programming over the network's
+    line graph, branch-and-bound for sub-trees, and reinforcement-learning-style
+    sampling. Configuration (sampler, seed, slicing target memory) is set via
+    <code>cutensornetContractionOptimizerConfigSetAttribute</code>; results are
+    encapsulated in a serializable <code>cutensornetContractionOptimizerInfo_t</code>
+    that can be broadcast over MPI (see the explicit-MPI sample).
+  </p>
+
+  <h3>Gradient via reverse-mode</h3>
+  <p>
+    <span class="filepath">tensornet_example_gradients.cu</span> marks selected input
+    tensors for gradient tracking, allocates a <code>CUTENSORNET_WORKSPACE_CACHE</code>
+    to hold intermediates from the forward contraction, then calls
+    <code>cutensornetNetworkComputeGradientsBackward</code>. The cache must be
+    <code>WorkspacePurgeCache</code>'d between calls — that's the only stateful step.
+  </p>
+</section>
+
+<!-- ============================ CUDENSITYMAT ============================ -->
+<section class="card" id="cudensitymat">
+  <h2><span style="color:#ffb1c8">cuDensityMat</span> <span class="sub">open-system dynamics · Lindblad · MPS-TDVP</span></h2>
+  <p>
+    cuDensityMat targets the master equation
+    \(\dot\rho = -i[H,\rho] + \sum_k \mathcal{L}_k\rho\), where \(\mathcal{L}_k\) are
+    Lindblad superoperators. It exposes <b>operators</b> as compositions of
+    elementary tensors, MPOs, or callable kernels, and computes their <b>action</b>
+    on a state — never explicitly building the (potentially huge) full superoperator.
+  </p>
+
+  <div class="grid cols-2">
+    <div>
+      <h3>Python API surface</h3>
+      <table>
+        <tr><td><span class="filepath">work_stream.py</span></td><td><code>WorkStream</code> handle (per-device context, streams, allocators)</td></tr>
+        <tr><td><span class="filepath">elementary_operator.py</span></td><td>Elementary one-site operators (number, ladder, projectors…)</td></tr>
+        <tr><td><span class="filepath">matrix_operator.py</span></td><td>Dense / sparse matrix operators</td></tr>
+        <tr><td><span class="filepath">matrix_product_operator.py</span></td><td>MPO builder (chain Hamiltonians, transverse-field Ising, …)</td></tr>
+        <tr><td><span class="filepath">operators.py</span></td><td>Algebra: sums, products, tensor products, time-dependent wrappers</td></tr>
+        <tr><td><span class="filepath">state.py</span></td><td>State containers (dense ρ, vectorized ρ, MPS form)</td></tr>
+        <tr><td><span class="filepath">callbacks.py</span></td><td>Python callbacks for time-dependent coefficients</td></tr>
+        <tr><td><span class="filepath">spectrum.py</span></td><td>Eigen-spectrum / Krylov solvers for L</td></tr>
+        <tr><td><span class="filepath">time_propagation.py</span></td><td>ODE / TDVP integrators (single &amp; batched, with gradients)</td></tr>
+        <tr><td><span class="filepath">memory.py</span></td><td>Memory pool integration</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>C++ samples (algorithm flavors)</h3>
+      <ul>
+        <li><b>operator_action_example.cpp</b> — apply \(\mathcal{L}\) to ρ on one GPU.</li>
+        <li><b>operator_action_mpi_example.cpp</b> / <b>nccl_example.cpp</b> — same, distributed across GPUs via MPI or NCCL respectively.</li>
+        <li><b>operator_action_gradient_example.cpp</b> — reverse-mode AD through operator action.</li>
+        <li><b>operator_action_batched_gradient_example.cpp</b> — batched / vectorized variant for parameter sweeps.</li>
+        <li><b>operator_eigenspectrum_example.cpp</b> — Krylov / Lanczos on \(\mathcal{L}\) for steady states &amp; spectra.</li>
+        <li><b>mps_tdvp_example.cpp</b> — Time-Dependent Variational Principle on an MPS state, the workhorse for large 1-D open systems.</li>
+      </ul>
+
+      <h3>How operator action is computed</h3>
+      <p>
+        An operator is stored as a DAG of tensor contractions over site indices. At
+        application time, cuDensityMat fuses the per-site tensors with ρ, dispatches
+        contractions through <b>cuTENSOR</b>, and accumulates results. For
+        time-dependent terms, Python callbacks are invoked to refresh coefficients
+        between time steps; for time-independent dense ops the contraction plan is
+        cached.
+      </p>
+      <p>
+        <b>TDVP</b> projects \(\dot{|\psi\rangle} = -iH|\psi\rangle\) onto the MPS
+        manifold of fixed bond dimension χ, integrating an effective ODE on the
+        tangent space — cost \(\mathcal{O}(n\chi^3 d^2)\) per step instead of
+        exponential in n.
+      </p>
+    </div>
+  </div>
+  <div class="callout warn">
+    <b>License note:</b> <code>cudensitymat.h</code> is under the <b>NVIDIA Proprietary
+    License</b> (see <code>NV.LICENSE</code>), not BSD-3-Clause.
+  </div>
+</section>
+
+<!-- ============================ CUPAULIPROP ============================ -->
+<section class="card" id="cupauliprop">
+  <h2><span style="color:#ffd28a">cuPauliProp</span> <span class="sub">Heisenberg-picture Pauli propagation</span></h2>
+  <p>
+    Instead of evolving the state \(|\psi\rangle\) forward, cuPauliProp evolves an
+    <b>observable</b> \(O = \sum_i c_i P_i\) backward through the circuit:
+    \(O_{t-1} = U_t^\dagger O_t U_t\). Each unitary maps a Pauli string to a
+    (usually short) sum of Pauli strings. For Clifford gates this is exact and
+    keeps the number of terms constant; for non-Clifford gates (e.g. T, RZ(θ))
+    the operator splits, growing the sum. The library prunes by coefficient
+    magnitude and operator weight — see <span class="filepath">truncation.py</span>.
+  </p>
+
+  <div class="grid cols-2">
+    <div>
+      <h3>Python sub-package <span class="filepath">cuquantum/pauliprop/experimental</span></h3>
+      <table>
+        <tr><td><span class="filepath">handles.py</span></td><td>Library/device handles</td></tr>
+        <tr><td><span class="filepath">operators.py</span></td><td>Pauli sum representation, arithmetic</td></tr>
+        <tr><td><span class="filepath">pauli_expansion.py</span></td><td>Driver: walk the circuit backward, expand each gate</td></tr>
+        <tr><td><span class="filepath">truncation.py</span></td><td>Truncation policies (weight, magnitude, top-K)</td></tr>
+        <tr><td><span class="filepath">_internal/</span></td><td>Low-level GPU kernels</td></tr>
+      </table>
+      <p class="callout info" style="margin-top:10px">
+        The whole sub-package lives under <b>experimental/</b> — APIs may evolve.
+      </p>
+    </div>
+    <div>
+      <h3>C++ samples</h3>
+      <ul>
+        <li><b>kicked_ising_example.cpp</b> — forward propagation of an observable through a
+            kicked transverse-field Ising trotterization, returning ⟨O⟩.</li>
+        <li><b>kicked_ising_backward_diff_example.cpp</b> — same circuit with reverse-mode AD
+            to compute gradients of ⟨O⟩ w.r.t. circuit parameters.</li>
+      </ul>
+      <h3>When to reach for cuPauliProp</h3>
+      <ul>
+        <li>You only need expectation values, not full amplitudes.</li>
+        <li>The observable is sparse in the Pauli basis (low operator weight).</li>
+        <li>The circuit is "near-Clifford" (few non-Clifford gates or shallow).</li>
+        <li>You want fast variational gradients without storing a state vector.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ CUSTABILIZER ============================ -->
+<section class="card" id="custabilizer">
+  <h2><span style="color:#d1a9ff">cuStabilizer</span> <span class="sub">Pauli-frame / Clifford simulation &amp; QEC sampling</span></h2>
+  <p>
+    Stabilizer simulation (Gottesman–Knill) represents the state as a set of
+    commuting Pauli operators that stabilize it. Clifford gates act as linear maps
+    on a 2n × 2n binary tableau — polynomial in n. cuStabilizer adds:
+    <b>Pauli-frame</b> tracking for fast Monte-Carlo simulation of stochastic Pauli
+    noise; and <b>Detector Error Model (DEM)</b> sampling primitives used by QEC
+    decoder workflows.
+  </p>
+  <div class="grid cols-2">
+    <div>
+      <h3>Python sub-package <span class="filepath">cuquantum/stabilizer</span></h3>
+      <table>
+        <tr><td><span class="filepath">simulator.py</span></td><td><code>FrameSimulator</code>, <code>Circuit</code></td></tr>
+        <tr><td><span class="filepath">pauli_table.py</span></td><td><code>PauliTable</code>, <code>PauliFrame</code> — the binary X/Z tableau</td></tr>
+        <tr><td><span class="filepath">bit_matrix.py</span></td><td><code>BitMatrixCSR</code> — packed bit-matrix for big linear algebra</td></tr>
+        <tr><td><span class="filepath">dem_sampling.py</span></td><td><code>DEMSampler</code>, <code>BitMatrixSampler</code>, <code>BitMatrixSparseSampler</code></td></tr>
+        <tr><td><span class="filepath">_options.py</span></td><td>Tunables (shots, RNG seed, batch size…)</td></tr>
+        <tr><td><span class="filepath">utils.py</span></td><td>Conversion helpers</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>C++ sample circuit</h3>
+      <pre class="code-block"><span class="c"># custabilizer_demo.cpp — Bell state with bit-flip noise</span>
+Z_ERROR(0.3) 0     <span class="c"># Randomize Z bits of the frame on qubit 0</span>
+H 0                <span class="c"># Swap X and Z bits on qubit 0</span>
+CNOT 0 1           <span class="c"># X_target ^= X_control</span>
+M 1 2              <span class="c"># Measure qubits 1 and 2</span></pre>
+      <h3>How Pauli-frame simulation works</h3>
+      <p>
+        Start from a reference state (here |00⟩). A "frame" is a Pauli operator
+        that, applied to the reference state, gives the noisy outcome. Each Clifford
+        gate <i>conjugates</i> the frame (cheap bit-twiddles on the tableau). Stochastic
+        Pauli noise simply XORs random bits into the frame. Measurement just reads
+        the relevant bits. Result: noisy Monte-Carlo simulation at the cost of
+        bit-vector ops, perfectly suited for massively parallel GPU sampling — which
+        is what <span class="filepath">DEMSampler</span> exploits for QEC decoder
+        benchmarking.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ PYTHON ============================ -->
+<section class="card" id="py-overview">
+  <h2>cuquantum-python <span class="sub">unifying Python package · v26.3.2</span></h2>
+  <p>
+    The <code>cuquantum</code> package is the Python face of the whole SDK. Its
+    <code>__init__</code> re-exports every sub-package so a single
+    <code>import cuquantum</code> gives you bindings + Pythonic APIs for all five
+    libraries.
+  </p>
+
+  <pre class="code-block">```5:11:python/cuquantum/__init__.py
+from cuquantum import bindings
+from cuquantum import densitymat
+from cuquantum import tensornet
+from cuquantum import pauliprop
+from cuquantum.memory import *
+from cuquantum.bindings._utils import ComputeType, cudaDataType, libraryPropertyType
+```</pre>
+
+  <div class="tabs" role="tablist">
+    <button class="tab-btn active" data-tab="t-bindings">bindings/</button>
+    <button class="tab-btn" data-tab="t-tn">tensornet/</button>
+    <button class="tab-btn" data-tab="t-dm">densitymat/</button>
+    <button class="tab-btn" data-tab="t-st">stabilizer/</button>
+    <button class="tab-btn" data-tab="t-pp">pauliprop/</button>
+    <button class="tab-btn" data-tab="t-int">_internal/</button>
+  </div>
+
+  <div id="t-bindings" class="tab-panel active">
+    <h3 id="py-bindings">bindings/ — Cython low-level wrappers</h3>
+    <p>
+      Each C library has three files: <b>cy{lib}.pxd</b> (header declarations),
+      <b>cy{lib}.pyx</b> (raw C bindings), and <b>{lib}.pyx</b> (a thin Pythonic
+      layer adding enums, error checks, memory ownership). The
+      <code>_utils.pyx</code> file centralizes enums like
+      <code>ComputeType</code>, <code>cudaDataType</code>, <code>libraryPropertyType</code>.
+    </p>
+    <pre class="tree">bindings/
+├── custatevec.pyx   · cycustatevec.pyx   · cycustatevec.pxd
+├── cutensornet.pyx  · cycutensornet.pyx  · cycutensornet.pxd
+├── cudensitymat.pyx · cycudensitymat.pyx · cycudensitymat.pxd
+├── cupauliprop.pyx  · cycupauliprop.pyx  · cycupauliprop.pxd
+├── custabilizer.pyx · cycustabilizer.pyx · cycustabilizer.pxd
+├── _utils.pyx · _utils.pxd · _internal/
+└── __init__.py · __init__.pxd</pre>
+  </div>
+
+  <div id="t-tn" class="tab-panel">
+    <h3 id="py-tensornet">tensornet/ — Pythonic tensor-network API</h3>
+    <p>
+      Sits on top of the cuTensorNet bindings. Two layers: stable (top level) and
+      <code>experimental</code> (network-state &amp; high-level state API).
+    </p>
+    <pre class="tree">tensornet/
+├── tensor_network.py        <i># `Network` class · contract / contract_path</i>
+├── circuit_converter.py     <i># Qiskit/Cirq → tensor network</i>
+├── tensor.py                <i># tensor primitives, QR/SVD</i>
+├── configuration.py         <i># NetworkOptions, OptimizerOptions, …</i>
+├── experimental/
+│   ├── network_state.py     <i># amplitudes/sampling/expectation API</i>
+│   ├── network_operator.py  <i># MPO-style operators on states</i>
+│   ├── tensor_network.py    <i># newer Network impl</i>
+│   ├── configuration.py
+│   └── _internal/
+└── _internal/
+    ├── einsum_parser.py     <i># einsum-style network parser</i>
+    ├── decomposition_utils.py
+    ├── circuit_parser_utils_qiskit.py · circuit_parser_utils_cirq.py
+    ├── circuit_converter_utils.py
+    ├── optimizer_ifc.py     <i># path-optimizer interface</i>
+    ├── grad_torch.py        <i># PyTorch autograd wiring</i>
+    └── helpers.py</pre>
+  </div>
+
+  <div id="t-dm" class="tab-panel">
+    <h3 id="py-densitymat">densitymat/ — open-system dynamics</h3>
+    <p>
+      A composable algebra of operators (elementary, matrix, MPO, sums, products,
+      time-dependent), state containers, time propagation (TDVP / ODE), and an
+      eigenspectrum/Krylov module. All operations route through a single
+      <code>WorkStream</code> handle.
+    </p>
+    <pre class="tree">densitymat/
+├── work_stream.py
+├── elementary_operator.py
+├── matrix_operator.py
+├── matrix_product_operator.py
+├── operators.py
+├── state.py
+├── callbacks.py
+├── spectrum.py
+├── time_propagation.py
+├── memory.py
+└── _internal/</pre>
+  </div>
+
+  <div id="t-st" class="tab-panel">
+    <h3 id="py-stabilizer">stabilizer/ — Clifford + Pauli-frame</h3>
+    <p>
+      The <span class="filepath">__init__.py</span> exposes a focused, modern API:
+    </p>
+    <pre class="code-block">```13:33:python/cuquantum/stabilizer/__init__.py
+from ._options import Options
+from .simulator import FrameSimulator, Circuit
+from .pauli_table import PauliTable, PauliFrame
+from .bit_matrix import BitMatrixCSR
+from .dem_sampling import (
+    DEMSampler,
+    BitMatrixSampler,
+    BitMatrixSparseSampler,
+)
+```</pre>
+    <p>
+      <b>Two workloads</b>: (1) full circuit simulation via <code>FrameSimulator</code>;
+      (2) detector-error-model sampling for QEC decoders via the three sampler classes
+      backed by <code>BitMatrixCSR</code>.
+    </p>
+  </div>
+
+  <div id="t-pp" class="tab-panel">
+    <h3 id="py-pauliprop">pauliprop/experimental/ — Heisenberg-picture sim</h3>
+    <pre class="tree">pauliprop/experimental/
+├── handles.py
+├── operators.py
+├── pauli_expansion.py   <i># the main driver</i>
+├── truncation.py        <i># weight / magnitude / top-K pruning</i>
+└── _internal/</pre>
+    <p>Top-level <code>pauliprop/__init__.py</code> only re-exports
+       <code>experimental</code> — signaling API instability.</p>
+  </div>
+
+  <div id="t-int" class="tab-panel">
+    <h3>_internal/ — shared utilities</h3>
+    <p>
+      Cross-cutting helpers used by every sub-package. The
+      <i>tensor_ifc_*</i> family is a small adapter pattern that lets every API
+      accept NumPy arrays, CuPy arrays, or Torch tensors interchangeably.
+    </p>
+    <pre class="tree">_internal/
+├── package_ifc.py        <i># detect numpy/cupy/torch packages</i>
+├── tensor_ifc.py         <i># abstract tensor interface</i>
+├── tensor_ifc_numpy.py
+├── tensor_ifc_cupy.py
+├── tensor_ifc_torch.py
+├── tensor_wrapper.py
+└── utils.py              <i># incl. get_mpi_comm_pointer</i></pre>
+  </div>
+</section>
+
+<!-- ============================ BENCHMARKS ============================ -->
+<section class="card" id="benchmarks">
+  <h2>Benchmark suite <span class="sub">nv-quantum-benchmarks · multi-framework harness</span></h2>
+  <p>
+    A modular benchmark generator: framework-agnostic <b>benchmarks</b> (circuit
+    descriptions) are mapped to a chosen <b>frontend</b> (Qiskit / Cirq / CUDA-Q / …)
+    and executed on a chosen <b>backend</b> (Aer / cuStateVec / cuTensorNet /
+    qsim / Qulacs / CUDA-Q backends). Results are JSON-serialized into
+    <span class="filepath">data/</span>.
+  </p>
+
+  <svg class="diagram" viewBox="0 0 880 240" aria-label="benchmark harness pipeline">
+    <defs><marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ffb454"/></marker></defs>
+    <g font-size="12" fill="#e6e9f4">
+      <rect x="20" y="80" width="180" height="80" rx="10" fill="#0b1020" stroke="#ffb454"/>
+      <text x="110" y="110" text-anchor="middle" font-weight="700">benchmarks/</text>
+      <text x="110" y="128" text-anchor="middle" fill="#9aa3c0">QFT · QPE · QAOA</text>
+      <text x="110" y="144" text-anchor="middle" fill="#9aa3c0">QV · GHZ · Simon · …</text>
+
+      <rect x="240" y="80" width="180" height="80" rx="10" fill="#0b1020" stroke="#ffb454"/>
+      <text x="330" y="110" text-anchor="middle" font-weight="700">frontends/</text>
+      <text x="330" y="128" text-anchor="middle" fill="#9aa3c0">build framework</text>
+      <text x="330" y="144" text-anchor="middle" fill="#9aa3c0">circuit object</text>
+
+      <rect x="460" y="80" width="180" height="80" rx="10" fill="#0b1020" stroke="#ffb454"/>
+      <text x="550" y="110" text-anchor="middle" font-weight="700">backends/</text>
+      <text x="550" y="128" text-anchor="middle" fill="#9aa3c0">execute</text>
+      <text x="550" y="144" text-anchor="middle" fill="#9aa3c0">(state / sample / expect)</text>
+
+      <rect x="680" y="80" width="180" height="80" rx="10" fill="#0b1020" stroke="#ffb454"/>
+      <text x="770" y="110" text-anchor="middle" font-weight="700">data/*.json</text>
+      <text x="770" y="128" text-anchor="middle" fill="#9aa3c0">indexed by</text>
+      <text x="770" y="144" text-anchor="middle" fill="#9aa3c0">[nqubits][sim_config_hash]</text>
+
+      <line x1="200" y1="120" x2="240" y2="120" stroke="#ffb454" marker-end="url(#arr3)"/>
+      <line x1="420" y1="120" x2="460" y2="120" stroke="#ffb454" marker-end="url(#arr3)"/>
+      <line x1="640" y1="120" x2="680" y2="120" stroke="#ffb454" marker-end="url(#arr3)"/>
+
+      <rect x="20" y="20" width="840" height="40" rx="10" fill="#11172e" stroke="#283058"/>
+      <text x="40" y="46" fill="#cfd6ff">Top-level CLI: <tspan fill="#b6e36b" font-family="ui-monospace">nv-quantum-benchmarks {circuit,api} ...</tspan></text>
+
+      <rect x="20" y="180" width="840" height="40" rx="10" fill="#11172e" stroke="#283058"/>
+      <text x="40" y="206" fill="#cfd6ff">Distributed: <tspan fill="#9aa3c0">mpiexec / mpirun + cusvaer global-index-bits, p2p-device-bits</tspan></text>
+    </g>
+  </svg>
+
+  <div class="grid cols-2" style="margin-top:14px">
+    <div>
+      <h3>Benchmark catalog</h3>
+      <ul>
+        <li><b>qft</b> / <b>iqft</b> — Quantum Fourier Transform</li>
+        <li><b>qpe</b> — Quantum Phase Estimation</li>
+        <li><b>qaoa</b> — Quantum Approximate Optimization</li>
+        <li><b>quantum_volume</b> — Quantum Volume circuits</li>
+        <li><b>ghz</b> — GHZ state preparation</li>
+        <li><b>hidden_shift</b>, <b>simon</b>, <b>random</b></li>
+        <li><b>apply_matrix</b>, <b>apply_gen_perm_matrix</b>, <b>cusv_sampler</b> — API-level micro-benchmarks</li>
+        <li><b>tensor_decompose</b> — cuTensorNet decomposition benchmark</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Adding new pieces</h3>
+      <ul>
+        <li><b>Benchmark</b>: subclass <code>Benchmark</code>, implement
+            <code>generateGatesSequence(nqubits, config)</code>, register in <code>config.py</code>.</li>
+        <li><b>Frontend</b>: subclass <code>Frontend</code>, implement
+            <code>__init__</code> + <code>generateCircuit</code>, register in <code>frontends/__init__.py</code>.</li>
+        <li><b>Backend</b>: subclass <code>Backend</code>, implement <code>run</code> (and
+            optionally <code>preprocess_circuit</code>), register in
+            <code>backends/__init__.py</code> + <code>config.py</code>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ SAMPLES ============================ -->
+<section class="card" id="samples">
+  <h2>Samples <span class="sub">canonical C/C++ usage per library</span></h2>
+  <table>
+    <tr><th>Folder</th><th>Highlights</th></tr>
+    <tr><td><span class="filepath">samples/custatevec/custatevec/</span></td>
+        <td>Standalone <code>.cu</code> programs for every public cuStateVec primitive (apply, sample, measure, expectation, multi-GPU).</td></tr>
+    <tr><td><span class="filepath">samples/custatevec/custatevecex/</span></td>
+        <td>Extended / advanced examples.</td></tr>
+    <tr><td><span class="filepath">samples/cutensornet/legacy/</span></td>
+        <td>Classic NetworkDescriptor → optimize → contract pipeline (single + MPI variants).</td></tr>
+    <tr><td><span class="filepath">samples/cutensornet/high_level/</span></td>
+        <td>NetworkState/Operator API: amplitudes, sampling, expectation (+gradient), MPS, DMRG, MPI sampling.</td></tr>
+    <tr><td><span class="filepath">samples/cutensornet/approxTN/</span></td>
+        <td>Approximate primitives: tensor QR/SVD, gate-split, full MPS simulator.</td></tr>
+    <tr><td><span class="filepath">samples/cudensitymat/</span></td>
+        <td>Operator action (single, MPI, NCCL), eigen-spectrum, batched gradient, MPS-TDVP.</td></tr>
+    <tr><td><span class="filepath">samples/cupauliprop/</span></td>
+        <td>Kicked-Ising forward expectation + backward-diff gradient.</td></tr>
+    <tr><td><span class="filepath">samples/custabilizer/</span></td>
+        <td>Bell-state Pauli-frame simulation with explicit noise.</td></tr>
+    <tr><td><span class="filepath">python/samples/</span></td>
+        <td>Python low-level (1:1 mirrors of C) and high-level (Pythonic) samples.</td></tr>
+  </table>
+</section>
+
+<!-- ============================ EXTRA ============================ -->
+<section class="card" id="extra">
+  <h2>extra/</h2>
+  <ul>
+    <li><span class="filepath">extra/custatevec/</span> — helper assets specific to cuStateVec.</li>
+    <li><span class="filepath">extra/demo_build_with_wheels/</span> — example project demonstrating how to consume the cuQuantum wheels in a downstream build.</li>
+  </ul>
+</section>
+
+<!-- ============================ ALGORITHMS ============================ -->
+<section class="card" id="algos">
+  <h2>Algorithms reference <span class="sub">at-a-glance complexity table</span></h2>
+  <table>
+    <thead><tr><th>Library</th><th>Core algorithm</th><th>Complexity</th><th>Bottleneck</th><th>Distributed strategy</th></tr></thead>
+    <tbody>
+      <tr><td>cuStateVec</td><td>In-place gate kernels on dense \(\mathbb{C}^{2^n}\)</td>
+        <td>O(2<sup>n</sup>) per gate</td><td>Memory bandwidth</td>
+        <td>Index-bit partitioning + swap collective; cusvaer</td></tr>
+      <tr><td>cuTensorNet</td><td>Path search + slice-parallel contraction</td>
+        <td>NP-hard path; contraction cost varies</td><td>Optimizer + cuTENSOR contractions</td>
+        <td>Slice-level (auto via cuTensorNet, or manual MPI)</td></tr>
+      <tr><td>cuDensityMat</td><td>Operator-action via composable tensors</td>
+        <td>O(poly·d<sup>k</sup>) per term</td><td>Tensor contractions</td>
+        <td>MPI &amp; NCCL flavors for ρ shards</td></tr>
+      <tr><td>cuPauliProp</td><td>Backward Pauli-string expansion + truncation</td>
+        <td>O(#kept terms · #gates)</td><td>Term explosion at non-Clifford</td>
+        <td>(Single-GPU samples shipped; truncation is the lever)</td></tr>
+      <tr><td>cuStabilizer</td><td>Tableau / Pauli-frame XOR updates</td>
+        <td>O(n<sup>2</sup>) per Clifford gate; O(1) per Pauli-frame update</td>
+        <td>Bit-packing and sampling throughput</td>
+        <td>Batched sampling on GPU(s); CSR bit-matrices for DEM</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ WORKFLOW ============================ -->
+<section class="card" id="workflow">
+  <h2>End-to-end developer workflow</h2>
+  <ol>
+    <li><b>Install</b>: pick CUDA major version, then
+        <code>pip install cuquantum-python-cu13</code> (or cu12).
+        Conda-forge users: <code>conda install -c conda-forge cuquantum-python</code>.</li>
+    <li><b>Pick a paradigm</b> (see library map).</li>
+    <li><b>Prototype in Python</b>: high-level API first
+        (<code>cuquantum.tensornet.experimental.NetworkState</code> /
+        <code>cuquantum.densitymat.*</code> / <code>cuquantum.stabilizer.FrameSimulator</code>).</li>
+    <li><b>Profile</b> with the benchmark suite; compare to other backends to make sure
+        the choice of paradigm is right.</li>
+    <li><b>Optimize</b>: drop down to <code>cuquantum.bindings.*</code> or C/C++ when
+        you need fine-grained control (custom optimizer config, custom memory pool,
+        explicit MPI slicing).</li>
+    <li><b>Scale out</b>: MPI / NCCL for cuDensityMat &amp; cuTensorNet; multi-GPU
+        index-bit partitioning for cuStateVec; cusvaer backend for multi-node
+        state-vector.</li>
+  </ol>
+</section>
+
+<!-- ============================ GLOSSARY ============================ -->
+<section class="card" id="glossary">
+  <h2>Glossary</h2>
+  <div class="grid cols-2">
+    <div>
+      <h4>State vector</h4>
+      <p>Dense complex vector of dimension 2<sup>n</sup> for n qubits.</p>
+      <h4>Density matrix (ρ)</h4>
+      <p>2<sup>n</sup> × 2<sup>n</sup> Hermitian positive semi-definite operator representing mixed states.</p>
+      <h4>MPS / MPO</h4>
+      <p>Matrix Product State / Operator — efficient tensor-train representation for low-entanglement states / 1-D operators.</p>
+      <h4>TDVP</h4>
+      <p>Time-Dependent Variational Principle — symplectic integrator on a variational manifold (here, MPS of fixed χ).</p>
+    </div>
+    <div>
+      <h4>Pauli string</h4>
+      <p>Tensor product of single-qubit Paulis: \(P = \sigma_{a_1}\otimes\cdots\otimes\sigma_{a_n}\), a<sub>i</sub>∈{I,X,Y,Z}.</p>
+      <h4>Clifford group</h4>
+      <p>Unitaries that map Paulis to Paulis under conjugation. Generated by {H, S, CNOT}. Simulable in poly(n).</p>
+      <h4>Stabilizer formalism</h4>
+      <p>Track the group of Paulis that fix the state; Clifford gates act on it as a binary tableau.</p>
+      <h4>DEM</h4>
+      <p>Detector Error Model — graph/hypergraph relating physical noise events to syndrome detectors, used by QEC decoders.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  cuQuantum Codebase Wiki · generated from
+  <span class="filepath">/home/ysha/cuQuantum</span> · package version
+  <span class="filepath">26.3.2</span><br>
+  Use the sidebar to navigate · press <span class="kbd">/</span> in your browser to find anything.
+</footer>
+
+</main>
+</div>
+
+<script>
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.tab;
+      const group = btn.parentElement;
+      group.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+      const panels = group.parentElement.querySelectorAll(':scope > .tab-panel');
+      panels.forEach(p => p.classList.toggle('active', p.id === id));
+    });
+  });
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      const el = document.querySelector(a.getAttribute('href'));
+      if (el) { e.preventDefault(); el.scrollIntoView({behavior:'smooth', block:'start'}); }
+    });
+  });
+</script>
+</body>
+</html>
