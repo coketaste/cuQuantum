@@ -1,0 +1,36 @@
+{
+  "api": "cudensitymat.compute_action",
+  "param_id": "n2_t4_db6f88d3",
+  "params": {
+    "seed": 0
+  },
+  "metadata": {
+    "library": "cudensitymat",
+    "kind": "deterministic"
+  },
+  "scalars": {
+    "input.n_qubits": 2,
+    "input.n_terms": 4
+  },
+  "env": {
+    "host": "rocm-framework-h100-pcie",
+    "user": "ysha",
+    "os": "Linux-5.15.0-171-generic-x86_64-with-glibc2.35",
+    "python": "3.12.13",
+    "cuquantum": "26.3.2",
+    "cupy": "14.1.0",
+    "cuda_runtime": 13020,
+    "gpu_name": "NVIDIA H100 PCIe",
+    "gpu_id": 0,
+    "gpu_compute_cap": "9.0"
+  },
+  "array_keys": [
+    "input.coeffs",
+    "input.op_0",
+    "input.op_1",
+    "input.op_2",
+    "input.op_3",
+    "input.rho",
+    "output.rho_out"
+  ]
+}

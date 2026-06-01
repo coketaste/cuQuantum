@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "rocquantum vs cuquantum benchmark record",
+  "description": "One row per (config, repeat) emitted by either nv_quantum_benchmarks (NVIDIA side) or the rocQuantum benchmark harness (AMD side). compare.py joins records on ``run_key``.",
+  "type": "object",
+  "required": ["run_key", "platform", "library", "api_or_circuit", "n_qubits", "dtype", "gpu_time_s"],
+  "properties": {
+    "run_key": {
+      "type": "string",
+      "description": "Stable identifier that is equal across platforms for runs that should be compared. Convention: ``<library>.<api_or_circuit>.<dtype>.n=<n>.k=<k>.shots=<s>``."
+    },
+    "platform": {"enum": ["nvidia", "amd"]},
+    "library": {"type": "string", "description": "custatevec | cutensornet | cudensitymat | custabilizer | cupauliprop"},
+    "api_or_circuit": {"type": "string", "description": "e.g. apply_matrix or qft"},
+    "frontend": {"type": "string"},
+    "backend": {"type": "string"},
+    "n_qubits": {"type": "integer", "minimum": 1},
+    "n_targets": {"type": "integer"},
+    "n_controls": {"type": "integer"},
+    "n_shots": {"type": "integer"},
+    "dtype": {"type": "string"},
+    "compute_type": {"type": "string"},
+    "n_warmup": {"type": "integer"},
+    "n_repeat": {"type": "integer"},
+    "flush_l2": {"type": "boolean"},
+    "cpu_time_s": {"type": "number"},
+    "gpu_time_s": {"type": "number"},
+    "cpu_time_std_s": {"type": "number"},
+    "gpu_time_std_s": {"type": "number"},
+    "effective_bandwidth_GBs": {"type": "number"},
+    "peak_bandwidth_GBs": {"type": "number"},
+    "gpu_name": {"type": "string"},
+    "driver": {"type": "string"},
+    "library_version": {"type": "string"},
+    "host": {"type": "string"},
+    "wall_time_iso": {"type": "string"}
+  }
+}

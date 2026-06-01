@@ -1,0 +1,61 @@
+# Performance characterisation: nightly, not gating.
+#
+# Run the benchmark suites on H100 and MI3xx, compare, archive the result.
+
+name: rocQuantum performance vs cuQuantum
+
+on:
+  schedule:
+    - cron: "0 5 * * *"      # nightly 05:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  bench-nvidia:
+    runs-on: [self-hosted, h100]
+    steps:
+      - uses: actions/checkout@v4
+      - name: setup
+        run: |
+          source /home/ysha/cuQuantum/.venv/bin/activate
+          python -m pip install -e benchmarks
+      - name: run h100 benchmarks
+        run: bash verification/benchmarks/h100_runner.sh verification/benchmarks/results/h100
+      - name: upload h100 artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: h100-bench
+          path: verification/benchmarks/results/h100/
+
+  bench-amd:
+    runs-on: [self-hosted, mi300]
+    steps:
+      - uses: actions/checkout@v4
+      - name: run mi300 benchmarks
+        run: bash verification/benchmarks/mi300_runner.sh verification/benchmarks/results/mi300
+      - name: upload mi300 artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mi300-bench
+          path: verification/benchmarks/results/mi300/
+
+  compare:
+    needs: [bench-nvidia, bench-amd]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: download artefacts
+        uses: actions/download-artifact@v4
+        with:
+          path: verification/benchmarks/results
+      - name: compare
+        run: |
+          python -m pip install -U pip
+          python verification/benchmarks/compare.py \
+            --left verification/benchmarks/results/h100-bench \
+            --right verification/benchmarks/results/mi300-bench \
+            --out verification/benchmarks/results/compare.csv
+      - name: upload comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-compare
+          path: verification/benchmarks/results/compare.csv

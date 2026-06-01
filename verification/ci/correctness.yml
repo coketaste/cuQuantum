@@ -1,0 +1,39 @@
+# Correctness gate: replay all captured oracles on AMD.
+#
+# This file is a template - paste it into your actual CI provider's syntax
+# (GitHub Actions, GitLab CI, Buildkite, ...). The shape is portable; the
+# only assumption is a runner labelled `mi300` with rocQuantum installed.
+
+name: rocQuantum correctness vs cuQuantum oracle
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  replay:
+    runs-on: [self-hosted, mi300]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true                    # oracle/ is in Git LFS
+      - name: setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install rocquantum
+        run: |
+          python -m pip install -U pip wheel setuptools
+          # python -m pip install -e ../rocQuantum/python    # adjust to your layout
+          python -m pip install numpy scipy
+      - name: replay custatevec
+        run: python verification/replay/replay_custatevec.py --oracle verification/oracle/v1.0.0 --strict
+      - name: replay cutensornet
+        run: python verification/replay/replay_cutensornet.py --oracle verification/oracle/v1.0.0 --strict
+      - name: replay cudensitymat
+        run: python verification/replay/replay_cudensitymat.py --oracle verification/oracle/v1.0.0 --strict
+      - name: replay custabilizer
+        run: python verification/replay/replay_custabilizer.py --oracle verification/oracle/v1.0.0 --strict
+      - name: replay cupauliprop
+        run: python verification/replay/replay_cupauliprop.py --oracle verification/oracle/v1.0.0 --strict

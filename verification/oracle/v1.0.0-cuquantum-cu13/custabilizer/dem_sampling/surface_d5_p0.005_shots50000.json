@@ -1,0 +1,34 @@
+{
+  "api": "custabilizer.dem_sampling",
+  "param_id": "surface_d5_p0.005_shots50000",
+  "params": {
+    "seed": 0
+  },
+  "metadata": {
+    "library": "custabilizer",
+    "kind": "distribution"
+  },
+  "scalars": {
+    "input.distance": 5,
+    "input.rounds": 5,
+    "input.prob": 0.005,
+    "input.n_shots": 50000,
+    "input.seed": 0
+  },
+  "env": {
+    "host": "rocm-framework-h100-pcie",
+    "user": "ysha",
+    "os": "Linux-5.15.0-171-generic-x86_64-with-glibc2.35",
+    "python": "3.12.13",
+    "cuquantum": "26.3.2",
+    "cupy": "14.1.0",
+    "cuda_runtime": 13020,
+    "gpu_name": "NVIDIA H100 PCIe",
+    "gpu_id": 0,
+    "gpu_compute_cap": "9.0"
+  },
+  "array_keys": [
+    "output.detector_marginals",
+    "output.n_shots"
+  ]
+}
