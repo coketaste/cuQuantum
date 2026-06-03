@@ -2,9 +2,18 @@
 
 Recorded with `bash verification/benchmarks/h100_runner.sh` against
 `nv-quantum-benchmarks 0.6.1` and `cuquantum 26.3.2` on an NVIDIA H100
-PCIe (driver 580.95.05, CUDA 13.0). Raw nested JSON dumps live under
-`verification/benchmarks/results/h100/data/` and are gitignored; this file
-captures the headline GPU timings so the AMD side has a stable target.
+PCIe (driver 580.95.05, CUDA 13.0).
+
+There are **three** artifacts in play; only the last two are committed:
+
+| Artifact | Location | Tracked? | Purpose |
+|---|---|---|---|
+| Raw nested JSON dumps | `verification/benchmarks/results/h100/data/*.json` | **no** (gitignored) | Faithful upstream output, regenerable via `h100_runner.sh`. Large, noisy (per-record CPU memory, sim_config hashes), unstable byte-for-byte across runs. |
+| Normalized reference (machine-readable) | `verification/benchmarks/reference/h100.json` + `.csv` | **yes** | Small (~13 KB), deterministic, sorted by `record_key`, diffable in git. The lib-by-lib source-of-truth for rocQuantum verification. |
+| Headline table (human-readable) | this file | **yes** | At-a-glance summary for review. |
+
+This means a `git pull` on the rocQuantum side is enough to get the
+H100 baseline — you don't need to ship raw JSON around.
 
 - Host: `rocm-framework-h100-pcie`, AMD EPYC 9534 (256 logical cores)
 - GPU 0: NVIDIA H100 PCIe, SM count 114, base clock 1755 MHz
@@ -54,23 +63,41 @@ captures the headline GPU timings so the AMD side has a stable target.
 |       16 |    5.072e-04 |    6.967e-04 |
 |       20 |    7.752e-04 |    1.689e-03 |
 
-## Reproducing
+## Reproducing on H100
 
 ```bash
 source .venv/bin/activate
-bash verification/benchmarks/h100_runner.sh
-# results -> verification/benchmarks/results/h100/{sweep.log, data/*.json}
+bash verification/benchmarks/h100_runner.sh                  # raw JSON sweep
+python verification/benchmarks/normalize_results.py \
+    --in  verification/benchmarks/results/h100/data \
+    --out verification/benchmarks/reference/h100.json \
+    --csv verification/benchmarks/reference/h100.csv         # refresh reference
 ```
 
-To regenerate this table from a fresh run, look in
-`verification/benchmarks/results/h100/sweep.log`.
+The normalizer is deterministic (values are rounded to 6 sig figs and
+records are sorted by `record_key`), so re-running it against an
+unchanged sweep yields a byte-identical file — any change you see in
+`git diff` is a real platform-level perf change worth reviewing.
 
-## Cross-platform comparison
+## Lib-by-lib verification on AMD (rocQuantum side)
 
-`compare.py` and `verification/benchmarks/schema.json` currently describe a
-flat per-record schema. The actual upstream `nv-quantum-benchmarks 0.6.1`
-JSON is nested as `{nqubits: {sim_config_hash: record}}`, so a small
-normalization step will be needed before `compare.py` can pair MI3xx runs
-against this table. That normalizer is a TODO for the AMD side; the
-configurations in `h100_runner.sh` and `mi300_runner.sh` are intentionally
-mirrored so the matching pairs are obvious.
+```bash
+# 1. on the AMD host, after running the mirrored MI3xx sweep
+python verification/benchmarks/normalize_results.py \
+    --in  verification/benchmarks/results/mi300/data \
+    --out verification/benchmarks/reference/mi300.json
+
+# 2. compare per library — start with custatevec, then cutensornet, ...
+python verification/benchmarks/compare_perf.py \
+    --reference verification/benchmarks/reference/h100.json \
+    --comparand verification/benchmarks/reference/mi300.json \
+    --library   custatevec
+```
+
+`compare_perf.py` joins the two sides on `record_key` (a stable identifier
+derived from `library.api.n_qubits.precision.<sorted config kv>`), prints
+a per-library table of matched pairs with speedup ratios, and flags
+records that only exist on one side (`L---` reference-only, `---R`
+comparand-only). The AMD-side `mi300.json` is **not** committed here —
+that lives in the rocQuantum repo — but the comparator works the same
+way regardless of which file lives where.
