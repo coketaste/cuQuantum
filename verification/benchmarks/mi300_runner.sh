@@ -1,39 +1,57 @@
 #!/usr/bin/env bash
-# Run the rocQuantum benchmark harness on MI3xx and dump JSON in the schema
-# defined by verification/benchmarks/schema.json so compare.py can pair runs.
+# Run the rocQuantum benchmark harness on MI3xx and write all artefacts under
+# <out_dir>/, matching the layout of h100_runner.sh so the two trees can be
+# diffed.
 #
-# Usage:  verification/benchmarks/mi300_runner.sh <out_dir>
+# Usage:
+#   verification/benchmarks/mi300_runner.sh [out_dir]
 #
-# This is a placeholder: replace the rocquantum CLI invocation below with
-# whatever rocQuantum's equivalent looks like, ensuring that ``run_key``
-# values match the H100 side exactly.
+# Output layout (out_dir defaults to verification/benchmarks/results/mi300):
+#   out_dir/
+#     sweep.log                  human-readable timing summary (tee'd live)
+#     data/<benchmark>.json      raw benchmark output, ideally in the same
+#                                {nqubits: {sim_config_hash: record}} nesting
+#                                as nv-quantum-benchmarks 0.6.1 so the same
+#                                downstream tooling works
+#
+# This is a PLACEHOLDER. Replace the rocquantum invocations below with the
+# actual rocQuantum benchmark front-end once it is available. The flag set
+# below mirrors what h100_runner.sh passes to nv-quantum-benchmarks 0.6.1
+# so the matching configurations are obvious.
+
 set -euo pipefail
 
 OUT_DIR="${1:-verification/benchmarks/results/mi300}"
 mkdir -p "$OUT_DIR"
-JSON="$OUT_DIR/mi300.json"
+LOG="$OUT_DIR/sweep.log"
 
-NREPEAT="${NREPEAT:-50}"
-NWARMUP="${NWARMUP:-3}"
+NREPEATS="${NREPEATS:-10}"
+NWARMUPS="${NWARMUPS:-2}"
+export ROCR_VISIBLE_DEVICES="${ROCR_VISIBLE_DEVICES:-0}"
+
+CACHE_DIR="$(realpath "$OUT_DIR")"
 
 cat <<EOF >&2
-[mi300] this runner is a placeholder.
-Replace the rocquantum CLI calls below with your own benchmark front-end.
-The only invariant compare.py requires is the schema in
-verification/benchmarks/schema.json - in particular, "run_key" values must
-be byte-equal to the H100 side for matched comparisons.
+[mi300] runner is a placeholder. Replace the rocquantum_benchmarks calls
+below with the real rocQuantum CLI. Configurations were chosen to mirror
+verification/benchmarks/h100_runner.sh so per-benchmark pairs line up.
 EOF
 
-# Example skeleton; uncomment once you have rocquantum's CLI:
-# for N in 22 24 26 28 30; do
-#   for DTYPE in complex64 complex128; do
-#     python -m rocquantum_benchmarks api apply_matrix \
-#       --nqubits "$N" --ntargets 1 \
-#       --precision-sv "$DTYPE" --precision-mat "$DTYPE" \
-#       --layout row --location device \
-#       --nrepeat "$NREPEAT" --nwarmup "$NWARMUP" --flush-l2 \
-#       --benchmark-data "$JSON"
+# Sketch — uncomment and adapt once a rocquantum benchmark CLI exists.
+#
+# {
+#   echo "===== rocstatevec.apply_matrix ====="
+#   for N in 20 24 28; do
+#     for PREC in single double; do
+#       python -m rocquantum_benchmarks api --benchmark apply_matrix \
+#           --precision "$PREC" --nqubits "$N" --ntargets 1 \
+#           --layout row --location device \
+#           --nwarmups "$NWARMUPS" --nrepeats "$NREPEATS" \
+#           --cachedir "$CACHE_DIR"
+#     done
 #   done
-# done
+#
+#   # ... mirror the rest of h100_runner.sh's blocks here ...
+# } | tee "$LOG"
 
-echo "[mi300] done -> $JSON"
+echo "[mi300] placeholder exited cleanly (no rocquantum CLI invoked)" >&2
