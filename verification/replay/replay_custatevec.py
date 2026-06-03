@@ -87,25 +87,38 @@ def run_sampler(inputs: dict) -> dict:
 
 def _numpy_apply_gate(psi: np.ndarray, gate: np.ndarray,
                       targets: list[int], n_qubits: int) -> np.ndarray:
-    """Apply gate on `targets` qubits of an n-qubit state via reshape+einsum.
+    """Apply ``gate`` on ``targets`` qubits of an n-qubit state.
 
-    Used only as a placeholder reference. Replace with rocQuantum.
+    cuStateVec / cuQuantum convention: qubit ``q`` corresponds to bit ``q`` of
+    the linear amplitude index (i.e. qubit 0 is the LSB), and the gate matrix
+    is interpreted with ``targets[0]`` contributing bit 0 of the row/column
+    index, ``targets[1]`` contributing bit 1, etc.
+
+    Builds the full 2^n x 2^n operator explicitly via index iteration. O(2^(n+k))
+    which is acceptable for the small-n cases used in harness self-tests.
     """
     assert len(psi) == 1 << n_qubits
     k = len(targets)
-    # cuStateVec convention: targets are little-endian qubit indices into the
-    # linear amplitude array. Bit position 0 is the most rapidly varying.
-    perm = list(range(n_qubits))
-    # Move target axes to the front (reverse so axis-0 = targets[0])
-    others = [q for q in range(n_qubits) if q not in targets]
-    new_order = list(reversed(targets)) + list(reversed(others))
-    psi_t = psi.reshape([2] * n_qubits).transpose(new_order)
-    psi_t = psi_t.reshape((1 << k, 1 << (n_qubits - k)))
-    psi_t = gate @ psi_t
-    psi_t = psi_t.reshape([2] * n_qubits)
-    inv_order = [new_order.index(i) for i in range(n_qubits)]
-    psi_t = psi_t.transpose(inv_order)
-    return psi_t.reshape(-1)
+    dim = 1 << n_qubits
+    full = np.zeros((dim, dim), dtype=gate.dtype)
+
+    target_mask = 0
+    for t in targets:
+        target_mask |= 1 << t
+    non_target_mask = (dim - 1) ^ target_mask
+
+    for col in range(dim):
+        c_other = col & non_target_mask
+        c_target = 0
+        for j, t in enumerate(targets):
+            c_target |= ((col >> t) & 1) << j
+        for r_target in range(1 << k):
+            row = c_other
+            for j, t in enumerate(targets):
+                row |= ((r_target >> j) & 1) << t
+            full[row, col] = gate[r_target, c_target]
+
+    return full @ psi
 
 
 def _numpy_pauli_expectation(psi: np.ndarray, paulis: np.ndarray,
@@ -114,12 +127,16 @@ def _numpy_pauli_expectation(psi: np.ndarray, paulis: np.ndarray,
          1: np.array([[0, 1], [1, 0]], dtype="complex128"),
          2: np.array([[0, -1j], [1j, 0]], dtype="complex128"),
          3: np.array([[1, 0], [0, -1]], dtype="complex128")}
+    basis = list(map(int, basis))
+    paulis = list(map(int, paulis))
+    qubit_pauli = {basis[i]: paulis[i] for i in range(len(basis))}
+
+    # cuStateVec convention: qubit 0 is the LSB, so the tensor-product factor
+    # ordering with NumPy's Kronecker product is qubit (n-1) leftmost, qubit 0
+    # rightmost.
     op = np.eye(1, dtype="complex128")
-    for q in range(n_qubits):
-        if q in basis:
-            op = np.kron(op, P[int(paulis[list(basis).index(q)])])
-        else:
-            op = np.kron(op, P[0])
+    for q in range(n_qubits - 1, -1, -1):
+        op = np.kron(op, P[qubit_pauli.get(q, 0)])
     return float(np.real(np.vdot(psi, op @ psi)))
 
 

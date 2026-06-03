@@ -63,8 +63,46 @@ class ReplayReport:
         return 0 if self.n_failed == 0 else 1
 
 
+import os
+
+
+class _FallbackSentinel:
+    """Marker returned by ``load_rocquantum()`` in fallback mode.
+
+    Runners that receive it should rely on their NumPy reference path rather
+    than dispatching into rocQuantum. Accessing any attribute raises a clear
+    error so accidental real-binding calls fail loudly instead of silently.
+    """
+
+    def __bool__(self) -> bool:  # truthy so `if rq:` works
+        return True
+
+    def __repr__(self) -> str:
+        return "<rocquantum-fallback>"
+
+    def __getattr__(self, name: str):
+        raise AttributeError(
+            f"rocquantum is in fallback mode; attribute {name!r} is not "
+            f"available. Either install rocquantum or rewrite the runner to "
+            f"use its NumPy reference path."
+        )
+
+
+_FALLBACK = _FallbackSentinel()
+
+
 def load_rocquantum() -> Any:
-    """Import rocQuantum. Raises ImportError on failure with a helpful message."""
+    """Import rocQuantum.
+
+    Returns a sentinel ``_FALLBACK`` object when the environment variable
+    ``ROCQUANTUM_SKIP_IMPORT=1`` is set, which lets the harness exercise the
+    runners' NumPy reference paths on hardware that does not have rocQuantum
+    installed (e.g. the H100 development node).
+
+    Raises ImportError on failure otherwise, with a helpful message.
+    """
+    if os.environ.get("ROCQUANTUM_SKIP_IMPORT") == "1":
+        return _FALLBACK
     candidates = ["rocquantum", "rocquantum_python", "rocq"]
     last_err: Exception | None = None
     for name in candidates:
@@ -76,8 +114,10 @@ def load_rocquantum() -> Any:
         "Could not import any of "
         + ", ".join(repr(n) for n in candidates)
         + f". Last error: {last_err!r}. "
-        + "Edit verification/replay/_common.py::load_rocquantum to "
-        + "match your rocQuantum package layout."
+        + "Set ROCQUANTUM_SKIP_IMPORT=1 (or pass --use-fallback) to exercise "
+        + "the NumPy reference paths only, or edit "
+        + "verification/replay/_common.py::load_rocquantum to match your "
+        + "rocQuantum package layout."
     )
 
 
@@ -101,6 +141,9 @@ def common_argparser(library: str) -> argparse.ArgumentParser:
     p.add_argument("--list", action="store_true", help="list cases, do not run")
     p.add_argument("--strict", action="store_true",
                    help="exit non-zero if no cases were found.")
+    p.add_argument("--use-fallback", action="store_true",
+                   help="skip importing rocquantum; runners must use NumPy "
+                        "reference paths. Useful for harness self-test.")
     return p
 
 
@@ -110,6 +153,8 @@ def replay_loop(library: str, runners: dict[str, Callable[[dict], dict]],
     must return a dict shaped like the captured outputs."""
     p = common_argparser(library)
     args = p.parse_args(argv)
+    if args.use_fallback:
+        os.environ["ROCQUANTUM_SKIP_IMPORT"] = "1"
     report = ReplayReport()
 
     cases = list(iter_oracle(args.oracle, library))
@@ -151,9 +196,14 @@ def replay_loop(library: str, runners: dict[str, Callable[[dict], dict]],
             report.add(ReplayResult(api, pid, False, f"runner raised: {e!r}"))
             continue
 
-        result = _compare(api, case["outputs"], outputs,
-                          rtol=args.rtol, atol=args.atol, alpha=args.alpha,
-                          metadata=case.get("metadata", {}))
+        try:
+            result = _compare(api, case["outputs"], outputs,
+                              rtol=args.rtol, atol=args.atol, alpha=args.alpha,
+                              metadata=case.get("metadata", {}))
+        except Exception as e:
+            report.add(ReplayResult(api, pid, False,
+                                    f"metric raised: {type(e).__name__}: {e}"))
+            continue
         report.add(ReplayResult(api, pid, result.passed, result.detail, result.score))
 
     report.print_summary()
