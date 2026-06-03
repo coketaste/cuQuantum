@@ -36,7 +36,17 @@ def gen_dem_sampling(_rng, *, small: bool):
 
 
 def run_dem_sampling(inputs: dict) -> dict:
+    """cuStabilizer GPU DEM sampler.
+
+    Builds the surface-code DEM with stim (this is parameter prep, not the
+    sampling itself), then samples on the H100 via ``cuquantum.stabilizer
+    .DEMSampler`` and returns per-detector marginals. cuStabilizer's own
+    test suite cross-validates this against stim's sampler.
+    """
+    import cupy as cp
     import stim
+    from cuquantum.stabilizer import DEMSampler, Options
+
     distance = int(inputs["distance"])
     rounds = int(inputs["rounds"])
     prob = float(inputs["prob"])
@@ -53,10 +63,12 @@ def run_dem_sampling(inputs: dict) -> dict:
     dem = circuit.detector_error_model(
         decompose_errors=True, approximate_disjoint_errors=True,
     ).flattened()
-    sampler = dem.compile_sampler(seed=seed)
-    detectors, _, _ = sampler.sample(shots=n_shots, return_errors=False)
-    detectors = np.asarray(detectors, dtype=np.uint8)
-    marginals = detectors.mean(axis=0).astype("float64")
+
+    sampler = DEMSampler(dem, n_shots, options=Options(device_id=0), seed=seed)
+    sampler.sample(n_shots, seed=seed)
+    detectors_d = sampler.get_outcomes(bit_packed=False)
+    cp.cuda.Stream.null.synchronize()
+    marginals = (cp.sum(detectors_d, axis=0).get() / float(n_shots)).astype("float64")
     return {
         "detector_marginals": marginals,
         "n_shots": np.asarray(n_shots, dtype=np.int64),
@@ -84,7 +96,8 @@ def main(argv=None) -> int:
             case = OracleCase(
                 api=api, param_id=pid, inputs=inputs, outputs=outputs,
                 params={"seed": args.seed},
-                metadata={"library": LIBRARY, "kind": "distribution"},
+                metadata={"library": LIBRARY, "kind": "distribution",
+                          "backend": "cuquantum-gpu"},
             )
             write_case(args.out, LIBRARY, case, env)
             n += 1

@@ -1,16 +1,15 @@
 {
-  "api": "cudensitymat.eigenspectrum",
-  "param_id": "d4_26691af6",
+  "api": "cudensitymat.compute_action",
+  "param_id": "dims2x2_d82f82b6",
   "params": {
     "seed": 0
   },
   "metadata": {
     "library": "cudensitymat",
-    "kind": "deterministic"
+    "kind": "deterministic",
+    "backend": "cuquantum-gpu"
   },
-  "scalars": {
-    "input.k": 3
-  },
+  "scalars": {},
   "env": {
     "host": "rocm-framework-h100-pcie",
     "user": "ysha",
@@ -24,7 +23,10 @@
     "gpu_compute_cap": "9.0"
   },
   "array_keys": [
-    "input.hamiltonian",
-    "output.eigvals"
+    "input.h_0",
+    "input.h_1",
+    "input.hilbert_space_dims",
+    "input.rho",
+    "output.rho_out"
   ]
 }

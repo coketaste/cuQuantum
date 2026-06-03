@@ -6,7 +6,8 @@
   },
   "metadata": {
     "library": "cutensornet",
-    "kind": "deterministic"
+    "kind": "deterministic",
+    "backend": "cuquantum-gpu"
   },
   "scalars": {
     "input.einsum": "ij,jk->ik",

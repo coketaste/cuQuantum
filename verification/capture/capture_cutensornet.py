@@ -68,40 +68,61 @@ def gen_network_state_expect(rng: np.random.Generator, *, small: bool):
 # ---------------------------------------------------------------------------
 
 def run_contract(inputs: dict) -> dict:
+    """cuTensorNet contract on GPU via cupy operands."""
+    import cupy as cp
     from cuquantum.tensornet import contract
-    operands = [inputs[f"operand_{i}"] for i in range(int(inputs["n_operands"]))]
-    out = contract(str(inputs["einsum"]), *operands)
-    return {"result": np.asarray(out)}
+    operands_d = [cp.asarray(inputs[f"operand_{i}"])
+                  for i in range(int(inputs["n_operands"]))]
+    out_d = contract(str(inputs["einsum"]), *operands_d)
+    cp.cuda.Stream.null.synchronize()
+    return {"result": cp.asnumpy(out_d)}
 
 
 def run_tensor_svd(inputs: dict) -> dict:
-    # Reference SVD via NumPy (a CPU oracle is sufficient because the math
-    # is exact). When you want to specifically validate cuTensorNet's
-    # truncated SVD path, switch to cuquantum.tensornet.tensor.decompose.
+    """cuTensorNet tensor.decompose with the GESVD method on a GPU operand.
+
+    The input tensor is reshaped to a matrix (the standard MPS-style
+    bipartition) so the result is directly comparable to ``np.linalg.svd``.
+    """
+    import cupy as cp
+    from cuquantum.tensornet.tensor import decompose, SVDMethod
+
     a = np.asarray(inputs["tensor"])
     shape = tuple(map(int, inputs["shape"]))
     if len(shape) > 2:
-        a2 = a.reshape(np.prod(shape[: len(shape) // 2]),
-                       np.prod(shape[len(shape) // 2:]))
+        a2 = a.reshape(int(np.prod(shape[: len(shape) // 2])),
+                       int(np.prod(shape[len(shape) // 2:])))
     else:
         a2 = a
-    u, s, vh = np.linalg.svd(a2, full_matrices=False)
-    return {"u": u, "s": s.astype("float64"), "vh": vh}
+    a_d = cp.asarray(a2)
+    u_d, s_d, vh_d = decompose(
+        "ij->ik,kj", a_d,
+        method=SVDMethod(partition=None),
+    )
+    cp.cuda.Stream.null.synchronize()
+    return {
+        "u": cp.asnumpy(u_d),
+        "s": cp.asnumpy(s_d).astype("float64"),
+        "vh": cp.asnumpy(vh_d),
+    }
 
 
 def run_network_state_expect(inputs: dict) -> dict:
+    """cuTensorNet NetworkState expectation, default (cuTensorNet) backend."""
+    import cupy as cp
     import qiskit
     from cuquantum.tensornet.experimental import NetworkState, TNConfig
     n = int(inputs["n_qubits"])
     circuit = qiskit.circuit.library.QFTGate(n).definition
     state = NetworkState.from_circuit(
         circuit, dtype="complex128", config=TNConfig(num_hyper_samples=4),
-        backend="numpy",
+        backend="cupy",
     )
     try:
         ev = state.compute_expectation({str(inputs["pauli"]): 1.0})
     finally:
         state.free()
+    cp.cuda.Stream.null.synchronize()
     return {"expectation": np.asarray(complex(ev))}
 
 
@@ -133,7 +154,8 @@ def main(argv=None) -> int:
             case = OracleCase(
                 api=api, param_id=pid, inputs=inputs, outputs=outputs,
                 params={"seed": args.seed},
-                metadata={"library": LIBRARY, "kind": "deterministic"},
+                metadata={"library": LIBRARY, "kind": "deterministic",
+                          "backend": "cuquantum-gpu"},
             )
             write_case(args.out, LIBRARY, case, env)
             n += 1

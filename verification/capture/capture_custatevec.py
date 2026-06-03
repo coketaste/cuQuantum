@@ -243,7 +243,8 @@ def main(argv=None) -> int:
             case = OracleCase(
                 api=api, param_id=pid, inputs=inputs, outputs=outputs,
                 params={"seed": args.seed},
-                metadata={"library": LIBRARY, "kind": _kind_for(api)},
+                metadata={"library": LIBRARY, "kind": _kind_for(api),
+                          "backend": "cuquantum-gpu"},
             )
             write_case(args.out, LIBRARY, case, env)
             n_total += 1

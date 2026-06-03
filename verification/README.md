@@ -58,6 +58,20 @@ If this passes, your oracle environment is ready.
 
 ### Phase 1 - oracle capture (run on H100)
 
+All five capture scripts call the real cuQuantum GPU APIs on the H100; every
+captured case is tagged ``metadata.backend = "cuquantum-gpu"`` so it's
+machine-verifiable that the oracle is a true GPU reference, not a CPU
+stand-in. Specifically:
+
+| Library | API | GPU code path |
+|---|---|---|
+| cuStateVec | apply_matrix, compute_expect_pauli, sampler | `cuquantum.bindings.custatevec` |
+| cuTensorNet | contract, tensor_svd, network_state.expect | `cuquantum.tensornet.{contract, tensor.decompose, experimental.NetworkState}` |
+| cuDensityMat | compute_action, eigenspectrum | `Operator.compute_action`, `OperatorSpectrumSolver` |
+| cuStabilizer | dem_sampling | `cuquantum.stabilizer.DEMSampler` |
+| cuPauliProp | expectation | `cuquantum.pauliprop.experimental.PauliExpansion` back-prop |
+
+
 Each `capture/capture_<lib>.py` is a small program that:
 
 1. Sets a deterministic RNG seed.

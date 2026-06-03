@@ -6,7 +6,8 @@
   },
   "metadata": {
     "library": "cutensornet",
-    "kind": "deterministic"
+    "kind": "deterministic",
+    "backend": "cuquantum-gpu"
   },
   "scalars": {},
   "env": {

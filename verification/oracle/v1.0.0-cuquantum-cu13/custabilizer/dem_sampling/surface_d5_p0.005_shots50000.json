@@ -6,7 +6,8 @@
   },
   "metadata": {
     "library": "custabilizer",
-    "kind": "distribution"
+    "kind": "distribution",
+    "backend": "cuquantum-gpu"
   },
   "scalars": {
     "input.distance": 5,

@@ -6,7 +6,8 @@
   },
   "metadata": {
     "library": "cupauliprop",
-    "kind": "deterministic"
+    "kind": "deterministic",
+    "backend": "cuquantum-gpu"
   },
   "scalars": {
     "input.n_qubits": 4,
