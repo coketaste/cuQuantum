@@ -15,6 +15,7 @@ HIP-Python.
 verification/
   README.md            (this file)
   metrics.py           per-API tolerance and metric definitions
+  compare_oracles.py   diff two oracle directories case-by-case
   capture/             scripts that run cuQuantum on H100 and dump oracle data
     _common.py
     capture_custatevec.py
@@ -95,6 +96,34 @@ python verification/replay/replay_custatevec.py --oracle verification/oracle/v1.
 
 The rocQuantum import is centralised in `replay/_common.py::load_rocquantum()`;
 adjust that one function if your package layout changes.
+
+#### Phase 2b - symmetric oracle capture (alternative)
+
+When the H100 and AMD nodes can't share a Python process (the common case),
+use each replay script's `--capture-to <dir>` flag to *persist* the rocQuantum
+outputs in the same `.npz + .json` oracle format instead of comparing in
+process:
+
+```bash
+# on the AMD node, after pulling the H100 oracle
+for L in custatevec cutensornet cudensitymat custabilizer cupauliprop; do
+    python verification/replay/replay_$L.py \
+        --oracle    verification/oracle/v1.0.0-cuquantum-cu13 \
+        --capture-to verification/oracle/rocquantum-mi300
+done
+```
+
+Then on either node compare the two trees offline (no GPU library required):
+
+```bash
+python verification/compare_oracles.py \
+    --left  verification/oracle/v1.0.0-cuquantum-cu13 \
+    --right verification/oracle/rocquantum-mi300
+```
+
+`compare_oracles.py` matches cases by `<library>/<api>/<param_id>`, runs the
+same per-API metric from `metrics.py`, and reports keys present on only one
+side. Pass `--strict` to fail on missing keys.
 
 ### Phase 3 - distribution sanity (statistical APIs)
 

@@ -144,6 +144,12 @@ def common_argparser(library: str) -> argparse.ArgumentParser:
     p.add_argument("--use-fallback", action="store_true",
                    help="skip importing rocquantum; runners must use NumPy "
                         "reference paths. Useful for harness self-test.")
+    p.add_argument("--capture-to", type=Path, default=None,
+                   help="instead of comparing, save the runner outputs to "
+                        "this directory in the same oracle format as the "
+                        "capture/ scripts. Use this on the rocQuantum side "
+                        "to produce a second oracle that compare_oracles.py "
+                        "can diff against the cuQuantum one.")
     return p
 
 
@@ -156,6 +162,14 @@ def replay_loop(library: str, runners: dict[str, Callable[[dict], dict]],
     if args.use_fallback:
         os.environ["ROCQUANTUM_SKIP_IMPORT"] = "1"
     report = ReplayReport()
+    # For --capture-to we need the same env metadata writer as capture/.
+    if args.capture_to is not None:
+        from capture._common import (  # late import keeps GPU-free CI happy
+            OracleCase, get_environment_metadata, write_case,
+        )
+        capture_env = get_environment_metadata()
+        capture_env["replay_side"] = True
+        capture_env["captured_from_oracle"] = str(args.oracle)
 
     cases = list(iter_oracle(args.oracle, library))
     if not cases:
@@ -194,6 +208,18 @@ def replay_loop(library: str, runners: dict[str, Callable[[dict], dict]],
             outputs = runners[api](case["inputs"])
         except Exception as e:
             report.add(ReplayResult(api, pid, False, f"runner raised: {e!r}"))
+            continue
+
+        # Capture-to mode: persist the runner outputs as a parallel oracle.
+        if args.capture_to is not None:
+            new_case = OracleCase(
+                api=api, param_id=pid,
+                inputs=case["inputs"], outputs=outputs,
+                params=case.get("params", {}),
+                metadata={**case.get("metadata", {}), "side": "replay"},
+            )
+            write_case(args.capture_to, library, new_case, capture_env)
+            report.add(ReplayResult(api, pid, True, "captured"))
             continue
 
         try:
