@@ -4,10 +4,11 @@
 
 import numpy as np
 
-from ...utils.helpers import _BaseTester
+from ...utils.helpers import _BaseTester, TensorBackend, get_contraction_tolerance
 from ...utils.circuit_ifc import PropertyComputeHelper, CircuitHelper, QuantumStateTestHelper
 from .state_factory import get_random_network_operator
 from .state_utils import verify_state_sampling
+from .mps_utils import get_mps_tolerance
 from cuquantum.tensornet.experimental import NetworkState
 
 #TODO: extend norm tests
@@ -46,6 +47,18 @@ class BaseStateTester(_BaseTester):
                 if not isinstance(fixed_qubits[0], int):
                     fixed = {state.state_labels.index(q): bit for q, bit in fixed.items()}
         QuantumStateTestHelper.verify_reduced_density_matrix(sv_ref, where, rdm, fixed=fixed)
+
+    def _test_marginal_probability(self, state, where, sv_ref, fixed=None, **kwargs):
+        probs = state.compute_reduced_density_matrix(where, fixed=fixed if fixed is not None else {}, diagonal=True, **kwargs)
+        if not isinstance(where[0], int):
+            where = [state.state_labels.index(q) for q in where]
+        if fixed is None:
+            fixed = {}
+        elif fixed:
+            fixed_qubits = list(fixed.keys())
+            if not isinstance(fixed_qubits[0], int):
+                fixed = {state.state_labels.index(q): bit for q, bit in fixed.items()}
+        QuantumStateTestHelper.verify_marginal_probability(sv_ref, where, probs, fixed=fixed)
     
     def _test_sampling(self, state, modes, nshots, sv_ref, max_trial, **kwargs):
         if modes is None or isinstance(modes[0], int):
@@ -99,6 +112,14 @@ class BaseCircuitStateTester(BaseStateTester):
         with NetworkState.from_circuit(circuit, config=config, backend='numpy') as state:
             for where, fixed in where_fixed_iter:
                 self._test_reduced_density_matrix(state, where, sv, fixed)
+
+    def test_marginal_probability(self, circuit, config, sv, num_cases):
+        rng = self._get_rng(circuit, config, "marginal_probability")
+        qubits = CircuitHelper.get_qubits(circuit)
+        where_fixed_iter = CircuitHelper.where_fixed_iterator(qubits, num_cases, rng)
+        with NetworkState.from_circuit(circuit, config=config, backend='numpy') as state:
+            for where, fixed in where_fixed_iter:
+                self._test_marginal_probability(state, where, sv, fixed)
 
     def test_sampling(self, circuit, config, sv, num_cases):
         rng = self._get_rng(circuit, config, "sampling")
@@ -158,7 +179,11 @@ class BaseGenericStateTester(BaseStateTester):
                 factory.state_dims, rng, factory.backend.name, dtype=factory.dtype, options=state.options)
             expec = state.compute_expectation(network_operator)
             expec_ref = PropertyComputeHelper.expectation_from_sv(sv, network_operator)
-            assert np.allclose(expec, expec_ref)
+            if isinstance(config, dict) and ('rel_cutoff' in config or 'max_extent' in config):
+                tol = get_mps_tolerance(factory.dtype)
+            else:
+                tol = get_contraction_tolerance(factory.dtype)
+            assert TensorBackend.verify_close(expec, expec_ref, **tol)
     
     def test_reduced_density_matrix(self, factory, config, sv, num_cases):
         rng = self._get_rng(factory, config, "reduced_density_matrix")
@@ -167,7 +192,15 @@ class BaseGenericStateTester(BaseStateTester):
         with factory.to_network_state(config=config) as state:
             for where, fixed in where_fixed_iter:
                 self._test_reduced_density_matrix(state, where, sv, fixed)
-    
+
+    def test_marginal_probability(self, factory, config, sv, num_cases):
+        rng = self._get_rng(factory, config, "marginal_probability")
+        qudits = list(range(len(factory.state_dims)))
+        where_fixed_iter = CircuitHelper.where_fixed_iterator(qudits, num_cases, rng, state_dims=factory.state_dims)
+        with factory.to_network_state(config=config) as state:
+            for where, fixed in where_fixed_iter:
+                self._test_marginal_probability(state, where, sv, fixed)
+
     def test_sampling(self, factory, config, sv, num_cases):
         rng = self._get_rng(factory, config, "sampling")
         qudits = list(range(len(factory.state_dims)))
@@ -176,6 +209,85 @@ class BaseGenericStateTester(BaseStateTester):
             where_fixed_iter = CircuitHelper.where_fixed_iterator(qudits, num_cases, rng, state_dims=factory.state_dims)
             for where, _ in where_fixed_iter:
                 self._test_sampling(state, where, 1000, sv, num_cases)
+
+
+class BaseMixedGenericStateTester(_BaseTester):
+    """Tester for mixed-purity generic states (noiseless circuits, rho=|psi><psi|)."""
+
+    def test_density_matrix(self, factory, config, sv):
+        with factory.to_network_state(config=config, pure_state=False) as state:
+            dm = state.compute_density_matrix()
+            QuantumStateTestHelper.verify_density_matrix_mixed(sv, dm)
+
+    def test_amplitude(self, factory, config, sv, num_cases):
+        rng = self._get_rng(factory, config, "amplitude_mixed")
+        bitstring_iter = CircuitHelper.bitstring_iterator(factory.state_dims, num_cases, rng)
+        with factory.to_network_state(config=config, pure_state=False) as state:
+            for bitstring in bitstring_iter:
+                # Diagonal density-matrix element <bs|rho|bs> matches |<bs|psi>|^2 for pure-equivalent rho.
+                amp = state.compute_amplitude((tuple(bitstring), tuple(bitstring)))
+                QuantumStateTestHelper.verify_amplitude_mixed(sv, bitstring, amp)
+
+    def test_marginal_probability(self, factory, config, sv, num_cases):
+        rng = self._get_rng(factory, config, "marginal_probability_mixed")
+        qudits = list(range(len(factory.state_dims)))
+        where_fixed_iter = CircuitHelper.where_fixed_iterator(qudits, num_cases, rng, state_dims=factory.state_dims)
+        with factory.to_network_state(config=config, pure_state=False) as state:
+            for where, fixed in where_fixed_iter:
+                probs = state.compute_reduced_density_matrix(where, fixed=fixed if fixed is not None else {}, diagonal=True)
+                where_idx = where if isinstance(where[0], int) else [state.state_labels.index(q) for q in where]
+                fixed_dict = fixed or {}
+                if fixed_dict:
+                    fixed_qubits = list(fixed_dict.keys())
+                    if not isinstance(fixed_qubits[0], int):
+                        fixed_dict = {state.state_labels.index(q): bit for q, bit in fixed_dict.items()}
+                QuantumStateTestHelper.verify_marginal_probability(sv, where_idx, probs, fixed=fixed_dict)
+
+    def test_expectation(self, factory, config, sv, num_cases):
+        rng = self._get_rng(factory, config, "expectation_mixed")
+        state_dims_set = set(factory.state_dims)
+        n_qudits = len(factory.state_dims)
+        if len(state_dims_set) == 1 and state_dims_set.pop() == 2 and "complex" in factory.dtype:
+            pauli_strings_to_test = [
+                CircuitHelper.get_random_pauli_strings(n_qudits, 1, rng),
+                CircuitHelper.get_random_pauli_strings(n_qudits, 2, rng),
+            ]
+        else:
+            pauli_strings_to_test = []
+        with factory.to_network_state(config=config, pure_state=False) as state:
+            for pauli_strings in pauli_strings_to_test:
+                exp = state.compute_expectation(pauli_strings)
+                QuantumStateTestHelper.verify_expectation(sv, pauli_strings, exp)
+
+    def test_reduced_density_matrix(self, factory, config, sv, num_cases):
+        rng = self._get_rng(factory, config, "rdm_mixed")
+        qudits = list(range(len(factory.state_dims)))
+        where_fixed_iter = CircuitHelper.where_fixed_iterator(qudits, num_cases, rng, state_dims=factory.state_dims)
+        with factory.to_network_state(config=config, pure_state=False) as state:
+            for where, fixed in where_fixed_iter:
+                rdm = state.compute_reduced_density_matrix(where, fixed=fixed)
+                if not isinstance(where[0], int):
+                    where = [state.state_labels.index(q) for q in where]
+                if fixed is None:
+                    fixed = {}
+                elif fixed:
+                    fixed_qubits = list(fixed.keys())
+                    if not isinstance(fixed_qubits[0], int):
+                        fixed = {state.state_labels.index(q): bit for q, bit in fixed.items()}
+                QuantumStateTestHelper.verify_reduced_density_matrix(sv, where, rdm, fixed=fixed)
+
+    def test_sampling(self, factory, config, sv, num_cases):
+        rng = self._get_rng(factory, config, "sampling_mixed")
+        qudits = list(range(len(factory.state_dims)))
+        with factory.to_network_state(config=config, pure_state=False) as state:
+            self._test_sampling(state, qudits, 1000, sv, num_cases)
+
+    def _test_sampling(self, state, modes, nshots, sv_ref, max_trial, **kwargs):
+        if modes is None or isinstance(modes[0], int):
+            normalized_modes = modes
+        else:
+            normalized_modes = [state.state_labels.index(q) for q in modes]
+        verify_state_sampling(state, normalized_modes, nshots, sv_ref, max_trial, **kwargs)
 
 
 class BaseNoisyStateTester(_BaseTester):

@@ -4,6 +4,8 @@
 import functools
 import importlib
 
+import numpy as np
+
 from nvmath.internal import tensor_wrapper, utils
 from cuquantum.bindings import cutensornet as cutn
 from ..._internal.helpers import transpose_tensor, swap_bra_ket_tensor
@@ -39,6 +41,19 @@ GAUGE_OPTION_MAP = {
 
 def check_dtype_supported(dtype_name):
     assert dtype_name in STATE_SUPPORTED_DTYPE_NAMES, f"{dtype_name} supported, must be real/complex data with single or double precision"
+
+
+def check_expectation_with_gradients_norm_args(return_norm, state_norm_adjoint):
+    """``return_norm`` and ``state_norm_adjoint`` must be requested together or omitted together."""
+    want_norm = bool(return_norm)
+    want_adj = state_norm_adjoint is not None
+    if want_norm != want_adj:
+        raise ValueError(
+            "compute_expectation_with_gradients requires return_norm and state_norm_adjoint to be "
+            "consistent: use return_norm=False with state_norm_adjoint=None to skip the squared "
+            "state 2-norm and its adjoint, or return_norm=True with a non-None state_norm_adjoint; got "
+            f"return_norm={return_norm!r}, state_norm_adjoint={state_norm_adjoint!r}."
+        )
 
 
 def state_labels_wrapper(*, marker_index=None, key=None, marker_type='seq'):
@@ -105,7 +120,10 @@ def state_operands_wrapper(operands_arg_index=1, is_single_operand=True, transpo
                         stream_holder = utils.get_or_create_stream(device_id, stream, obj.internal_package)
                     o = o.to(device_id, stream_holder=stream_holder)
                 elif o.device_id != obj.device_id:
-                    raise RuntimeError(f"input operand resides on a different device ({o.device_id}) than specified in options ({obj.device_id})")
+                    raise RuntimeError(
+                        f"input operand resides on a different device ({o.device_id}) than specified in options ({obj.device_id}). "
+                        f"Construct the object with options={{'device_id': {o.device_id}}} to use that device, "
+                        f"or move the operand to device {obj.device_id} before applying it.")
                 new_operands.append(o)
             if is_single_operand:
                 new_operands = new_operands[0]
@@ -113,7 +131,35 @@ def state_operands_wrapper(operands_arg_index=1, is_single_operand=True, transpo
         return wrapper    
     return decorator
 
-def state_result_wrapper(is_scalar=False):
+def host_scalar_to_holder(output_class, device_id, dtype, value, stream_holder):
+    """
+    Materialize a CUTN host 0-D ``numpy.ndarray`` buffer as an ``output_class`` TensorHolder.
+
+    For NumPy output there is no extra allocation: the existing host buffer is wrapped.
+    For CuPy/Torch a 0-D device tensor is allocated and filled via ``copy_``.
+    """
+    if output_class.name == "numpy":
+        return tensor_wrapper.wrap_operand(value)
+    out = output_class.empty((), device_id=device_id, dtype=dtype, stream_holder=stream_holder)
+    if output_class.name == "torch":
+        import torch
+        src = tensor_wrapper.wrap_operand(
+            torch.as_tensor(value, device="cpu", dtype=out.tensor.dtype)
+        )
+    else:
+        src = tensor_wrapper.wrap_operand(value)
+    out.copy_(src, stream_holder=stream_holder)
+    return out
+
+
+def unwrap_output_tensor(obj, holder, stream_holder):
+    """Unwrap a TensorHolder to the native backend tensor for public API return."""
+    if obj.output_location == "cpu" and holder.device != "cpu":
+        return holder.to("cpu", stream_holder=stream_holder).tensor
+    return holder.tensor
+
+
+def state_result_wrapper():
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -128,24 +174,13 @@ def state_result_wrapper(is_scalar=False):
                     stream_holder = None
                 if isinstance(result, tuple):
                     result, norm = result
-                if is_scalar:
-                    if obj.backend == "numpy":
-                        result = result.to('cpu', stream_holder=stream_holder).tensor.item()
-                    else:
-                        result = result.tensor.item()
-                    if norm is None:
-                        return result
-                    else: 
-                        return result, norm
-                if obj.output_location == 'cpu':
-                    result = result.to('cpu', stream_holder=stream_holder).tensor
-                else:
-                    result = result.tensor
+                result = unwrap_output_tensor(obj, result, stream_holder)
+                if norm is not None:
+                    norm = unwrap_output_tensor(obj, norm, stream_holder)
             if norm is None:
                 return result
-            else:
-                return result, norm
-        return wrapper    
+            return result, norm
+        return wrapper
     return decorator
 
 def _get_asarray_function(backend, device_id, stream):

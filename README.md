@@ -47,7 +47,7 @@ the [cuQuantum documentation](https://docs.nvidia.com/cuda/cuquantum/latest/inde
 
 This repository primarily contains software licensed under the [BSD 3-Clause License](./LICENSE). However, certain files are subject to separate proprietary licensing terms. These files are clearly marked in their file headers and/or reside in directories containing their own LICENSE file. Please review applicable file headers before redistribution.
 
-**Licensing Exceptions:** `cudensitymat.h` is subject to [NVIDIA Proprietary License](./NV.LICENSE).
+**Licensing Exceptions:** `cudensitymat.h` and `custabilizer.h` are subject to [NVIDIA Proprietary License](./NV.LICENSE).
 
 ## Citing cuQuantum
 

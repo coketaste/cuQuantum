@@ -4,3 +4,6 @@ __pycache__
 *.cpp
 *.so
 *.pyc
+
+!*_jax.cpp
+!pybind.cpp

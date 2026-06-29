@@ -4,10 +4,14 @@
 
 __all__ = [
     "CircuitStateMatrix",
+    "EOverNDenominatorTooSmall",
     "GenericStateMatrix",
+    "MixedGenericStateMatrix",
     "SimulationConfigMatrix",
     "ExpectationGradientConfig",
     "NetworkOperatorFactory",
+    "expectation_gradient_loss_factory",
+    "check_e_over_n_well_conditioned",
 ]
 
 import importlib
@@ -32,8 +36,12 @@ from cuquantum.tensornet.experimental import TNConfig, MPSConfig, NetworkOperato
 from cuquantum.tensornet.experimental._internal.network_state_utils import get_pauli_map
 
 from ...utils.circuit_matrix import CirqCircuitMatrix, QiskitCircuitMatrix, CircuitMatrixABC, get_qiskit_unitary_gate
-from ...utils.helpers import get_rng_iterator, get_array_framework_iterator, TensorBackend
-from .state_factory import StateFactory, _random_unitary, _random_hermitian
+from ...utils.helpers import (
+    get_rng_iterator,
+    get_array_framework_iterator,
+    TensorBackend,
+)
+from .state_factory import StateFactory, NetworkOperatorFactory, _random_hermitian
 
 
 def get_cirq_random_2q_gate(rng):
@@ -201,6 +209,14 @@ generic_states_L2 = [
     create_state_factory((2, 3, 2, 3, 4, 2), "complex128", "SADA", next(rng_iterator), initial_mps_dim=2),
 ]
 
+mixed_generic_states_L1 = [
+    create_state_factory(4, "complex128", "SDDS", next(rng_iterator)),
+    create_state_factory(5, "float64", "SDMDS", next(rng_iterator), mpo_bond_dim=2),
+    create_state_factory((2, 3, 4, 3, 2), "complex64", "SDM", next(rng_iterator), mpo_bond_dim=2),
+    create_state_factory(4, "complex128", "SADCAS", next(rng_iterator), ct_target_place="first"),
+]
+
+
 class GenericStateMatrix(StateMatrixABC):
 
     @staticmethod
@@ -214,6 +230,13 @@ class GenericStateMatrix(StateMatrixABC):
     @staticmethod
     def L2():
         return generic_states_L2
+
+
+class MixedGenericStateMatrix:
+
+    @staticmethod
+    def L1():
+        return mixed_generic_states_L1
 
 
 exact_mps_configs = [
@@ -304,229 +327,352 @@ class NoisyStateMatrix(StateMatrixABC):
 
 # --- Expectation gradient test configs ---
 # All use StateFactory with S/D layers only (plain gates for TorchRef).
+#
+# Each level (``expectation_gradient_L*`` and ``expectation_gradient_*_torch``) lists the same
+# four coverage cases (distinct circuits / seeds / dtypes may differ by level):
+#   1. Hermitian operator (Pauli dict) + unitary gates
+#   2. Hermitian + ``mark_non_unitary=True``
+#   3. Non-Hermitian (unitary/non-unitary) ``NetworkOperator`` + unitary gates
+#   4. Non-Hermitian (unitary/non-unitary) + ``mark_non_unitary=True``
+#
+# When the factory uses ``mark_non_unitary=True``, ``_exp_grad_config`` sets ``return_norm`` and
+# ``state_norm_adjoint`` so the norm-network adjoint path is exercised for explicitly non-unitary gates.
+
 def _exp_grad_config(dtype, backend, factory, hamiltonian=None, **kwargs):
-    """Build one expectation-gradient test config dict (shared keys, default adjoint=1.0).
+    """Build one expectation-gradient test config dict (shared keys, default adjoints).
     hamiltonian is either a Pauli string dict or a NetworkOperatorFactory."""
+    # if dtype == "complex64" or dtype == "complex128":
+    #     expectation_value_adjoint = 2.0+1.0j
+    #     state_norm_adjoint = -3.0+2.0j
+    # else:
+    #     expectation_value_adjoint = 2.0
+    #     state_norm_adjoint = -3.0
     out = {
         "dtype": dtype,
         "backend": backend,
-        "expectation_value_adjoint": 1.0,
         "factory": factory,
+        # "expectation_value_adjoint": expectation_value_adjoint, # only used with TorchRef0 not TorchRef
+        
     }
     if hamiltonian is not None:
         out["hamiltonian"] = hamiltonian
+    if getattr(factory, "mark_non_unitary", False):
+        out["return_norm"] = True
+        # out["state_norm_adjoint"] = state_norm_adjoint # only used with TorchRef0 not TorchRef
     out.update(kwargs)
     return out
 
-def make_mpo_tensor_hermitian(t, which):
-    """Make MPO tensor Hermitian in physical (ket, bra) indices so the full MPO is Hermitian.
-    which: 'first' (ket, n, bra), 'middle' (p, ket, n, bra), or 'last' (p, ket, bra)."""
-    pkg = infer_object_package(t)
-    if pkg == "torch":
-        if which == "first":
-            return (t + t.conj().permute(2, 1, 0)) * 0.5
-        if which == "last":
-            return (t + t.conj().permute(0, 2, 1)) * 0.5
-        return (t + t.conj().permute(0, 3, 2, 1)) * 0.5
-    xp = importlib.import_module("cupy") if pkg == "cupy" else np
-    if which == "first":
-        return (t + xp.conj(t).transpose(2, 1, 0)) * 0.5
-    if which == "last":
-        return (t + xp.conj(t).transpose(0, 2, 1)) * 0.5
-    return (t + xp.conj(t).transpose(0, 3, 2, 1)) * 0.5
-
-class NetworkOperatorFactory:
-    """
-    Deferred NetworkOperator construction.
-    
-    See also: StateFactory
-    """
-
-    def __init__(self, *args, **kwargs):
-        self._args = args
-        self._kwargs = kwargs
-
-    def build(self):
-        return _build_network_operator(*self._args, **self._kwargs)
-
-
-def _build_network_operator(state_dims, rng, backend, dtype, options=None, num_repeats=2, real_coefficients=True, use_random_unitary=False, use_random_hermitian=False, add_mpo=False):
-    """Build a NetworkOperator by calling append_product for each term; optionally add one append_mpo (MPO) term.
-    """
-    if isinstance(options, dict):
-        device_id = options.get("device_id", None)
-    elif isinstance(options, NetworkOptions):
-        device_id = options.device_id
-    else:
-        device_id = None
-    if backend == "numpy":
-        device_id = None
-    backend_obj = TensorBackend(backend=backend, device_id=device_id)
-    operator_obj = NetworkOperator(state_dims, dtype=dtype, options=options)
-    n_modes = len(state_dims)
-    if not use_random_unitary and not use_random_hermitian:
-        if any(state_dims[q] != 2 for q in range(n_modes)):
-            raise ValueError("Cannot use random Pauli for non-qubit local dimensions")
-        use_random_pauli = True
-        pauli_map = get_pauli_map(backend, dtype, device_id=device_id)
-        pauli_keys = [k for k in ("I", "X", "Y", "Z") if k in pauli_map]
-    else:
-        use_random_pauli = False
-
-    prod_modes_formatted = [(q,) for q in range(n_modes)]
-    for _ in range(num_repeats):
-        coefficient = rng.random(1).item()
-        if dtype.startswith("complex") and not real_coefficients:
-            coefficient += 1j * rng.random(1).item()
-        prod_tensors = []
-        for q in range(n_modes):
-            if use_random_pauli:
-                prod_tensors.append(pauli_map[rng.choice(pauli_keys)])
-            else:
-                shape = (state_dims[q],) * 2
-                if use_random_hermitian:
-                    t = _random_hermitian(backend_obj, shape, dtype, rng)
-                else:
-                    t = _random_unitary(backend_obj, shape, dtype, rng)
-                prod_tensors.append(t)
-        operator_obj.append_product(coefficient, prod_modes_formatted, prod_tensors)
-
-    if add_mpo and n_modes >= 2:
-        # Add one MPO term (same pattern as state_factory get_random_network_operator).
-        # Hermitian: real coefficient and each tensor Hermitian in physical (ket, bra) indices.
-        def get_random_modes():
-            num_rand_modes = rng.integers(2, len(state_dims) + 1)  # [2, n_modes] inclusive
-            rand_modes = list(range(len(state_dims)))
-            rng.shuffle(rand_modes)
-            return rand_modes[:num_rand_modes]
-
-        # Real coefficient so the MPO term is Hermitian (tensors are already made Hermitian below).
-        coefficient = rng.random(1).item()
-        mpo_modes = get_random_modes()
-        num_mpo_modes = len(mpo_modes)
-        mpo_tensors = []
-        bond_prev = None
-        for i, m in enumerate(mpo_modes):
-            bond_next = rng.integers(2, 5)
-            dim = state_dims[m]
-            if i == 0:
-                shape = (dim, bond_next, dim)
-                which = "first"
-            elif i == num_mpo_modes - 1:
-                shape = (bond_prev, dim, dim)
-                which = "last"
-            else:
-                shape = (bond_prev, dim, bond_next, dim)
-                which = "middle"
-            t = backend_obj.random(shape, dtype, rng)
-            t = make_mpo_tensor_hermitian(t, which)
-            mpo_tensors.append(t)
-            bond_prev = bond_next
-        operator_obj.append_mpo(coefficient, mpo_modes, mpo_tensors)
-    return operator_obj
-
-
 expectation_gradient_L0 = [
-    _exp_grad_config("float32", "cupy", create_state_factory(4, "float32", "SDSDS", np.random.default_rng(41), backend="cupy", mark_gradients=True),
-        hamiltonian={"ZZXX": 2.0, "XZXZ": 3.0}
+    # (1) Hermitian operator + unitary gates
+    _exp_grad_config(
+        "complex64", "cupy",
+        create_state_factory(4, "complex64", "SDSDS", np.random.default_rng(41), backend="cupy", mark_gradients=True),
+        hamiltonian={"ZZXX": 2.0, "XZXZ": 3.0j},
     ),
-    _exp_grad_config("complex64", "numpy", create_state_factory(6, "complex64", "SSDDSD", np.random.default_rng(42), backend="numpy", mark_gradients=True),
-        hamiltonian={"ZZXZYX": 2.0, "IZIXZI": 3.0, "ZYYZZX": 5.0}
-    ),
-    # Same Pauli strings with identity removal (exercises lightcone simplification)
-    _exp_grad_config("complex64", "numpy", create_state_factory(6, "complex64", "SSDDSD", np.random.default_rng(42), backend="numpy", mark_gradients=True),
-        hamiltonian={"ZZXZYX": 2.0, "IZIXZI": 3.0, "ZYYZZX": 5.0},
+    # (2) Hermitian operator + mark_non_unitary + remove_identity
+    _exp_grad_config(
+        "float32", "numpy",
+        create_state_factory(6, "float32", "SDSDD", np.random.default_rng(42), backend="numpy", mark_gradients=True, mark_non_unitary=True),
+        hamiltonian={"ZZXIXZ": 2.0, "XIZIIX": 3.0},
         remove_identity=True,
     ),
-    # Non-Hermitian operator (random unitary product terms)
-    _exp_grad_config("complex128", "cupy", create_state_factory(4, "complex128", "SDSD", np.random.default_rng(52), backend="cupy", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((2, 2, 2, 2), np.random.default_rng(38), "cupy", dtype="complex128", num_repeats=2, real_coefficients=False, use_random_unitary=True, add_mpo=False),
-        non_hermitian=True,
+    # (3) Non-unitary operator + unitary gates
+    _exp_grad_config(
+        "complex128", "cupy",
+        create_state_factory((2, 3, 2, 4, 2, 5, 2, 3), "complex128", "SDDDSSD", np.random.default_rng(43), backend="cupy", mark_gradients=True),
+        hamiltonian=NetworkOperatorFactory(
+            (2, 3, 2, 4, 2, 5, 2, 3), np.random.default_rng(38), "cupy", dtype="complex128",
+            num_repeats=2, real_coefficients=False, use_random_non_unitary=True, add_mpo=False,
+        ),
+    ),
+    # (4) Unitary operator + mark_non_unitary
+    _exp_grad_config(
+        "float64", "cupy",
+        create_state_factory((3, 3, 3, 3), "float64", "SDSD", np.random.default_rng(44), backend="cupy", mark_gradients=True, mark_non_unitary=True),
+        hamiltonian=NetworkOperatorFactory(
+            (3, 3, 3, 3), np.random.default_rng(39), "cupy", dtype="float64",
+            num_repeats=2, real_coefficients=True, use_random_unitary=True, add_mpo=True,
+        ),
     ),
 ]
 
 expectation_gradient_L0_torch = [
-    _exp_grad_config("complex128", "torch", create_state_factory((2, 3, 2, 4, 2, 5, 2, 3), "complex128", "SDSDSD", np.random.default_rng(43), backend="torch", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((2, 3, 2, 4, 2, 5, 2, 3), np.random.default_rng(31), "torch", dtype="complex128", num_repeats=3, real_coefficients=False, use_random_hermitian=True),
+    # (1) Hermitian operator + unitary gates (torch, qubits) + remove_identity
+    _exp_grad_config(
+        "complex128", "torch",
+        create_state_factory(4, "complex128", "SDSDS", np.random.default_rng(45), backend="torch", mark_gradients=True),
+        hamiltonian={"ZIXX": 1.0, "XIXZ": 3+2.5j},
+        remove_identity=True
     ),
-    # Same as above but with an MPO term
-    _exp_grad_config("complex128", "torch", create_state_factory((2, 3, 2, 4, 2, 5, 2, 3), "complex128", "SDSDSD", np.random.default_rng(43), backend="torch", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((2, 3, 2, 4, 2, 5, 2, 3), np.random.default_rng(31), "torch", dtype="complex128", num_repeats=3, real_coefficients=True, use_random_hermitian=True, add_mpo=True),
+    # (2) Hermitian operator + mark_non_unitary + remove_identity
+    _exp_grad_config(
+        "float32", "torch",
+        create_state_factory(6, "float32", "SDSDD", np.random.default_rng(46), backend="torch", mark_gradients=True, mark_non_unitary=True),
+        hamiltonian={"ZZIXXI": 2.0, "IZXZIZ": 0.5},
+        remove_identity=True
+    ),
+    # (3) Unitary operator + unitary gates (MPO, qudits)
+    _exp_grad_config(
+        "float64", "torch",
+        create_state_factory((2, 3, 2, 4, 2, 5, 2, 3), "float64", "SDSDSD", np.random.default_rng(47), backend="torch", mark_gradients=True),
+        hamiltonian=NetworkOperatorFactory(
+            (2, 3, 2, 4, 2, 5, 2, 3), np.random.default_rng(31), "torch", dtype="float64",
+            num_repeats=3, real_coefficients=True, use_random_unitary=True, add_mpo=True,
+        ),
+    ),
+    # (4) Non-unitary operator + mark_non_unitary
+    _exp_grad_config(
+        "complex64", "torch",
+        create_state_factory(6, "complex64", "SDSDSD", np.random.default_rng(48), backend="torch", mark_gradients=True, mark_non_unitary=True),
+        hamiltonian=NetworkOperatorFactory(
+            (2, 2, 2, 2, 2, 2), np.random.default_rng(32), "torch", dtype="complex64",
+            num_repeats=3, real_coefficients=False, use_random_non_unitary=True, add_mpo=True,
+        ),
     ),
 ] if torch is not None else []
 
 expectation_gradient_L1 = [
-    _exp_grad_config("complex64", "cupy", create_state_factory(8, "complex64", "SDSDDSD", np.random.default_rng(45), backend="cupy", mark_gradients=True),
-        hamiltonian={"ZYIZXZIZ": 5.0j, "XZZYIZXZ": 2.0j, "ZZYIXZYY": 4+3.0j}
-    ),
-    # Same with identity removal (lightcone simplification)
-    _exp_grad_config("complex64", "cupy", create_state_factory(8, "complex64", "SDSDDSD", np.random.default_rng(45), backend="cupy", mark_gradients=True),
+    # (1) Hermitian operator + unitary gates + remove_identity
+    _exp_grad_config(
+        "complex64", "cupy",
+        create_state_factory(8, "complex64", "SDDSD", np.random.default_rng(49), backend="cupy", mark_gradients=True),
         hamiltonian={"ZYIZXZIZ": 5.0, "XZZYIZXZ": 2.0, "ZZYIXZYY": 3.0},
         remove_identity=True,
     ),
-    _exp_grad_config("complex128", "numpy", create_state_factory((3, 2, 4, 4, 2, 5), "complex128", "SDSDSD", np.random.default_rng(46), backend="numpy", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((3, 2, 4, 4, 2, 5), np.random.default_rng(32), "numpy", dtype="complex128", num_repeats=3, real_coefficients=False, use_random_hermitian=True),
+    # (2) Hermitian operator + mark_non_unitary + remove_identity
+    _exp_grad_config(
+        "complex64", "cupy",
+        create_state_factory(6, "complex64", "SDSDDSD", np.random.default_rng(50), backend="cupy", mark_gradients=True, mark_non_unitary=True),
+        hamiltonian={"ZYIZXZ": 5.0, "XYIZXZ": 2.0+3.5j, "ZIXZYY": 3.0},
+        remove_identity=True,
     ),
-    # Same as above but with an MPO term
-    _exp_grad_config("complex128", "numpy", create_state_factory((3, 2, 4, 4, 2, 5), "complex128", "SDSDSD", np.random.default_rng(46), backend="numpy", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((3, 2, 4, 4, 2, 5), np.random.default_rng(32), "numpy", dtype="complex128", num_repeats=3, real_coefficients=True, use_random_hermitian=True, add_mpo=True),
+    # (3) Non-unitary operator + unitary gates (numpy, qudits, MPO)
+    _exp_grad_config(
+        "float32", "numpy",
+        create_state_factory((3, 2, 4, 4, 2, 5), "float32", "SSDSD", np.random.default_rng(51), backend="numpy", mark_gradients=True),
+        hamiltonian=NetworkOperatorFactory(
+            (3, 2, 4, 4, 2, 5), np.random.default_rng(32), "numpy", dtype="float32",
+            num_repeats=3, real_coefficients=True, use_random_non_unitary=True, add_mpo=True,
+        ),
+    ),
+    # (4) Unitary operator + mark_non_unitary
+    _exp_grad_config(
+        "complex128", "numpy",
+        create_state_factory((3, 3, 4, 4, 2, 5), "complex128", "SDSSDSD", np.random.default_rng(52), backend="numpy", mark_gradients=True, mark_non_unitary=True),
+        hamiltonian=NetworkOperatorFactory(
+            (3, 3, 4, 4, 2, 5), np.random.default_rng(32), "numpy", dtype="complex128",
+            num_repeats=3, real_coefficients=False, use_random_unitary=True, add_mpo=True,
+        ),
     ),
 ]
 
 expectation_gradient_L1_torch = [
-    _exp_grad_config("float64", "torch", create_state_factory(6, "float64", "SDSDSDS", np.random.default_rng(44), backend="torch", mark_gradients=True),
-        hamiltonian={"ZXIXZI": 4.0+2j, "IXZIZX": 3.0}
-    ),
-    # Same with identity removal (lightcone simplification)
-    _exp_grad_config("float64", "torch", create_state_factory(6, "float64", "SDSDSDS", np.random.default_rng(44), backend="torch", mark_gradients=True),
+    # (1) Hermitian operator + unitary gates + remove_identity
+    _exp_grad_config(
+        "float64", "torch",
+        create_state_factory(6, "float64", "SDSDSDS", np.random.default_rng(53), backend="torch", mark_gradients=True),
         hamiltonian={"ZXIXZI": 4.0, "IXZIZX": 3.0},
         remove_identity=True,
     ),
-    # Non-Hermitian operator (random unitary product terms)
-    _exp_grad_config("complex64", "torch", create_state_factory((2, 3, 2, 3), "complex64", "SDSDS", np.random.default_rng(53), backend="torch", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((2, 3, 2, 3), np.random.default_rng(39), "torch", dtype="complex64", num_repeats=3, real_coefficients=True, use_random_unitary=True),
-        non_hermitian=True,
+    # (2) Hermitian operator + mark_non_unitary + remove_identity
+    _exp_grad_config(
+        "complex128", "torch",
+        create_state_factory(6, "complex128", "SSDSDS", np.random.default_rng(54), backend="torch", mark_gradients=True, mark_non_unitary=True),
+        hamiltonian={"ZXIXZI": 4.0j, "IXZIZX": 3.0+2.5j},
+        remove_identity=True,
     ),
-    # Non-Hermitian operator with MPO term
-    _exp_grad_config("complex64", "torch", create_state_factory((2, 3, 2, 3), "complex64", "SDSDS", np.random.default_rng(53), backend="torch", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((2, 3, 2, 3), np.random.default_rng(39), "torch", dtype="complex64", num_repeats=3, real_coefficients=False, use_random_unitary=True, add_mpo=True),
-        non_hermitian=True,
+    # (3) Unitary operator + unitary gates
+    _exp_grad_config(
+        "complex64", "torch",
+        create_state_factory((2, 3, 2, 3), "complex64", "SDDS", np.random.default_rng(55), backend="torch", mark_gradients=True),
+        hamiltonian=NetworkOperatorFactory(
+            (2, 3, 2, 3), np.random.default_rng(39), "torch", dtype="complex64",
+            num_repeats=3, real_coefficients=False, use_random_unitary=True, add_mpo=True,
+        ),
+    ),
+    # (4) Non-unitary operator + mark_non_unitary
+    _exp_grad_config(
+        "complex64", "torch",
+        create_state_factory((2, 3, 2, 3, 5, 5), "complex64", "SDSDS", np.random.default_rng(56), backend="torch", mark_gradients=True, mark_non_unitary=True),
+        hamiltonian=NetworkOperatorFactory(
+            (2, 3, 2, 3, 5, 5), np.random.default_rng(39), "torch", dtype="complex64",
+            num_repeats=3, real_coefficients=True, use_random_non_unitary=True, add_mpo=True,
+        ),
     ),
 ] if torch is not None else []
 
 expectation_gradient_L2 = [
-    _exp_grad_config("complex128", "cupy", create_state_factory((3, 3, 3, 3, 3), "complex128", "SSDDS", np.random.default_rng(47), backend="cupy", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((3, 3, 3, 3, 3), np.random.default_rng(33), "cupy", dtype="complex128", num_repeats=4, real_coefficients=True, use_random_hermitian=True),
+    # (1) Hermitian operator + unitary gates (8-qubit Pauli, cupy) + remove_identity
+    _exp_grad_config(
+        "complex128", "cupy",
+        create_state_factory(8, "complex128", "SDSDDSD", np.random.default_rng(57), backend="cupy", mark_gradients=True),
+        hamiltonian={"ZYIZXZIZ": 1.0j, "XZZYIZXZ": 0.5+0.25j, "ZZYIXZYY": 0.25+0.125j},
+        remove_identity=True,
     ),
-    # Same as above but with an MPO term
-    _exp_grad_config("complex128", "cupy", create_state_factory((3, 3, 3, 3, 3), "complex128", "SSDDS", np.random.default_rng(47), backend="cupy", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((3, 3, 3, 3, 3), np.random.default_rng(33), "cupy", dtype="complex128", num_repeats=4, real_coefficients=False, use_random_hermitian=True, add_mpo=True),
+    # (2) Hermitian operator + mark_non_unitary
+    _exp_grad_config(
+        "complex64", "cupy",
+        create_state_factory(8, "complex64", "SDSDDSD", np.random.default_rng(58), backend="cupy", mark_gradients=True, mark_non_unitary=True),
+        hamiltonian={"ZYIZXZIZ": 1.0, "XZZYIZXZ": 0.5, "ZZYIXZYY": 0.25},
+        remove_identity=True,
     ),
-    _exp_grad_config("complex64", "numpy", create_state_factory((2, 3, 2, 4, 2, 5, 2, 3), "complex64", "SDSDDSS", np.random.default_rng(49), backend="numpy", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((2, 3, 2, 4, 2, 5, 2, 3), np.random.default_rng(35), "numpy", dtype="complex64", num_repeats=4, real_coefficients=True, use_random_unitary=True),
-        non_hermitian=True,
+    # (3) Non-unitary operator + unitary gates (larger qudit system, cupy, MPO)
+    _exp_grad_config(
+        "float64", "cupy",
+        create_state_factory((3, 3, 3, 3, 3), "float64", "SSDDS", np.random.default_rng(59), backend="cupy", mark_gradients=True),
+        hamiltonian=NetworkOperatorFactory(
+            (3, 3, 3, 3, 3), np.random.default_rng(33), "cupy", dtype="float64",
+            num_repeats=4, real_coefficients=True, use_random_non_unitary=True, add_mpo=True,
+        ),
     ),
-    # Same as above but with an MPO term
-    _exp_grad_config("complex64", "numpy", create_state_factory((2, 3, 2, 4, 2, 5, 2, 3), "complex64", "SDSDDSS", np.random.default_rng(49), backend="numpy", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((2, 3, 2, 4, 2, 5, 2, 3), np.random.default_rng(35), "numpy", dtype="complex64", num_repeats=4, real_coefficients=False, use_random_unitary=True, add_mpo=True),
-        non_hermitian=True,
+    # (4) Unitary operator + mark_non_unitary
+    _exp_grad_config(
+        "complex128", "cupy",
+        create_state_factory((3, 3, 5, 3, 3), "complex128", "SSDDS", np.random.default_rng(60), backend="cupy", mark_gradients=True, mark_non_unitary=True),
+        hamiltonian=NetworkOperatorFactory(
+            (3, 3, 5, 3, 3), np.random.default_rng(33), "cupy", dtype="complex128",
+            num_repeats=4, real_coefficients=False, use_random_unitary=True, add_mpo=True,
+        ),
     ),
 ]
 
 expectation_gradient_L2_torch = [
-    # Products + MPO combined (random I, X, Y, Z Paulis + one MPO term)
-    _exp_grad_config("float64", "torch", create_state_factory(6, "float64", "SDSDD", np.random.default_rng(48), backend="torch", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((2, 2, 2, 2, 2, 2), np.random.default_rng(34), "torch", dtype="float64", num_repeats=2, real_coefficients=True, add_mpo=True),
+    # (1) Hermitian operator + unitary gates + remove_identity
+    _exp_grad_config(
+        "complex128", "torch",
+        create_state_factory(6, "complex128", "SDSDD", np.random.default_rng(61), backend="torch", mark_gradients=True),
+        hamiltonian={"ZZXXZZ": 2.0j, "XZXYII": 3.0},
+        remove_identity=True,
     ),
-    # Product terms only (same circuit/seed, no MPO)
-    _exp_grad_config("float64", "torch", create_state_factory(6, "float64", "SDSDD", np.random.default_rng(48), backend="torch", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((2, 2, 2, 2, 2, 2), np.random.default_rng(34), "torch", dtype="float64", num_repeats=2, real_coefficients=True, add_mpo=False),
+    # (2) Hermitian operator + mark_non_unitary + remove_identity
+    _exp_grad_config(
+        "float32", "torch",
+        create_state_factory(6, "float32", "SDSDSD", np.random.default_rng(62), backend="torch", mark_gradients=True, mark_non_unitary=True),
+        hamiltonian={"ZZXXZZ": 2.0, "XZXZII": 3.0},
+        remove_identity=True,
     ),
-    # MPO term only (different RNG state than combined case)
-    _exp_grad_config("complex64", "torch", create_state_factory(6, "complex64", "SDSDD", np.random.default_rng(48), backend="torch", mark_gradients=True),
-        hamiltonian=NetworkOperatorFactory((2, 2, 2, 2, 2, 2), np.random.default_rng(34), "torch", dtype="complex64", num_repeats=0, real_coefficients=False, add_mpo=True),
+    # (3) Unitary operator + unitary gates (torch, qudits, MPO)
+    _exp_grad_config(
+        "float64", "torch",
+        create_state_factory((2, 3, 2, 4, 2, 3), "float64", "SDSDSS", np.random.default_rng(63), backend="torch", mark_gradients=True),
+        hamiltonian=NetworkOperatorFactory(
+            (2, 3, 2, 4, 2, 3), np.random.default_rng(36), "torch", dtype="float64",
+            num_repeats=4, real_coefficients=True, use_random_unitary=True, add_mpo=True,
+        ),
+    ),
+    # (4) Non-unitary operator + mark_non_unitary
+    _exp_grad_config(
+        "complex64", "torch",
+        create_state_factory((3, 2, 4, 5, 2, 3), "complex64", "SDSDSS", np.random.default_rng(64), backend="torch", mark_gradients=True, mark_non_unitary=True),
+        hamiltonian=NetworkOperatorFactory(
+            (3, 2, 4, 5, 2, 3), np.random.default_rng(36), "torch", dtype="complex64",
+            num_repeats=4, real_coefficients=False, use_random_non_unitary=True, add_mpo=True,
+        ),
     ),
 ] if torch is not None else []
+
+
+class EOverNDenominatorTooSmall(RuntimeError):
+    """``Re(N)`` is degenerate (below ``finfo.tiny``); ``E/N`` is not meaningful for the reference test."""
+
+
+
+def check_e_over_n_well_conditioned(E, N):
+    """Raise :exc:`EOverNDenominatorTooSmall` only when ``Re(N)`` is not a positive normalized float.
+
+    Squared norms can be arbitrarily small (< 1) for legitimate non‑unitary states; rejecting ``|Re(N)| < sqrt(eps)``
+    was too aggressive on float32. We only guard the true failure mode: zero / denormal‑scale denominator (use
+    ``finfo.tiny``, smallest normalized positive float).
+    """
+    if torch is None or N is None:
+        return
+    rd = torch.real(E).dtype
+    den = torch.real(N).to(dtype=rd, device=E.device)
+    thr = float(torch.finfo(rd).tiny)
+    abs_den = float(torch.abs(den).detach().cpu())
+    if abs_den < thr:
+        raise EOverNDenominatorTooSmall(
+            f"e_over_n: |Re(N)|={abs_den:g} below dtype smallest-normal threshold {thr:g}; skip degenerate denominator."
+        )
+
+
+def expectation_gradient_loss_factory(loss_variant):
+    """Return ``loss_fn(E, N)`` (real scalar) for parametrized expectation-gradient tests vs CUTN.
+
+    Variants ``e_over_n`` and ``e_times_n`` need ``N`` (``return_norm=True``).
+
+    Variants ``e2_plus_3j_n`` and ``linear_affine_e_n`` also support ``N is None``: then they use
+    ``Re(E^2)`` only, or ``Re((2+3j) E)`` / ``3 E`` respectively (affine terms drop the ``N`` part).
+
+    ``e_over_n``: ``Re(E / N_real)`` with ``N`` cast to ``E``'s real dtype. If ``Re(N)`` is not safely above
+    ``finfo.tiny`` (smallest normalized value), raises :exc:`EOverNDenominatorTooSmall` so tests can skip the
+    degenerate zero-/denominator case only (small but normal ``‖ψ‖²`` remains valid).
+
+    ``linear_affine_e_n``: real ``E`` → ``3E + 4N`` (or ``3E`` if ``N`` is omitted); complex ``E`` →
+    ``Re((2+3j) E + 6j N)`` or ``Re((2+3j) E)`` when ``N`` is omitted.
+    """
+    if torch is None:
+        raise ImportError("expectation_gradient_loss_factory requires PyTorch")
+
+    if loss_variant == "e_over_n":
+
+        def loss_fn(E, N):
+            if N is None:
+                raise ValueError("e_over_n requires N (use return_norm=True)")
+            check_e_over_n_well_conditioned(E, N)
+            rd = torch.real(E).dtype
+            den = torch.real(N).to(dtype=rd, device=E.device)
+            return torch.real(E / den)
+
+        return loss_fn
+
+    if loss_variant == "e2_plus_3j_n":
+
+        def loss_fn(E, N):
+            if N is None:
+                Ec = (
+                    E
+                    if torch.is_complex(E)
+                    else E.to(torch.complex64 if E.dtype == torch.float32 else torch.complex128)
+                )
+                return torch.real(Ec * Ec)
+            if not torch.is_complex(E):
+                E = E.to(torch.complex64 if E.dtype == torch.float32 else torch.complex128)
+            three_j = 3.0 * torch.tensor(1j, dtype=E.dtype, device=E.device)
+            Nc = torch.as_tensor(torch.real(N), dtype=E.dtype, device=E.device)
+            z = E * E + three_j * Nc
+            return torch.real(z)
+
+        return loss_fn
+
+    if loss_variant == "e_times_n":
+
+        def loss_fn(E, N):
+            if N is None:
+                raise ValueError("e_times_n requires N (use return_norm=True)")
+            return torch.real(E * torch.as_tensor(torch.real(N), dtype=E.dtype, device=E.device))
+
+        return loss_fn
+
+    if loss_variant == "linear_affine_e_n":
+
+        def loss_fn(E, N):
+            if N is None:
+                if torch.is_complex(E):
+                    c_e = torch.tensor(2 + 3j, dtype=E.dtype, device=E.device)
+                    return torch.real(c_e * E)
+                return 3.0 * E
+            Nr = torch.as_tensor(torch.real(N), dtype=(torch.real(E).dtype), device=E.device)
+            if torch.is_complex(E):
+                c_e = torch.tensor(2 + 3j, dtype=E.dtype, device=E.device)
+                six_j = torch.tensor(6j, dtype=E.dtype, device=E.device)
+                z = c_e * E + six_j * Nr.to(dtype=E.dtype)
+                return torch.real(z)
+            return 3.0 * E + 4.0 * Nr
+
+        return loss_fn
+
+    raise ValueError(f"unknown loss_variant={loss_variant!r}")
 
 
 class ExpectationGradientConfig:

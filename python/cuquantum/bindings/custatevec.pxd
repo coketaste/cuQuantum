@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.03.1, generator version 0.3.1.dev1503+gab711511a.d20260402. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1733+g9725189ff.d20260608. Do not modify it directly.
 
 from libc.stdint cimport intptr_t
 
@@ -100,7 +100,7 @@ cpdef intptr_t communicator_create(intptr_t handle, int communicator_type, sonam
 cpdef communicator_destroy(intptr_t handle, intptr_t communicator)
 cpdef intptr_t dist_index_bit_swap_scheduler_create(intptr_t handle, uint32_t n_global_index_bits, uint32_t n_local_index_bits) except? 0
 cpdef dist_index_bit_swap_scheduler_destroy(intptr_t handle, intptr_t scheduler)
-cpdef tuple sv_swap_worker_create(intptr_t handle, intptr_t communicator, intptr_t org_sub_sv, int32_t org_sub_sv_ind_ex, intptr_t org_event, int sv_data_type, intptr_t stream)
+cpdef tuple sv_swap_worker_create(intptr_t handle, intptr_t communicator, intptr_t org_sub_sv, int32_t org_sub_sv_index, intptr_t org_event, int sv_data_type, intptr_t stream)
 cpdef sv_swap_worker_destroy(intptr_t handle, intptr_t sv_swap_worker)
 cpdef sv_swap_worker_set_extra_workspace(intptr_t handle, intptr_t sv_swap_worker, intptr_t extra_workspace, size_t extra_workspace_size_in_bytes)
 cpdef sv_swap_worker_set_transfer_workspace(intptr_t handle, intptr_t sv_swap_worker, intptr_t transfer_workspace, size_t transfer_workspace_size_in_bytes)
@@ -113,9 +113,9 @@ cpdef abs2sum_array_batched(intptr_t handle, intptr_t batched_sv, int sv_data_ty
 cpdef size_t collapse_by_bit_string_batched_get_workspace_size(intptr_t handle, uint32_t n_svs, bit_strings, norms) except? 0
 cpdef collapse_by_bit_string_batched(intptr_t handle, intptr_t batched_sv, int sv_data_type, uint32_t n_index_bits, uint32_t n_svs, int64_t sv_stride, bit_strings, bit_ordering, uint32_t bit_string_len, norms, intptr_t extra_workspace, size_t extra_workspace_size_in_bytes)
 cpdef measure_batched(intptr_t handle, intptr_t batched_sv, int sv_data_type, uint32_t n_index_bits, uint32_t n_svs, int64_t sv_stride, intptr_t bit_strings, bit_ordering, uint32_t bit_string_len, randnums, int collapse)
-cpdef intptr_t sub_sv_migrator_create(intptr_t handle, intptr_t device_slots, int sv_data_type, int n_device_slots, int n_local_index_bits) except? 0
+cpdef intptr_t sub_sv_migrator_create(intptr_t handle, intptr_t device_slices, int sv_data_type, int n_device_slices, int n_slice_local_index_bits) except? 0
 cpdef sub_sv_migrator_destroy(intptr_t handle, intptr_t migrator)
-cpdef sub_sv_migrator_migrate(intptr_t handle, intptr_t migrator, int device_slot_ind_ex, intptr_t src_sub_sv, intptr_t dst_sub_sv, int64_t begin, int64_t end)
+cpdef sub_sv_migrator_migrate(intptr_t handle, intptr_t migrator, int device_slice_index, intptr_t src_sub_sv_slice, intptr_t dst_sub_sv_slice, int64_t begin, int64_t end)
 cpdef size_t compute_expectation_batched_get_workspace_size(intptr_t handle, int sv_data_type, uint32_t n_index_bits, uint32_t n_svs, int64_t sv_stride, intptr_t matrices, int matrix_data_type, int layout, uint32_t n_matrices, uint32_t n_basis_bits, int compute_type) except? 0
 cpdef compute_expectation_batched(intptr_t handle, intptr_t batched_sv, int sv_data_type, uint32_t n_index_bits, uint32_t n_svs, int64_t sv_stride, intptr_t expectation_values, intptr_t matrices, int matrix_data_type, int layout, uint32_t n_matrices, basis_bits, uint32_t n_basis_bits, int compute_type, intptr_t extra_workspace, size_t extra_workspace_size_in_bytes)
 cpdef set_math_mode(intptr_t handle, int mode)

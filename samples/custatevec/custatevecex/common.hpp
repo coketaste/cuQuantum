@@ -70,6 +70,18 @@
     }
 
 //
+// Assertion macro which persists in Release builds, mostly for reader clarity
+//
+#define ASSERT(s)                                                                                  \
+    {                                                                                              \
+        if (!(s))                                                                                  \
+        {                                                                                          \
+            printf("Assertion failed: %s at %s:%d\n", #s, __FILE__, __LINE__);                     \
+            exit(EXIT_FAILURE);                                                                    \
+        }                                                                                          \
+    }
+
+//
 // Output control function - set to false to suppress output
 // Default is true (output enabled)
 //

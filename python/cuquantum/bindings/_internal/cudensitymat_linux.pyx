@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated with version 26.03.1, generator version 0.3.1.dev1508+g784d12dd6.d20260402. Do not modify it directly.
+# This code was automatically generated with version 26.06.0, generator version 0.3.1.dev1663+gc4ecc6582.d20260605. Do not modify it directly.
 
 from libc.stdint cimport intptr_t
 
@@ -46,6 +46,8 @@ cdef void* __cudensitymatGetProcRank = NULL
 cdef void* __cudensitymatResetRandomSeed = NULL
 cdef void* __cudensitymatCreateState = NULL
 cdef void* __cudensitymatCreateStateMPS = NULL
+cdef void* __cudensitymatStateMPSSetCurrentBondExtents = NULL
+cdef void* __cudensitymatStateMPSGetCurrentBondExtents = NULL
 cdef void* __cudensitymatDestroyState = NULL
 cdef void* __cudensitymatStateGetNumComponents = NULL
 cdef void* __cudensitymatStateGetComponentStorageSize = NULL
@@ -78,13 +80,21 @@ cdef void* __cudensitymatDestroyOperator = NULL
 cdef void* __cudensitymatOperatorAppendTerm = NULL
 cdef void* __cudensitymatOperatorAppendTermBatch = NULL
 cdef void* __cudensitymatAttachBatchedCoefficients = NULL
-cdef void* __cudensitymatOperatorConfigureAction = NULL
+cdef void* __cudensitymatCreateStateFittingScopeSplitALSConfig = NULL
+cdef void* __cudensitymatDestroyStateFittingScopeSplitALSConfig = NULL
+cdef void* __cudensitymatStateFittingScopeSplitALSConfigSetAttribute = NULL
+cdef void* __cudensitymatStateFittingScopeSplitALSConfigGetAttribute = NULL
+cdef void* __cudensitymatCreateStateFittingApproachLinSolveConfig = NULL
+cdef void* __cudensitymatDestroyStateFittingApproachLinSolveConfig = NULL
+cdef void* __cudensitymatStateFittingApproachLinSolveConfigSetAttribute = NULL
+cdef void* __cudensitymatStateFittingApproachLinSolveConfigGetAttribute = NULL
 cdef void* __cudensitymatOperatorPrepareAction = NULL
 cdef void* __cudensitymatOperatorComputeAction = NULL
 cdef void* __cudensitymatOperatorPrepareActionBackwardDiff = NULL
 cdef void* __cudensitymatOperatorComputeActionBackwardDiff = NULL
 cdef void* __cudensitymatCreateOperatorAction = NULL
 cdef void* __cudensitymatDestroyOperatorAction = NULL
+cdef void* __cudensitymatOperatorActionConfigure = NULL
 cdef void* __cudensitymatOperatorActionPrepare = NULL
 cdef void* __cudensitymatOperatorActionCompute = NULL
 cdef void* __cudensitymatCreateExpectation = NULL
@@ -109,6 +119,23 @@ cdef void* __cudensitymatDestroyTimePropagation = NULL
 cdef void* __cudensitymatTimePropagationConfigure = NULL
 cdef void* __cudensitymatTimePropagationPrepare = NULL
 cdef void* __cudensitymatTimePropagationCompute = NULL
+cdef void* __cudensitymatCreateSVDConfig = NULL
+cdef void* __cudensitymatDestroySVDConfig = NULL
+cdef void* __cudensitymatSVDConfigSetAttribute = NULL
+cdef void* __cudensitymatSVDConfigGetAttribute = NULL
+cdef void* __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig = NULL
+cdef void* __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig = NULL
+cdef void* __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute = NULL
+cdef void* __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute = NULL
+cdef void* __cudensitymatCreateEigenDecompositionApproachKrylovConfig = NULL
+cdef void* __cudensitymatDestroyEigenDecompositionApproachKrylovConfig = NULL
+cdef void* __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute = NULL
+cdef void* __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute = NULL
+cdef void* __cudensitymatCreateEigenDecomposition = NULL
+cdef void* __cudensitymatDestroyEigenDecomposition = NULL
+cdef void* __cudensitymatEigenDecompositionConfigure = NULL
+cdef void* __cudensitymatEigenDecompositionPrepare = NULL
+cdef void* __cudensitymatEigenDecompositionCompute = NULL
 cdef void* __cudensitymatCreateWorkspace = NULL
 cdef void* __cudensitymatDestroyWorkspace = NULL
 cdef void* __cudensitymatWorkspaceGetMemorySize = NULL
@@ -203,6 +230,20 @@ cdef int _check_or_init_cudensitymat() except -1 nogil:
             if handle == NULL:
                 handle = load_library()
             __cudensitymatCreateStateMPS = dlsym(handle, 'cudensitymatCreateStateMPS')
+
+        global __cudensitymatStateMPSSetCurrentBondExtents
+        __cudensitymatStateMPSSetCurrentBondExtents = dlsym(RTLD_DEFAULT, 'cudensitymatStateMPSSetCurrentBondExtents')
+        if __cudensitymatStateMPSSetCurrentBondExtents == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatStateMPSSetCurrentBondExtents = dlsym(handle, 'cudensitymatStateMPSSetCurrentBondExtents')
+
+        global __cudensitymatStateMPSGetCurrentBondExtents
+        __cudensitymatStateMPSGetCurrentBondExtents = dlsym(RTLD_DEFAULT, 'cudensitymatStateMPSGetCurrentBondExtents')
+        if __cudensitymatStateMPSGetCurrentBondExtents == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatStateMPSGetCurrentBondExtents = dlsym(handle, 'cudensitymatStateMPSGetCurrentBondExtents')
 
         global __cudensitymatDestroyState
         __cudensitymatDestroyState = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyState')
@@ -428,12 +469,61 @@ cdef int _check_or_init_cudensitymat() except -1 nogil:
                 handle = load_library()
             __cudensitymatAttachBatchedCoefficients = dlsym(handle, 'cudensitymatAttachBatchedCoefficients')
 
-        global __cudensitymatOperatorConfigureAction
-        __cudensitymatOperatorConfigureAction = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorConfigureAction')
-        if __cudensitymatOperatorConfigureAction == NULL:
+        global __cudensitymatCreateStateFittingScopeSplitALSConfig
+        __cudensitymatCreateStateFittingScopeSplitALSConfig = dlsym(RTLD_DEFAULT, 'cudensitymatCreateStateFittingScopeSplitALSConfig')
+        if __cudensitymatCreateStateFittingScopeSplitALSConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorConfigureAction = dlsym(handle, 'cudensitymatOperatorConfigureAction')
+            __cudensitymatCreateStateFittingScopeSplitALSConfig = dlsym(handle, 'cudensitymatCreateStateFittingScopeSplitALSConfig')
+
+        global __cudensitymatDestroyStateFittingScopeSplitALSConfig
+        __cudensitymatDestroyStateFittingScopeSplitALSConfig = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyStateFittingScopeSplitALSConfig')
+        if __cudensitymatDestroyStateFittingScopeSplitALSConfig == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatDestroyStateFittingScopeSplitALSConfig = dlsym(handle, 'cudensitymatDestroyStateFittingScopeSplitALSConfig')
+
+        global __cudensitymatStateFittingScopeSplitALSConfigSetAttribute
+        __cudensitymatStateFittingScopeSplitALSConfigSetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatStateFittingScopeSplitALSConfigSetAttribute')
+        if __cudensitymatStateFittingScopeSplitALSConfigSetAttribute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatStateFittingScopeSplitALSConfigSetAttribute = dlsym(handle, 'cudensitymatStateFittingScopeSplitALSConfigSetAttribute')
+
+        global __cudensitymatStateFittingScopeSplitALSConfigGetAttribute
+        __cudensitymatStateFittingScopeSplitALSConfigGetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatStateFittingScopeSplitALSConfigGetAttribute')
+        if __cudensitymatStateFittingScopeSplitALSConfigGetAttribute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatStateFittingScopeSplitALSConfigGetAttribute = dlsym(handle, 'cudensitymatStateFittingScopeSplitALSConfigGetAttribute')
+
+        global __cudensitymatCreateStateFittingApproachLinSolveConfig
+        __cudensitymatCreateStateFittingApproachLinSolveConfig = dlsym(RTLD_DEFAULT, 'cudensitymatCreateStateFittingApproachLinSolveConfig')
+        if __cudensitymatCreateStateFittingApproachLinSolveConfig == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatCreateStateFittingApproachLinSolveConfig = dlsym(handle, 'cudensitymatCreateStateFittingApproachLinSolveConfig')
+
+        global __cudensitymatDestroyStateFittingApproachLinSolveConfig
+        __cudensitymatDestroyStateFittingApproachLinSolveConfig = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyStateFittingApproachLinSolveConfig')
+        if __cudensitymatDestroyStateFittingApproachLinSolveConfig == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatDestroyStateFittingApproachLinSolveConfig = dlsym(handle, 'cudensitymatDestroyStateFittingApproachLinSolveConfig')
+
+        global __cudensitymatStateFittingApproachLinSolveConfigSetAttribute
+        __cudensitymatStateFittingApproachLinSolveConfigSetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatStateFittingApproachLinSolveConfigSetAttribute')
+        if __cudensitymatStateFittingApproachLinSolveConfigSetAttribute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatStateFittingApproachLinSolveConfigSetAttribute = dlsym(handle, 'cudensitymatStateFittingApproachLinSolveConfigSetAttribute')
+
+        global __cudensitymatStateFittingApproachLinSolveConfigGetAttribute
+        __cudensitymatStateFittingApproachLinSolveConfigGetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatStateFittingApproachLinSolveConfigGetAttribute')
+        if __cudensitymatStateFittingApproachLinSolveConfigGetAttribute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatStateFittingApproachLinSolveConfigGetAttribute = dlsym(handle, 'cudensitymatStateFittingApproachLinSolveConfigGetAttribute')
 
         global __cudensitymatOperatorPrepareAction
         __cudensitymatOperatorPrepareAction = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorPrepareAction')
@@ -476,6 +566,13 @@ cdef int _check_or_init_cudensitymat() except -1 nogil:
             if handle == NULL:
                 handle = load_library()
             __cudensitymatDestroyOperatorAction = dlsym(handle, 'cudensitymatDestroyOperatorAction')
+
+        global __cudensitymatOperatorActionConfigure
+        __cudensitymatOperatorActionConfigure = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorActionConfigure')
+        if __cudensitymatOperatorActionConfigure == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatOperatorActionConfigure = dlsym(handle, 'cudensitymatOperatorActionConfigure')
 
         global __cudensitymatOperatorActionPrepare
         __cudensitymatOperatorActionPrepare = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorActionPrepare')
@@ -645,6 +742,125 @@ cdef int _check_or_init_cudensitymat() except -1 nogil:
                 handle = load_library()
             __cudensitymatTimePropagationCompute = dlsym(handle, 'cudensitymatTimePropagationCompute')
 
+        global __cudensitymatCreateSVDConfig
+        __cudensitymatCreateSVDConfig = dlsym(RTLD_DEFAULT, 'cudensitymatCreateSVDConfig')
+        if __cudensitymatCreateSVDConfig == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatCreateSVDConfig = dlsym(handle, 'cudensitymatCreateSVDConfig')
+
+        global __cudensitymatDestroySVDConfig
+        __cudensitymatDestroySVDConfig = dlsym(RTLD_DEFAULT, 'cudensitymatDestroySVDConfig')
+        if __cudensitymatDestroySVDConfig == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatDestroySVDConfig = dlsym(handle, 'cudensitymatDestroySVDConfig')
+
+        global __cudensitymatSVDConfigSetAttribute
+        __cudensitymatSVDConfigSetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatSVDConfigSetAttribute')
+        if __cudensitymatSVDConfigSetAttribute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatSVDConfigSetAttribute = dlsym(handle, 'cudensitymatSVDConfigSetAttribute')
+
+        global __cudensitymatSVDConfigGetAttribute
+        __cudensitymatSVDConfigGetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatSVDConfigGetAttribute')
+        if __cudensitymatSVDConfigGetAttribute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatSVDConfigGetAttribute = dlsym(handle, 'cudensitymatSVDConfigGetAttribute')
+
+        global __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig
+        __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig = dlsym(RTLD_DEFAULT, 'cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig')
+        if __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig = dlsym(handle, 'cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig')
+
+        global __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig
+        __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig')
+        if __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig = dlsym(handle, 'cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig')
+
+        global __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute
+        __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute')
+        if __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute = dlsym(handle, 'cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute')
+
+        global __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute
+        __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute')
+        if __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute = dlsym(handle, 'cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute')
+
+        global __cudensitymatCreateEigenDecompositionApproachKrylovConfig
+        __cudensitymatCreateEigenDecompositionApproachKrylovConfig = dlsym(RTLD_DEFAULT, 'cudensitymatCreateEigenDecompositionApproachKrylovConfig')
+        if __cudensitymatCreateEigenDecompositionApproachKrylovConfig == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatCreateEigenDecompositionApproachKrylovConfig = dlsym(handle, 'cudensitymatCreateEigenDecompositionApproachKrylovConfig')
+
+        global __cudensitymatDestroyEigenDecompositionApproachKrylovConfig
+        __cudensitymatDestroyEigenDecompositionApproachKrylovConfig = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyEigenDecompositionApproachKrylovConfig')
+        if __cudensitymatDestroyEigenDecompositionApproachKrylovConfig == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatDestroyEigenDecompositionApproachKrylovConfig = dlsym(handle, 'cudensitymatDestroyEigenDecompositionApproachKrylovConfig')
+
+        global __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute
+        __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute')
+        if __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute = dlsym(handle, 'cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute')
+
+        global __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute
+        __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute')
+        if __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute = dlsym(handle, 'cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute')
+
+        global __cudensitymatCreateEigenDecomposition
+        __cudensitymatCreateEigenDecomposition = dlsym(RTLD_DEFAULT, 'cudensitymatCreateEigenDecomposition')
+        if __cudensitymatCreateEigenDecomposition == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatCreateEigenDecomposition = dlsym(handle, 'cudensitymatCreateEigenDecomposition')
+
+        global __cudensitymatDestroyEigenDecomposition
+        __cudensitymatDestroyEigenDecomposition = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyEigenDecomposition')
+        if __cudensitymatDestroyEigenDecomposition == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatDestroyEigenDecomposition = dlsym(handle, 'cudensitymatDestroyEigenDecomposition')
+
+        global __cudensitymatEigenDecompositionConfigure
+        __cudensitymatEigenDecompositionConfigure = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionConfigure')
+        if __cudensitymatEigenDecompositionConfigure == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatEigenDecompositionConfigure = dlsym(handle, 'cudensitymatEigenDecompositionConfigure')
+
+        global __cudensitymatEigenDecompositionPrepare
+        __cudensitymatEigenDecompositionPrepare = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionPrepare')
+        if __cudensitymatEigenDecompositionPrepare == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatEigenDecompositionPrepare = dlsym(handle, 'cudensitymatEigenDecompositionPrepare')
+
+        global __cudensitymatEigenDecompositionCompute
+        __cudensitymatEigenDecompositionCompute = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionCompute')
+        if __cudensitymatEigenDecompositionCompute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatEigenDecompositionCompute = dlsym(handle, 'cudensitymatEigenDecompositionCompute')
+
         global __cudensitymatCreateWorkspace
         __cudensitymatCreateWorkspace = dlsym(RTLD_DEFAULT, 'cudensitymatCreateWorkspace')
         if __cudensitymatCreateWorkspace == NULL:
@@ -727,6 +943,12 @@ cpdef dict _inspect_function_pointers():
 
     global __cudensitymatCreateStateMPS
     data["__cudensitymatCreateStateMPS"] = <intptr_t>__cudensitymatCreateStateMPS
+
+    global __cudensitymatStateMPSSetCurrentBondExtents
+    data["__cudensitymatStateMPSSetCurrentBondExtents"] = <intptr_t>__cudensitymatStateMPSSetCurrentBondExtents
+
+    global __cudensitymatStateMPSGetCurrentBondExtents
+    data["__cudensitymatStateMPSGetCurrentBondExtents"] = <intptr_t>__cudensitymatStateMPSGetCurrentBondExtents
 
     global __cudensitymatDestroyState
     data["__cudensitymatDestroyState"] = <intptr_t>__cudensitymatDestroyState
@@ -824,8 +1046,29 @@ cpdef dict _inspect_function_pointers():
     global __cudensitymatAttachBatchedCoefficients
     data["__cudensitymatAttachBatchedCoefficients"] = <intptr_t>__cudensitymatAttachBatchedCoefficients
 
-    global __cudensitymatOperatorConfigureAction
-    data["__cudensitymatOperatorConfigureAction"] = <intptr_t>__cudensitymatOperatorConfigureAction
+    global __cudensitymatCreateStateFittingScopeSplitALSConfig
+    data["__cudensitymatCreateStateFittingScopeSplitALSConfig"] = <intptr_t>__cudensitymatCreateStateFittingScopeSplitALSConfig
+
+    global __cudensitymatDestroyStateFittingScopeSplitALSConfig
+    data["__cudensitymatDestroyStateFittingScopeSplitALSConfig"] = <intptr_t>__cudensitymatDestroyStateFittingScopeSplitALSConfig
+
+    global __cudensitymatStateFittingScopeSplitALSConfigSetAttribute
+    data["__cudensitymatStateFittingScopeSplitALSConfigSetAttribute"] = <intptr_t>__cudensitymatStateFittingScopeSplitALSConfigSetAttribute
+
+    global __cudensitymatStateFittingScopeSplitALSConfigGetAttribute
+    data["__cudensitymatStateFittingScopeSplitALSConfigGetAttribute"] = <intptr_t>__cudensitymatStateFittingScopeSplitALSConfigGetAttribute
+
+    global __cudensitymatCreateStateFittingApproachLinSolveConfig
+    data["__cudensitymatCreateStateFittingApproachLinSolveConfig"] = <intptr_t>__cudensitymatCreateStateFittingApproachLinSolveConfig
+
+    global __cudensitymatDestroyStateFittingApproachLinSolveConfig
+    data["__cudensitymatDestroyStateFittingApproachLinSolveConfig"] = <intptr_t>__cudensitymatDestroyStateFittingApproachLinSolveConfig
+
+    global __cudensitymatStateFittingApproachLinSolveConfigSetAttribute
+    data["__cudensitymatStateFittingApproachLinSolveConfigSetAttribute"] = <intptr_t>__cudensitymatStateFittingApproachLinSolveConfigSetAttribute
+
+    global __cudensitymatStateFittingApproachLinSolveConfigGetAttribute
+    data["__cudensitymatStateFittingApproachLinSolveConfigGetAttribute"] = <intptr_t>__cudensitymatStateFittingApproachLinSolveConfigGetAttribute
 
     global __cudensitymatOperatorPrepareAction
     data["__cudensitymatOperatorPrepareAction"] = <intptr_t>__cudensitymatOperatorPrepareAction
@@ -844,6 +1087,9 @@ cpdef dict _inspect_function_pointers():
 
     global __cudensitymatDestroyOperatorAction
     data["__cudensitymatDestroyOperatorAction"] = <intptr_t>__cudensitymatDestroyOperatorAction
+
+    global __cudensitymatOperatorActionConfigure
+    data["__cudensitymatOperatorActionConfigure"] = <intptr_t>__cudensitymatOperatorActionConfigure
 
     global __cudensitymatOperatorActionPrepare
     data["__cudensitymatOperatorActionPrepare"] = <intptr_t>__cudensitymatOperatorActionPrepare
@@ -916,6 +1162,57 @@ cpdef dict _inspect_function_pointers():
 
     global __cudensitymatTimePropagationCompute
     data["__cudensitymatTimePropagationCompute"] = <intptr_t>__cudensitymatTimePropagationCompute
+
+    global __cudensitymatCreateSVDConfig
+    data["__cudensitymatCreateSVDConfig"] = <intptr_t>__cudensitymatCreateSVDConfig
+
+    global __cudensitymatDestroySVDConfig
+    data["__cudensitymatDestroySVDConfig"] = <intptr_t>__cudensitymatDestroySVDConfig
+
+    global __cudensitymatSVDConfigSetAttribute
+    data["__cudensitymatSVDConfigSetAttribute"] = <intptr_t>__cudensitymatSVDConfigSetAttribute
+
+    global __cudensitymatSVDConfigGetAttribute
+    data["__cudensitymatSVDConfigGetAttribute"] = <intptr_t>__cudensitymatSVDConfigGetAttribute
+
+    global __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig
+    data["__cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig"] = <intptr_t>__cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig
+
+    global __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig
+    data["__cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig"] = <intptr_t>__cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig
+
+    global __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute
+    data["__cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute"] = <intptr_t>__cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute
+
+    global __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute
+    data["__cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute"] = <intptr_t>__cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute
+
+    global __cudensitymatCreateEigenDecompositionApproachKrylovConfig
+    data["__cudensitymatCreateEigenDecompositionApproachKrylovConfig"] = <intptr_t>__cudensitymatCreateEigenDecompositionApproachKrylovConfig
+
+    global __cudensitymatDestroyEigenDecompositionApproachKrylovConfig
+    data["__cudensitymatDestroyEigenDecompositionApproachKrylovConfig"] = <intptr_t>__cudensitymatDestroyEigenDecompositionApproachKrylovConfig
+
+    global __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute
+    data["__cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute"] = <intptr_t>__cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute
+
+    global __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute
+    data["__cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute"] = <intptr_t>__cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute
+
+    global __cudensitymatCreateEigenDecomposition
+    data["__cudensitymatCreateEigenDecomposition"] = <intptr_t>__cudensitymatCreateEigenDecomposition
+
+    global __cudensitymatDestroyEigenDecomposition
+    data["__cudensitymatDestroyEigenDecomposition"] = <intptr_t>__cudensitymatDestroyEigenDecomposition
+
+    global __cudensitymatEigenDecompositionConfigure
+    data["__cudensitymatEigenDecompositionConfigure"] = <intptr_t>__cudensitymatEigenDecompositionConfigure
+
+    global __cudensitymatEigenDecompositionPrepare
+    data["__cudensitymatEigenDecompositionPrepare"] = <intptr_t>__cudensitymatEigenDecompositionPrepare
+
+    global __cudensitymatEigenDecompositionCompute
+    data["__cudensitymatEigenDecompositionCompute"] = <intptr_t>__cudensitymatEigenDecompositionCompute
 
     global __cudensitymatCreateWorkspace
     data["__cudensitymatCreateWorkspace"] = <intptr_t>__cudensitymatCreateWorkspace
@@ -1033,6 +1330,26 @@ cdef cudensitymatStatus_t _cudensitymatCreateStateMPS(const cudensitymatHandle_t
             raise FunctionNotFoundError("function cudensitymatCreateStateMPS is not found")
     return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatStatePurity_t, int32_t, const int64_t*, cudensitymatBoundaryCondition_t, const int64_t*, cudaDataType_t, int64_t, cudensitymatState_t*) noexcept nogil>__cudensitymatCreateStateMPS)(
         handle, purity, numSpaceModes, spaceModeExtents, boundaryCondition, bondExtents, dataType, batchSize, state)
+
+
+cdef cudensitymatStatus_t _cudensitymatStateMPSSetCurrentBondExtents(const cudensitymatHandle_t handle, cudensitymatState_t state, const int64_t bondExtents[]) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatStateMPSSetCurrentBondExtents
+    _check_or_init_cudensitymat()
+    if __cudensitymatStateMPSSetCurrentBondExtents == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatStateMPSSetCurrentBondExtents is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatState_t, const int64_t*) noexcept nogil>__cudensitymatStateMPSSetCurrentBondExtents)(
+        handle, state, bondExtents)
+
+
+cdef cudensitymatStatus_t _cudensitymatStateMPSGetCurrentBondExtents(const cudensitymatHandle_t handle, const cudensitymatState_t state, int64_t bondExtents[]) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatStateMPSGetCurrentBondExtents
+    _check_or_init_cudensitymat()
+    if __cudensitymatStateMPSGetCurrentBondExtents == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatStateMPSGetCurrentBondExtents is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, const cudensitymatState_t, int64_t*) noexcept nogil>__cudensitymatStateMPSGetCurrentBondExtents)(
+        handle, state, bondExtents)
 
 
 cdef cudensitymatStatus_t _cudensitymatDestroyState(cudensitymatState_t state) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -1355,14 +1672,84 @@ cdef cudensitymatStatus_t _cudensitymatAttachBatchedCoefficients(const cudensity
         handle, superoperator, numOperatorTermBatchedCoeffs, operatorTermBatchedCoeffsTmp, operatorTermBatchedCoeffs, numOperatorProductBatchedCoeffs, operatorProductBatchedCoeffsTmp, operatorProductBatchedCoeffs)
 
 
-cdef cudensitymatStatus_t _cudensitymatOperatorConfigureAction(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, const cudensitymatState_t stateIn, const cudensitymatState_t stateOut, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    global __cudensitymatOperatorConfigureAction
+cdef cudensitymatStatus_t _cudensitymatCreateStateFittingScopeSplitALSConfig(const cudensitymatHandle_t handle, cudensitymatStateFittingScopeSplitALSConfig_t* config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatCreateStateFittingScopeSplitALSConfig
     _check_or_init_cudensitymat()
-    if __cudensitymatOperatorConfigureAction == NULL:
+    if __cudensitymatCreateStateFittingScopeSplitALSConfig == NULL:
         with gil:
-            raise FunctionNotFoundError("function cudensitymatOperatorConfigureAction is not found")
-    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatOperator_t, const cudensitymatState_t, const cudensitymatState_t, const void*, size_t) noexcept nogil>__cudensitymatOperatorConfigureAction)(
-        handle, superoperator, stateIn, stateOut, attributeValue, attributeSize)
+            raise FunctionNotFoundError("function cudensitymatCreateStateFittingScopeSplitALSConfig is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatStateFittingScopeSplitALSConfig_t*) noexcept nogil>__cudensitymatCreateStateFittingScopeSplitALSConfig)(
+        handle, config)
+
+
+cdef cudensitymatStatus_t _cudensitymatDestroyStateFittingScopeSplitALSConfig(cudensitymatStateFittingScopeSplitALSConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatDestroyStateFittingScopeSplitALSConfig
+    _check_or_init_cudensitymat()
+    if __cudensitymatDestroyStateFittingScopeSplitALSConfig == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatDestroyStateFittingScopeSplitALSConfig is not found")
+    return (<cudensitymatStatus_t (*)(cudensitymatStateFittingScopeSplitALSConfig_t) noexcept nogil>__cudensitymatDestroyStateFittingScopeSplitALSConfig)(
+        config)
+
+
+cdef cudensitymatStatus_t _cudensitymatStateFittingScopeSplitALSConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatStateFittingScopeSplitALSConfig_t config, cudensitymatStateFittingScopeSplitALSConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatStateFittingScopeSplitALSConfigSetAttribute
+    _check_or_init_cudensitymat()
+    if __cudensitymatStateFittingScopeSplitALSConfigSetAttribute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatStateFittingScopeSplitALSConfigSetAttribute is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatStateFittingScopeSplitALSConfig_t, cudensitymatStateFittingScopeSplitALSConfigAttribute_t, const void*, size_t) noexcept nogil>__cudensitymatStateFittingScopeSplitALSConfigSetAttribute)(
+        handle, config, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t _cudensitymatStateFittingScopeSplitALSConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatStateFittingScopeSplitALSConfig_t config, cudensitymatStateFittingScopeSplitALSConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatStateFittingScopeSplitALSConfigGetAttribute
+    _check_or_init_cudensitymat()
+    if __cudensitymatStateFittingScopeSplitALSConfigGetAttribute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatStateFittingScopeSplitALSConfigGetAttribute is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, const cudensitymatStateFittingScopeSplitALSConfig_t, cudensitymatStateFittingScopeSplitALSConfigAttribute_t, void*, size_t) noexcept nogil>__cudensitymatStateFittingScopeSplitALSConfigGetAttribute)(
+        handle, config, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t _cudensitymatCreateStateFittingApproachLinSolveConfig(const cudensitymatHandle_t handle, cudensitymatStateFittingApproachLinSolveConfig_t* config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatCreateStateFittingApproachLinSolveConfig
+    _check_or_init_cudensitymat()
+    if __cudensitymatCreateStateFittingApproachLinSolveConfig == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatCreateStateFittingApproachLinSolveConfig is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatStateFittingApproachLinSolveConfig_t*) noexcept nogil>__cudensitymatCreateStateFittingApproachLinSolveConfig)(
+        handle, config)
+
+
+cdef cudensitymatStatus_t _cudensitymatDestroyStateFittingApproachLinSolveConfig(cudensitymatStateFittingApproachLinSolveConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatDestroyStateFittingApproachLinSolveConfig
+    _check_or_init_cudensitymat()
+    if __cudensitymatDestroyStateFittingApproachLinSolveConfig == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatDestroyStateFittingApproachLinSolveConfig is not found")
+    return (<cudensitymatStatus_t (*)(cudensitymatStateFittingApproachLinSolveConfig_t) noexcept nogil>__cudensitymatDestroyStateFittingApproachLinSolveConfig)(
+        config)
+
+
+cdef cudensitymatStatus_t _cudensitymatStateFittingApproachLinSolveConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatStateFittingApproachLinSolveConfig_t config, cudensitymatStateFittingApproachLinSolveConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatStateFittingApproachLinSolveConfigSetAttribute
+    _check_or_init_cudensitymat()
+    if __cudensitymatStateFittingApproachLinSolveConfigSetAttribute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatStateFittingApproachLinSolveConfigSetAttribute is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatStateFittingApproachLinSolveConfig_t, cudensitymatStateFittingApproachLinSolveConfigAttribute_t, const void*, size_t) noexcept nogil>__cudensitymatStateFittingApproachLinSolveConfigSetAttribute)(
+        handle, config, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t _cudensitymatStateFittingApproachLinSolveConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatStateFittingApproachLinSolveConfig_t config, cudensitymatStateFittingApproachLinSolveConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatStateFittingApproachLinSolveConfigGetAttribute
+    _check_or_init_cudensitymat()
+    if __cudensitymatStateFittingApproachLinSolveConfigGetAttribute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatStateFittingApproachLinSolveConfigGetAttribute is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, const cudensitymatStateFittingApproachLinSolveConfig_t, cudensitymatStateFittingApproachLinSolveConfigAttribute_t, void*, size_t) noexcept nogil>__cudensitymatStateFittingApproachLinSolveConfigGetAttribute)(
+        handle, config, attribute, attributeValue, attributeSize)
 
 
 cdef cudensitymatStatus_t _cudensitymatOperatorPrepareAction(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, const cudensitymatState_t stateIn, const cudensitymatState_t stateOut, cudensitymatComputeType_t computeType, size_t workspaceSizeLimit, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -1405,14 +1792,14 @@ cdef cudensitymatStatus_t _cudensitymatOperatorComputeActionBackwardDiff(const c
         handle, superoperator, time, batchSize, numParams, params, stateIn, stateOutAdj, stateInAdj, paramsGrad, workspace, stream)
 
 
-cdef cudensitymatStatus_t _cudensitymatCreateOperatorAction(const cudensitymatHandle_t handle, int32_t numOperators, cudensitymatOperator_t operators[], cudensitymatOperatorAction_t* operatorAction) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+cdef cudensitymatStatus_t _cudensitymatCreateOperatorAction(const cudensitymatHandle_t handle, int32_t numOperators, cudensitymatOperator_t operators[], cudensitymatStateFittingScopeKind_t scopeKind, cudensitymatStateFittingApproachKind_t approachKind, cudensitymatOperatorAction_t* operatorAction) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     global __cudensitymatCreateOperatorAction
     _check_or_init_cudensitymat()
     if __cudensitymatCreateOperatorAction == NULL:
         with gil:
             raise FunctionNotFoundError("function cudensitymatCreateOperatorAction is not found")
-    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, int32_t, cudensitymatOperator_t*, cudensitymatOperatorAction_t*) noexcept nogil>__cudensitymatCreateOperatorAction)(
-        handle, numOperators, operators, operatorAction)
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, int32_t, cudensitymatOperator_t*, cudensitymatStateFittingScopeKind_t, cudensitymatStateFittingApproachKind_t, cudensitymatOperatorAction_t*) noexcept nogil>__cudensitymatCreateOperatorAction)(
+        handle, numOperators, operators, scopeKind, approachKind, operatorAction)
 
 
 cdef cudensitymatStatus_t _cudensitymatDestroyOperatorAction(cudensitymatOperatorAction_t operatorAction) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -1423,6 +1810,16 @@ cdef cudensitymatStatus_t _cudensitymatDestroyOperatorAction(cudensitymatOperato
             raise FunctionNotFoundError("function cudensitymatDestroyOperatorAction is not found")
     return (<cudensitymatStatus_t (*)(cudensitymatOperatorAction_t) noexcept nogil>__cudensitymatDestroyOperatorAction)(
         operatorAction)
+
+
+cdef cudensitymatStatus_t _cudensitymatOperatorActionConfigure(const cudensitymatHandle_t handle, cudensitymatOperatorAction_t operatorAction, cudensitymatStateFittingAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatOperatorActionConfigure
+    _check_or_init_cudensitymat()
+    if __cudensitymatOperatorActionConfigure == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatOperatorActionConfigure is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatOperatorAction_t, cudensitymatStateFittingAttribute_t, const void*, size_t) noexcept nogil>__cudensitymatOperatorActionConfigure)(
+        handle, operatorAction, attribute, attributeValue, attributeSize)
 
 
 cdef cudensitymatStatus_t _cudensitymatOperatorActionPrepare(const cudensitymatHandle_t handle, cudensitymatOperatorAction_t operatorAction, const cudensitymatState_t stateIn[], const cudensitymatState_t stateOut, cudensitymatComputeType_t computeType, size_t workspaceSizeLimit, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -1663,6 +2060,176 @@ cdef cudensitymatStatus_t _cudensitymatTimePropagationCompute(const cudensitymat
             raise FunctionNotFoundError("function cudensitymatTimePropagationCompute is not found")
     return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatTimePropagation_t, double, double, double, int64_t, int32_t, const double*, const cudensitymatState_t, cudensitymatState_t, cudensitymatWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cudensitymatTimePropagationCompute)(
         handle, timePropagation, timeStepReal, timeStepImag, time, batchSize, numParams, params, stateIn, stateOut, workspace, stream)
+
+
+cdef cudensitymatStatus_t _cudensitymatCreateSVDConfig(const cudensitymatHandle_t handle, cudensitymatSVDConfig_t* config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatCreateSVDConfig
+    _check_or_init_cudensitymat()
+    if __cudensitymatCreateSVDConfig == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatCreateSVDConfig is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatSVDConfig_t*) noexcept nogil>__cudensitymatCreateSVDConfig)(
+        handle, config)
+
+
+cdef cudensitymatStatus_t _cudensitymatDestroySVDConfig(cudensitymatSVDConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatDestroySVDConfig
+    _check_or_init_cudensitymat()
+    if __cudensitymatDestroySVDConfig == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatDestroySVDConfig is not found")
+    return (<cudensitymatStatus_t (*)(cudensitymatSVDConfig_t) noexcept nogil>__cudensitymatDestroySVDConfig)(
+        config)
+
+
+cdef cudensitymatStatus_t _cudensitymatSVDConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatSVDConfig_t config, cudensitymatSVDConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatSVDConfigSetAttribute
+    _check_or_init_cudensitymat()
+    if __cudensitymatSVDConfigSetAttribute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatSVDConfigSetAttribute is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatSVDConfig_t, cudensitymatSVDConfigAttribute_t, const void*, size_t) noexcept nogil>__cudensitymatSVDConfigSetAttribute)(
+        handle, config, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t _cudensitymatSVDConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatSVDConfig_t config, cudensitymatSVDConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatSVDConfigGetAttribute
+    _check_or_init_cudensitymat()
+    if __cudensitymatSVDConfigGetAttribute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatSVDConfigGetAttribute is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, const cudensitymatSVDConfig_t, cudensitymatSVDConfigAttribute_t, void*, size_t) noexcept nogil>__cudensitymatSVDConfigGetAttribute)(
+        handle, config, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t _cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionScopeSplitDMRGConfig_t* config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig
+    _check_or_init_cudensitymat()
+    if __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatEigenDecompositionScopeSplitDMRGConfig_t*) noexcept nogil>__cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig)(
+        handle, config)
+
+
+cdef cudensitymatStatus_t _cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig(cudensitymatEigenDecompositionScopeSplitDMRGConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig
+    _check_or_init_cudensitymat()
+    if __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig is not found")
+    return (<cudensitymatStatus_t (*)(cudensitymatEigenDecompositionScopeSplitDMRGConfig_t) noexcept nogil>__cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig)(
+        config)
+
+
+cdef cudensitymatStatus_t _cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionScopeSplitDMRGConfig_t config, cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute
+    _check_or_init_cudensitymat()
+    if __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatEigenDecompositionScopeSplitDMRGConfig_t, cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t, const void*, size_t) noexcept nogil>__cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute)(
+        handle, config, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t _cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatEigenDecompositionScopeSplitDMRGConfig_t config, cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute
+    _check_or_init_cudensitymat()
+    if __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, const cudensitymatEigenDecompositionScopeSplitDMRGConfig_t, cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t, void*, size_t) noexcept nogil>__cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute)(
+        handle, config, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t _cudensitymatCreateEigenDecompositionApproachKrylovConfig(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionApproachKrylovConfig_t* config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatCreateEigenDecompositionApproachKrylovConfig
+    _check_or_init_cudensitymat()
+    if __cudensitymatCreateEigenDecompositionApproachKrylovConfig == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatCreateEigenDecompositionApproachKrylovConfig is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatEigenDecompositionApproachKrylovConfig_t*) noexcept nogil>__cudensitymatCreateEigenDecompositionApproachKrylovConfig)(
+        handle, config)
+
+
+cdef cudensitymatStatus_t _cudensitymatDestroyEigenDecompositionApproachKrylovConfig(cudensitymatEigenDecompositionApproachKrylovConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatDestroyEigenDecompositionApproachKrylovConfig
+    _check_or_init_cudensitymat()
+    if __cudensitymatDestroyEigenDecompositionApproachKrylovConfig == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatDestroyEigenDecompositionApproachKrylovConfig is not found")
+    return (<cudensitymatStatus_t (*)(cudensitymatEigenDecompositionApproachKrylovConfig_t) noexcept nogil>__cudensitymatDestroyEigenDecompositionApproachKrylovConfig)(
+        config)
+
+
+cdef cudensitymatStatus_t _cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionApproachKrylovConfig_t config, cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute
+    _check_or_init_cudensitymat()
+    if __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatEigenDecompositionApproachKrylovConfig_t, cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t, const void*, size_t) noexcept nogil>__cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute)(
+        handle, config, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t _cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatEigenDecompositionApproachKrylovConfig_t config, cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute
+    _check_or_init_cudensitymat()
+    if __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, const cudensitymatEigenDecompositionApproachKrylovConfig_t, cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t, void*, size_t) noexcept nogil>__cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute)(
+        handle, config, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t _cudensitymatCreateEigenDecomposition(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, int32_t isHermitian, cudensitymatEigenDecompositionSpectrumKind_t spectrumKind, cudensitymatEigenDecompositionScopeKind_t scopeKind, cudensitymatEigenDecompositionApproachKind_t approachKind, cudensitymatEigenDecomposition_t* eigenDecomposition) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatCreateEigenDecomposition
+    _check_or_init_cudensitymat()
+    if __cudensitymatCreateEigenDecomposition == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatCreateEigenDecomposition is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatOperator_t, int32_t, cudensitymatEigenDecompositionSpectrumKind_t, cudensitymatEigenDecompositionScopeKind_t, cudensitymatEigenDecompositionApproachKind_t, cudensitymatEigenDecomposition_t*) noexcept nogil>__cudensitymatCreateEigenDecomposition)(
+        handle, superoperator, isHermitian, spectrumKind, scopeKind, approachKind, eigenDecomposition)
+
+
+cdef cudensitymatStatus_t _cudensitymatDestroyEigenDecomposition(cudensitymatEigenDecomposition_t eigenDecomposition) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatDestroyEigenDecomposition
+    _check_or_init_cudensitymat()
+    if __cudensitymatDestroyEigenDecomposition == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatDestroyEigenDecomposition is not found")
+    return (<cudensitymatStatus_t (*)(cudensitymatEigenDecomposition_t) noexcept nogil>__cudensitymatDestroyEigenDecomposition)(
+        eigenDecomposition)
+
+
+cdef cudensitymatStatus_t _cudensitymatEigenDecompositionConfigure(const cudensitymatHandle_t handle, cudensitymatEigenDecomposition_t eigenDecomposition, cudensitymatEigenDecompositionAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatEigenDecompositionConfigure
+    _check_or_init_cudensitymat()
+    if __cudensitymatEigenDecompositionConfigure == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatEigenDecompositionConfigure is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatEigenDecomposition_t, cudensitymatEigenDecompositionAttribute_t, const void*, size_t) noexcept nogil>__cudensitymatEigenDecompositionConfigure)(
+        handle, eigenDecomposition, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t _cudensitymatEigenDecompositionPrepare(const cudensitymatHandle_t handle, cudensitymatEigenDecomposition_t eigenDecomposition, int32_t maxEigenStates, const cudensitymatState_t state, cudensitymatComputeType_t computeType, size_t workspaceSizeLimit, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatEigenDecompositionPrepare
+    _check_or_init_cudensitymat()
+    if __cudensitymatEigenDecompositionPrepare == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatEigenDecompositionPrepare is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatEigenDecomposition_t, int32_t, const cudensitymatState_t, cudensitymatComputeType_t, size_t, cudensitymatWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cudensitymatEigenDecompositionPrepare)(
+        handle, eigenDecomposition, maxEigenStates, state, computeType, workspaceSizeLimit, workspace, stream)
+
+
+cdef cudensitymatStatus_t _cudensitymatEigenDecompositionCompute(const cudensitymatHandle_t handle, cudensitymatEigenDecomposition_t eigenDecomposition, double time, int64_t batchSize, int32_t numParams, const double* params, int32_t numEigenStates, cudensitymatState_t eigenstates[], void* eigenvalues, double* tolerances, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatEigenDecompositionCompute
+    _check_or_init_cudensitymat()
+    if __cudensitymatEigenDecompositionCompute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatEigenDecompositionCompute is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatEigenDecomposition_t, double, int64_t, int32_t, const double*, int32_t, cudensitymatState_t*, void*, double*, cudensitymatWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cudensitymatEigenDecompositionCompute)(
+        handle, eigenDecomposition, time, batchSize, numParams, params, numEigenStates, eigenstates, eigenvalues, tolerances, workspace, stream)
 
 
 cdef cudensitymatStatus_t _cudensitymatCreateWorkspace(const cudensitymatHandle_t handle, cudensitymatWorkspaceDescriptor_t* workspaceDescr) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:

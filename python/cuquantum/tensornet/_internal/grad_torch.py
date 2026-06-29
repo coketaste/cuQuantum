@@ -46,7 +46,7 @@ if torch is not None:
 
         @staticmethod
         def backward(context, *output_grad):
-            
+
             old_device = None
 
             try:
@@ -80,7 +80,7 @@ if torch is not None:
                 if old_device is not None:
                     old_device.set_current()
                 network.free()
- 
+
             return out
 
 else:

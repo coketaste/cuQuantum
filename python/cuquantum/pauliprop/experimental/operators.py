@@ -221,7 +221,10 @@ class CliffordGate(_QuantumOperator):
     Attributes:
         name (str): The name of the Clifford gate (case-insensitive, must match one of
             :attr:`SUPPORTED_GATES`).
-        qubit_indices (Sequence[int]): The qubit indices this gate acts on.
+        qubit_indices (Sequence[int]): The qubit indices this gate acts on. For two-qubit
+            Clifford gates, the qubit indices are specified with increasing significance, and
+            so the control qubit (in gates such as ``CX``) is specified *after* the target
+            qubit, i.e. ``qubit_indices = [target, control]``.
     """
 
     name: str

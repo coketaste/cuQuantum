@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.03.1, generator version 0.3.1.dev1471+gd13834924.d20260402. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1668+gb1eb0b259. Do not modify it directly.
 # This layer exposes the C header to Cython as-is.
 
 from libc.stdint cimport int32_t, int64_t, uint32_t, uint64_t
@@ -173,11 +173,13 @@ ctypedef enum cutensornetTensorSVDAlgo_t "cutensornetTensorSVDAlgo_t":
 
 ctypedef enum cutensornetStatePurity_t "cutensornetStatePurity_t":
     CUTENSORNET_STATE_PURITY_PURE "CUTENSORNET_STATE_PURITY_PURE"
+    CUTENSORNET_STATE_PURITY_MIXED "CUTENSORNET_STATE_PURITY_MIXED"
 
 ctypedef enum cutensornetMarginalAttributes_t "cutensornetMarginalAttributes_t":
     CUTENSORNET_MARGINAL_OPT_NUM_HYPER_SAMPLES "CUTENSORNET_MARGINAL_OPT_NUM_HYPER_SAMPLES" = 0
     CUTENSORNET_MARGINAL_CONFIG_NUM_HYPER_SAMPLES "CUTENSORNET_MARGINAL_CONFIG_NUM_HYPER_SAMPLES" = 1
     CUTENSORNET_MARGINAL_INFO_FLOPS "CUTENSORNET_MARGINAL_INFO_FLOPS" = 64
+    CUTENSORNET_MARGINAL_INFO_KIND "CUTENSORNET_MARGINAL_INFO_KIND" = 65
 
 ctypedef enum cutensornetSamplerAttributes_t "cutensornetSamplerAttributes_t":
     CUTENSORNET_SAMPLER_OPT_NUM_HYPER_SAMPLES "CUTENSORNET_SAMPLER_OPT_NUM_HYPER_SAMPLES" = 0
@@ -232,11 +234,28 @@ ctypedef enum cutensornetStateProjectionMPSOrthoOption_t "cutensornetStateProjec
 
 ctypedef enum cutensornetStateProjectionMPSAttributes_t "cutensornetStateProjectionMPSAttributes_t":
     CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_ORTHO_OPTION "CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_ORTHO_OPTION" = 0
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_ABS_CUTOFF "CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_ABS_CUTOFF" = 1
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_REL_CUTOFF "CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_REL_CUTOFF" = 2
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_S_NORMALIZATION "CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_S_NORMALIZATION" = 3
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_ALGO "CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_ALGO" = 4
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_ALGO_PARAMS "CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_ALGO_PARAMS" = 5
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_DISCARDED_WEIGHT_CUTOFF "CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_DISCARDED_WEIGHT_CUTOFF" = 6
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_MAX_EXTENT "CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_MAX_EXTENT" = 7
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_MAX_EXTENT_PREPARE_POLICY "CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_MAX_EXTENT_PREPARE_POLICY" = 8
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_MAX_EXTENT "CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_MAX_EXTENT" = 9
     CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_NUM_HYPER_SAMPLES "CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_NUM_HYPER_SAMPLES" = 10
 
 ctypedef enum cutensornetNetworkAutotunePreferenceAttributes_t "cutensornetNetworkAutotunePreferenceAttributes_t":
     CUTENSORNET_NETWORK_AUTOTUNE_MAX_ITERATIONS "CUTENSORNET_NETWORK_AUTOTUNE_MAX_ITERATIONS"
     CUTENSORNET_NETWORK_AUTOTUNE_INTERMEDIATE_MODES "CUTENSORNET_NETWORK_AUTOTUNE_INTERMEDIATE_MODES"
+
+ctypedef enum cutensornetMarginalKind_t "cutensornetMarginalKind_t":
+    CUTENSORNET_MARGINAL_KIND_FULL "CUTENSORNET_MARGINAL_KIND_FULL" = 0
+    CUTENSORNET_MARGINAL_KIND_DIAGONAL "CUTENSORNET_MARGINAL_KIND_DIAGONAL" = 1
+
+ctypedef enum cutensornetStateProjectionMPSMaxExtentPreparePolicy_t "cutensornetStateProjectionMPSMaxExtentPreparePolicy_t":
+    CUTENSORNET_STATE_PROJECTION_MPS_MAX_EXTENT_PREPARE_POLICY_BUFFER "CUTENSORNET_STATE_PROJECTION_MPS_MAX_EXTENT_PREPARE_POLICY_BUFFER" = 0
+    CUTENSORNET_STATE_PROJECTION_MPS_MAX_EXTENT_PREPARE_POLICY_CONFIG "CUTENSORNET_STATE_PROJECTION_MPS_MAX_EXTENT_PREPARE_POLICY_CONFIG" = 1
 
 
 # types
@@ -262,24 +281,43 @@ cdef extern from *:
 
 
 ctypedef void* cutensornetNetworkDescriptor_t 'cutensornetNetworkDescriptor_t'
+
 ctypedef void* cutensornetContractionPlan_t 'cutensornetContractionPlan_t'
+
 ctypedef void* cutensornetHandle_t 'cutensornetHandle_t'
+
 ctypedef void* cutensornetWorkspaceDescriptor_t 'cutensornetWorkspaceDescriptor_t'
+
 ctypedef void* cutensornetContractionOptimizerConfig_t 'cutensornetContractionOptimizerConfig_t'
+
 ctypedef void* cutensornetContractionOptimizerInfo_t 'cutensornetContractionOptimizerInfo_t'
+
 ctypedef void* cutensornetContractionAutotunePreference_t 'cutensornetContractionAutotunePreference_t'
+
 ctypedef void* cutensornetSliceGroup_t 'cutensornetSliceGroup_t'
+
 ctypedef void* cutensornetTensorDescriptor_t 'cutensornetTensorDescriptor_t'
+
 ctypedef void* cutensornetTensorSVDConfig_t 'cutensornetTensorSVDConfig_t'
+
 ctypedef void* cutensornetTensorSVDInfo_t 'cutensornetTensorSVDInfo_t'
+
 ctypedef void* cutensornetState_t 'cutensornetState_t'
+
 ctypedef void* cutensornetStateMarginal_t 'cutensornetStateMarginal_t'
+
 ctypedef void* cutensornetStateSampler_t 'cutensornetStateSampler_t'
+
 ctypedef void* cutensornetStateAccessor_t 'cutensornetStateAccessor_t'
+
 ctypedef void* cutensornetStateExpectation_t 'cutensornetStateExpectation_t'
+
 ctypedef void* cutensornetNetworkOperator_t 'cutensornetNetworkOperator_t'
+
 ctypedef void* cutensornetStateProjectionMPS_t 'cutensornetStateProjectionMPS_t'
+
 ctypedef void* cutensornetNetworkAutotunePreference_t 'cutensornetNetworkAutotunePreference_t'
+
 ctypedef struct cutensornetNodePair_t 'cutensornetNodePair_t':
     int32_t first
     int32_t second
@@ -344,12 +382,14 @@ ctypedef void (*cutensornetLoggerCallback_t 'cutensornetLoggerCallback_t')(
     const char* functionName,
     const char* message
 )
+
 ctypedef void (*cutensornetLoggerCallbackData_t 'cutensornetLoggerCallbackData_t')(
     int32_t logLevel,
     const char* functionName,
     const char* message,
     void* userData
 )
+
 ctypedef struct cutensornetContractionPath_t 'cutensornetContractionPath_t':
     int32_t numContractions
     cutensornetNodePair_t* data
@@ -357,7 +397,6 @@ ctypedef struct cutensornetContractionPath_t 'cutensornetContractionPath_t':
 ctypedef struct cutensornetSlicingConfig_t 'cutensornetSlicingConfig_t':
     uint32_t numSlicedModes
     cutensornetSliceInfoPair_t* data
-
 
 ###############################################################################
 # Functions
@@ -511,3 +550,4 @@ cdef cutensornetStatus_t cutensornetStateUpdateTensorOperatorGradient(const cute
 cdef cutensornetStatus_t cutensornetExpectationComputeWithGradientsBackward(const cutensornetHandle_t handle, cutensornetStateExpectation_t tensorNetworkExpectation, int32_t accumulateGradients, const void* expectationValueAdjoint, const void* stateNormAdjoint, cutensornetWorkspaceDescriptor_t workDesc, void* expectationValue, void* stateNorm, cudaStream_t cudaStream) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cutensornetStatus_t cutensornetStateProjectionMPSUpdateCoefficients(const cutensornetHandle_t handle, cutensornetStateProjectionMPS_t tensorNetworkProjection, int32_t numCoeffs, const cuDoubleComplex coeffs[]) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cutensornetStatus_t cutensornetStateProjectionMPSUpdateDualTensors(const cutensornetHandle_t handle, cutensornetStateProjectionMPS_t tensorNetworkProjection, const int64_t* maxExtents[], const int64_t* validExtents[], const int64_t* strides[], void* dualTensorsData[], const cutensornetMPSEnvBounds_t* orthoSpec, cudaStream_t cudaStream) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cutensornetStatus_t cutensornetCreateMarginalDiagonal(const cutensornetHandle_t handle, cutensornetState_t tensorNetworkState, int32_t numMarginalModes, const int32_t* marginalModes, int32_t numProjectedModes, const int32_t* projectedModes, const int64_t* marginalDiagonalTensorStrides, cutensornetStateMarginal_t* tensorNetworkMarginal) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil

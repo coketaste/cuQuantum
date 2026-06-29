@@ -15,10 +15,11 @@ from cuquantum.bindings import cudensitymat as cudm
 from nvmath.internal import typemaps
 
 from ..utils import (
+    get_batch_size,
     get_empty_tensor_callback,
+    get_original_shape,
     get_tensor_gradient_attachment_callback,
     detect_ad_traced_object,
-    is_vmap_traced,
 )
 
 
@@ -43,8 +44,8 @@ class MatrixOperator:
             if data.ndim % 2 == 0:
                 # Expanding to a leading dimension 1 is necessary since we are taking 0 as the batch
                 # dimension when passing to ffi_lowering.
-                self.data = jnp.expand_dims(data, 0)
-                self.batch_size = 1
+                self.data = data
+                self.batch_size = get_batch_size(data)
             else:  # batched
                 self.data = data
                 self.batch_size = data.shape[0]
@@ -119,7 +120,7 @@ class MatrixOperator:
         Return the in_axes PyTree spec for vmapping over the batch dimension (axis 0 of data).
         """
         _, aux_data = self.tree_flatten()
-        if is_vmap_traced(self.data) or self.batch_size > 1:
+        if self.batch_size > 1:
             in_axes_data = 0
         else:
             in_axes_data = None
@@ -146,7 +147,7 @@ class MatrixOperator:
 
         return mat_op
 
-    def _create(self, handle):
+    def _create(self, handle, batch_size: int = 1):
         """
         Create opaque handle to the matrix operator.
         """
@@ -157,7 +158,12 @@ class MatrixOperator:
             self.requires_grad = detect_ad_traced_object(self.data)
             if self.requires_grad:
                 self._callback = get_empty_tensor_callback()
-                self._grad_callback = get_tensor_gradient_attachment_callback(self.data)
+                data_shape = get_original_shape(self.data)
+                if self.batch_size == 1:
+                    grad_shape = (batch_size, *data_shape)
+                else:
+                    grad_shape = data_shape
+                self._grad_callback = get_tensor_gradient_attachment_callback(grad_shape, self.data.dtype)
                 self._grad_ptr = self._grad_callback.callback.tensor_grad.data.ptr
 
             if self.batch_size == 1:

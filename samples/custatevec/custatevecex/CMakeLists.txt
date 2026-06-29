@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES.
+# Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
@@ -141,3 +141,4 @@ add_custatevec_example(custatevec_examples_ex "cuStateVecEx.example.quantum_stat
 add_custatevec_example(custatevec_examples_ex "cuStateVecEx.example.noise_channel"          "noise_channel.cpp;common.cpp")
 add_custatevec_example(custatevec_examples_ex "cuStateVecEx.example.interoperability_dot"   "interoperability_dot.cpp;stateVectorConstruction.cpp;common.cpp")
 add_custatevec_example(custatevec_examples_ex "cuStateVecEx.example.quantum_volume"         "quantum_volume.cpp;stateVectorConstruction.cpp;common.cpp")
+add_custatevec_example(custatevec_examples_ex "cuStateVecEx.example.substatevector_indices"   "substatevector_indices.cpp;stateVectorConstruction.cpp;common.cpp")

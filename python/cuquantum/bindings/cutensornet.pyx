@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.03.1, generator version 0.3.1.dev1471+gd13834924.d20260402. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1668+gb1eb0b259. Do not modify it directly.
 
 cimport cython
 cimport cpython
@@ -86,20 +86,16 @@ mps_env_bounds_dtype = _get_mps_env_bounds_dtype_offsets()
 
 cdef class MPSEnvBounds:
     """Empty-initialize an array of `cutensornetMPSEnvBounds_t`.
-
     The resulting object is of length `size` and of dtype `mps_env_bounds_dtype`.
     If default-constructed, the instance represents a single struct.
 
     Args:
         size (int): number of structs, default=1.
 
-
     .. seealso:: `cutensornetMPSEnvBounds_t`
     """
     cdef:
         readonly object _data
-
-
 
     def __init__(self, size=1):
         arr = _numpy.empty(size, dtype=mps_env_bounds_dtype)
@@ -225,7 +221,6 @@ cdef class MPSEnvBounds:
         obj._data = data.view(_numpy.recarray)
 
         return obj
-
 
 
 ###############################################################################
@@ -499,6 +494,7 @@ class StatePurity(_IntEnum):
     See `cutensornetStatePurity_t`.
     """
     PURE = CUTENSORNET_STATE_PURITY_PURE
+    MIXED = CUTENSORNET_STATE_PURITY_MIXED
 
 class MarginalAttribute(_IntEnum):
     """
@@ -510,6 +506,7 @@ class MarginalAttribute(_IntEnum):
     OPT_NUM_HYPER_SAMPLES = CUTENSORNET_MARGINAL_OPT_NUM_HYPER_SAMPLES
     CONFIG_NUM_HYPER_SAMPLES = CUTENSORNET_MARGINAL_CONFIG_NUM_HYPER_SAMPLES
     INFO_FLOPS = CUTENSORNET_MARGINAL_INFO_FLOPS
+    INFO_KIND = CUTENSORNET_MARGINAL_INFO_KIND
 
 class SamplerAttribute(_IntEnum):
     """
@@ -616,6 +613,15 @@ class StateProjectionMPSAttribute(_IntEnum):
     See `cutensornetStateProjectionMPSAttributes_t`.
     """
     CONFIG_ORTHO_OPTION = CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_ORTHO_OPTION
+    CONFIG_SVD_ABS_CUTOFF = CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_ABS_CUTOFF
+    CONFIG_SVD_REL_CUTOFF = CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_REL_CUTOFF
+    CONFIG_SVD_S_NORMALIZATION = CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_S_NORMALIZATION
+    CONFIG_SVD_ALGO = CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_ALGO
+    CONFIG_SVD_ALGO_PARAMS = CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_ALGO_PARAMS
+    CONFIG_SVD_DISCARDED_WEIGHT_CUTOFF = CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_DISCARDED_WEIGHT_CUTOFF
+    CONFIG_MAX_EXTENT = CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_MAX_EXTENT
+    CONFIG_MAX_EXTENT_PREPARE_POLICY = CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_MAX_EXTENT_PREPARE_POLICY
+    CONFIG_SVD_MAX_EXTENT = CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_MAX_EXTENT
     CONFIG_NUM_HYPER_SAMPLES = CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_NUM_HYPER_SAMPLES
 
 class NetworkAutotunePreferenceAttribute(_IntEnum):
@@ -627,6 +633,27 @@ class NetworkAutotunePreferenceAttribute(_IntEnum):
     """
     NETWORK_AUTOTUNE_MAX_ITERATIONS = CUTENSORNET_NETWORK_AUTOTUNE_MAX_ITERATIONS
     NETWORK_AUTOTUNE_INTERMEDIATE_MODES = CUTENSORNET_NETWORK_AUTOTUNE_INTERMEDIATE_MODES
+
+class MarginalKind(_IntEnum):
+    """
+    This enum captures the kind of marginal represented by a
+    `cutensornetStateMarginal_t` handle.
+
+    See `cutensornetMarginalKind_t`.
+    """
+    FULL = CUTENSORNET_MARGINAL_KIND_FULL
+    DIAGONAL = CUTENSORNET_MARGINAL_KIND_DIAGONAL
+
+class StateProjectionMPSMaxExtentPreparePolicy(_IntEnum):
+    """
+    Policy controlling whether
+    `CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_MAX_EXTENT` participates in
+    `cutensornetStateProjectionMPSPrepare`.
+
+    See `cutensornetStateProjectionMPSMaxExtentPreparePolicy_t`.
+    """
+    BUFFER = CUTENSORNET_STATE_PROJECTION_MPS_MAX_EXTENT_PREPARE_POLICY_BUFFER
+    CONFIG = CUTENSORNET_STATE_PROJECTION_MPS_MAX_EXTENT_PREPARE_POLICY_CONFIG
 
 
 ###############################################################################
@@ -784,7 +811,7 @@ cpdef intptr_t create_network_descriptor(intptr_t handle, int32_t num_inputs, nu
               to a valid sequence of 'int32_t', or
             - a nested Python sequence of ``int32_t``.
 
-        qualifiers_in (object): Array of size ``num_inputs``; ``qualifiers_in[i]`` denotes the qualifiers of i-th input tensor. Refer to ``cutensornetTensorQualifiers_t``. It can be:
+        qualifiers_in (object): Array of size ``num_inputs``; ``qualifiers_in[i]`` denotes the qualifiers of the i-th input tensor. Refer to ``cutensornetTensorQualifiers_t``. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``cutensornetTensorQualifiers_t``.
@@ -800,12 +827,12 @@ cpdef intptr_t create_network_descriptor(intptr_t handle, int32_t num_inputs, nu
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int64_t``.
 
-        modes_out (object): Array of size ``num_modes_out``; ``modes_out[j]`` denotes the j-th mode of the output tensor. output tensor. It can be:
+        modes_out (object): Array of size ``num_modes_out``; ``modes_out[j]`` denotes the j-th mode of the output tensor. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
-        data_type (int): Denotes the data type for all input an output tensors.
+        data_type (int): Denotes the data type for all input and output tensors.
         compute_type (ComputeType): Denotes the compute type used throughout the computation.
 
     Returns:
@@ -925,7 +952,7 @@ cpdef int64_t workspace_get_memory_size(intptr_t handle, intptr_t work_desc, int
 
 
 cpdef workspace_set_memory(intptr_t handle, intptr_t work_desc, int mem_space, int work_kind, intptr_t memory_ptr, int64_t memory_size):
-    """Sets the memory address and workspace size of the workspace provided by user.
+    """Sets the memory address and workspace size of the workspace provided by the user.
 
     Args:
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
@@ -1053,7 +1080,6 @@ cpdef get_contraction_optimizer_config_attribute_dtype(int attr):
 
 ###########################################################################
 
-
 cpdef contraction_optimizer_config_get_attribute(intptr_t handle, intptr_t optimizer_config, int attr, intptr_t buffer, size_t size_in_bytes):
     """Gets attributes of ``optimizer_config``.
 
@@ -1108,11 +1134,11 @@ cpdef destroy_contraction_optimizer_info(intptr_t optimizer_info):
 
 
 cpdef intptr_t create_contraction_optimizer_info(intptr_t handle, intptr_t network_desc) except? 0:
-    """Allocates resources for ``optimizerInfo``.
+    """Allocates resources for ``optimizer_info``.
 
     Args:
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
-        network_desc (intptr_t): Describes the tensor network (i.e., its tensors and their connectivity) for which ``optimizerInfo`` is created.
+        network_desc (intptr_t): Describes the tensor network (i.e., its tensors and their connectivity) for which ``optimizer_info`` is created.
 
     Returns:
         intptr_t: Pointer to ``cutensornetContractionOptimizerInfo_t``.
@@ -1178,7 +1204,6 @@ cpdef get_contraction_optimizer_info_attribute_dtype(int attr):
 
 ###########################################################################
 
-
 cpdef contraction_optimizer_info_get_attribute(intptr_t handle, intptr_t optimizer_info, int attr, intptr_t buffer, size_t size_in_bytes):
     """Gets attributes of ``optimizer_info``.
 
@@ -1186,7 +1211,7 @@ cpdef contraction_optimizer_info_get_attribute(intptr_t handle, intptr_t optimiz
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
         optimizer_info (intptr_t): Opaque structure that is accessed.
         attr (ContractionOptimizerInfoAttribute): Specifies the attribute that is requested.
-        buffer (intptr_t): On return, this buffer (of size ``size_in_bytes``) holds the value that corresponds to ``attr`` within ``optimizeInfo``.
+        buffer (intptr_t): On return, this buffer (of size ``size_in_bytes``) holds the value that corresponds to ``attr`` within ``optimizer_info``.
         size_in_bytes (size_t): Size of ``buffer`` (in bytes).
 
     .. note:: To compute the attribute size, use the itemsize of the corresponding data
@@ -1256,12 +1281,12 @@ cpdef contraction_optimizer_info_pack_data(intptr_t handle, intptr_t optimizer_i
 
 
 cpdef intptr_t create_contraction_optimizer_info_from_packed_data(intptr_t handle, intptr_t network_desc, buffer, size_t size_in_bytes) except? 0:
-    """Create an optimizerInfo object from the provided buffer.
+    """Creates an optimizer_info object from the provided buffer.
 
     Args:
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
-        network_desc (intptr_t): Describes the tensor network (i.e., its tensors and their connectivity) for which ``optimizerInfo`` is created.
-        buffer (bytes): A buffer with the contents of optimizerInfo in packed form.
+        network_desc (intptr_t): Describes the tensor network (i.e., its tensors and their connectivity) for which ``optimizer_info`` is created.
+        buffer (bytes): A buffer with the contents of optimizer_info in packed form.
         size_in_bytes (size_t): The size of the buffer (in bytes).
 
     Returns:
@@ -1278,7 +1303,7 @@ cpdef intptr_t create_contraction_optimizer_info_from_packed_data(intptr_t handl
 
 
 cpdef update_contraction_optimizer_info_from_packed_data(intptr_t handle, buffer, size_t size_in_bytes, intptr_t optimizer_info):
-    """Update the provided ``optimizer_info`` object from the provided buffer.
+    """Updates the provided ``optimizer_info`` object from the provided buffer.
 
     Args:
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
@@ -1334,7 +1359,7 @@ cpdef contraction_autotune(intptr_t handle, intptr_t plan, raw_data_in, intptr_t
     Args:
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
         plan (intptr_t): The plan must already be created (see :func:`create_contraction_plan`); the individual contraction plans will be fine-tuned.
-        raw_data_in (object): Array of N pointers (N being the number of input tensors specified :func:`create_network_descriptor`); ``raw_data_in[i]`` points to the data associated with the i-th input tensor (in device memory). It can be:
+        raw_data_in (object): Array of N pointers (N being the number of input tensors specified in :func:`create_network_descriptor`); ``raw_data_in[i]`` points to the data associated with the i-th input tensor (in device memory). It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of :class:`int`\s (as pointer addresses).
@@ -1394,7 +1419,6 @@ cpdef get_contraction_autotune_preference_attribute_dtype(int attr):
 
 ###########################################################################
 
-
 cpdef contraction_autotune_preference_get_attribute(intptr_t handle, intptr_t autotune_preference, int attr, intptr_t buffer, size_t size_in_bytes):
     """DEPRECATED: Gets attributes of ``autotune_preference``.
 
@@ -1449,7 +1473,7 @@ cpdef destroy_contraction_autotune_preference(intptr_t autotune_preference):
 
 
 cpdef intptr_t create_slice_group_from_id_range(intptr_t handle, int64_t slice_id_start, int64_t slice_id_stop, int64_t slice_id_step) except? 0:
-    """Create a ``cutensornetSliceGroup_t`` object from a range, which produces a sequence of slice IDs from the specified start (inclusive) to the specified stop (exclusive) values with the specified step. The sequence can be increasing or decreasing depending on the start and stop values.
+    """Creates a ``cutensornetSliceGroup_t`` object from a range, which produces a sequence of slice IDs from the specified start (inclusive) to the specified stop (exclusive) values with the specified step. The sequence can be increasing or decreasing depending on the start and stop values.
 
     Args:
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
@@ -1473,7 +1497,7 @@ cpdef destroy_slice_group(intptr_t slice_group):
     """Releases the resources associated with a ``cutensornetSliceGroup_t`` object and sets its value to null.
 
     Args:
-        slice_group (intptr_t): Opaque object specifying the slices to be contracted (see :func:`create_slice_group_from_id_range` and ``cutensornetCreateSliceGroupFromIDs()``).
+        slice_group (intptr_t): Opaque object specifying the slices to be contracted (see :func:`create_slice_group_from_id_range` and :func:`create_slice_group_from_ids`).
 
     .. seealso:: `cutensornetDestroySliceGroup`
     """
@@ -1496,7 +1520,7 @@ cpdef contract_slices(intptr_t handle, intptr_t plan, raw_data_in, intptr_t raw_
         raw_data_out (intptr_t): Points to the raw data of the output tensor (in device memory).
         accumulate_output (int32_t): If 0, write the contraction result into raw_data_out; otherwise accumulate the result into raw_data_out.
         work_desc (intptr_t): Opaque structure describing the workspace. The provided ``CUTENSORNET_WORKSPACE_SCRATCH`` workspace must be ``valid`` (the workspace pointer must be device accessible, see ``cutensornetMemspace_t``, and the workspace size must be the same as or larger than both the minimum needed and the value provided at plan creation). See :func:`create_contraction_plan`, :func:`workspace_get_memory_size` & :func:`workspace_set_memory`. The provided ``CUTENSORNET_WORKSPACE_CACHE`` workspace must be device accessible, see ``cutensornetMemspace_t``; it can be of any size, the larger the better, up to the size that can be queried with :func:`workspace_get_memory_size`. If a device memory handler is set, then ``work_desc`` can be set to null, or the memory pointer in ``work_desc`` of either the workspace kinds can be set to null, and the workspace size can be set either to a negative value (in which case the "recommended" size is used, see ``CUTENSORNET_WORKSIZE_PREF_RECOMMENDED``) or to a ``valid`` size. For a workspace of kind ``CUTENSORNET_WORKSPACE_SCRATCH``, a memory buffer with the specified size will be drawn from the user's mempool and released back once done. For a workspace of kind ``CUTENSORNET_WORKSPACE_CACHE``, a memory buffer with the specified size will be drawn from the user's mempool and released back once the ``work_desc`` is destroyed, if ``work_desc`` != NULL, otherwise, once the ``plan`` is destroyed, or an alternative ``work_desc`` with a different memory address/size is provided in a subsequent :func:`contract_slices` call.
-        slice_group (intptr_t): Opaque object specifying the slices to be contracted (see :func:`create_slice_group_from_id_range` and ``cutensornetCreateSliceGroupFromIDs()``). ``If set to null, all slices will be contracted.``.
+        slice_group (intptr_t): Opaque object specifying the slices to be contracted (see :func:`create_slice_group_from_id_range` and :func:`create_slice_group_from_ids`). ``If set to null, all slices will be contracted.``.
         stream (intptr_t): The CUDA stream on which the computation is performed.
 
     .. seealso:: `cutensornetContractSlices`
@@ -1524,7 +1548,7 @@ cpdef intptr_t create_tensor_descriptor(intptr_t handle, int32_t num_modes, exte
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int64_t``.
 
-        mode_labels (object): Array of size ``num_modes``; ``mode_labels[j]`` denotes the label of j-th mode of the tensor. It can be:
+        mode_labels (object): Array of size ``num_modes``; ``mode_labels[j]`` denotes the label of the j-th mode of the tensor. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -1622,7 +1646,6 @@ cpdef get_tensor_svd_config_attribute_dtype(int attr):
 
 ###########################################################################
 
-
 cpdef tensor_svd_config_get_attribute(intptr_t handle, intptr_t svd_config, int attr, intptr_t buffer, size_t size_in_bytes):
     """Gets attributes of ``svd_config``.
 
@@ -1705,7 +1728,7 @@ cpdef intptr_t create_tensor_svd_info(intptr_t handle) except? 0:
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
 
     Returns:
-        intptr_t: This data structure holds all information about the trucation at runtime.
+        intptr_t: This data structure holds all information about the truncation at runtime.
 
     .. seealso:: `cutensornetCreateTensorSVDInfo`
     """
@@ -1742,7 +1765,6 @@ cpdef get_tensor_svd_info_attribute_dtype(int attr):
     return tensor_svd_info_attribute_sizes[attr]
 
 ###########################################################################
-
 
 cpdef tensor_svd_info_get_attribute(intptr_t handle, intptr_t svd_info, int attr, intptr_t buffer, size_t size_in_bytes):
     """Gets attributes of ``svd_info``.
@@ -1790,7 +1812,7 @@ cpdef tensor_svd(intptr_t handle, intptr_t desc_tensor_in, intptr_t raw_data_in,
         desc_tensor_v (intptr_t): Describes the modes, extents, and other metadata information of the output tensor V.
         v (intptr_t): Pointer to the output tensor data V (in device memory).
         svd_config (intptr_t): This data structure holds the user-requested SVD parameters. Can be ``NULL`` if users do not need to perform value-based truncation or singular value partitioning.
-        svd_info (intptr_t): Opaque structure holding all information about the trucation at runtime. Can be ``NULL`` if runtime information on singular value truncation is not needed.
+        svd_info (intptr_t): Opaque structure holding all information about the truncation at runtime. Can be ``NULL`` if runtime information on singular value truncation is not needed.
         work_desc (intptr_t): Opaque structure describing the workspace. The provided workspace must be ``valid`` (the workspace size must be the same as or larger than the minimum needed). See :func:`workspace_get_memory_size` & :func:`workspace_set_memory`.
         stream (intptr_t): The CUDA stream on which the computation is performed.
 
@@ -2061,7 +2083,6 @@ cpdef get_network_attribute_dtype(int attr):
 
 ###########################################################################
 
-
 cpdef network_get_attribute(intptr_t handle, intptr_t network_desc, int attr, intptr_t buffer, size_t size_in_bytes):
     """Gets attributes of network_descriptor.
 
@@ -2231,7 +2252,7 @@ cpdef intptr_t create_marginal(intptr_t handle, intptr_t tensor_network_state, i
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
-        marginal_tensor_strides (object): Storage strides for the marginal tensor (number of tensor modes is twice the number of the defining open modes). If NULL, the defaul generalized column-major strides will be assumed. It can be:
+        marginal_tensor_strides (object): Storage strides for the marginal tensor (number of tensor modes is twice the number of the defining open modes). If NULL, the default generalized column-major strides will be assumed. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int64_t``.
@@ -2261,6 +2282,7 @@ cdef dict marginal_attribute_sizes = {
     CUTENSORNET_MARGINAL_OPT_NUM_HYPER_SAMPLES: _numpy.int32,
     CUTENSORNET_MARGINAL_CONFIG_NUM_HYPER_SAMPLES: _numpy.int32,
     CUTENSORNET_MARGINAL_INFO_FLOPS: _numpy.float64,
+    CUTENSORNET_MARGINAL_INFO_KIND: _numpy.int32,
 }
 
 cpdef get_marginal_attribute_dtype(int attr):
@@ -2278,7 +2300,6 @@ cpdef get_marginal_attribute_dtype(int attr):
     return marginal_attribute_sizes[attr]
 
 ###########################################################################
-
 
 cpdef marginal_configure(intptr_t handle, intptr_t tensor_network_marginal, int attribute, intptr_t attribute_value, size_t attribute_size):
     """Configures computation of the requested tensor network state marginal tensor.
@@ -2406,7 +2427,6 @@ cpdef get_sampler_attribute_dtype(int attr):
 
 ###########################################################################
 
-
 cpdef sampler_configure(intptr_t handle, intptr_t tensor_network_sampler, int attribute, intptr_t attribute_value, size_t attribute_size):
     """Configures the tensor network state sampler.
 
@@ -2482,7 +2502,7 @@ cpdef state_finalize_mps(intptr_t handle, intptr_t tensor_network_state, int bou
         handle (intptr_t): cuTensorNet library handle.
         tensor_network_state (intptr_t): Tensor network state.
         boundary_condition (BoundaryCondition): The boundary condition of the target MPS representation.
-        extents_out (object): Array of size ``nStateModes`` specifying the maximal extents of all tensors defining the target MPS representation. ``extents_out[i]`` is expected to be consistent with the mode order (shared mode between (i-1)th and i-th MPS tensor, state mode of the i-th MPS tensor, shared mode between i-th and (i+1)th MPS tensor). For the open boundary condition, the modes for the first tensor get reduced to (state mode, shared mode with the second site) while the modes for the last tensor become (shared mode with the second last site, state mode). It can be:
+        extents_out (object): Array of size ``nStateModes`` specifying the maximal extents of all tensors defining the target MPS representation. ``extents_out[i]`` is expected to be consistent with the mode order (shared mode between (i-1)th and i-th MPS tensor, state mode of the i-th MPS tensor, shared mode between the i-th and the (i+1)th MPS tensor). For the open boundary condition, the modes for the first tensor get reduced to (state mode, shared mode with the second site) while the modes for the last tensor become (shared mode with the second last site, state mode). It can be:
 
             - an :class:`int` as the pointer address to the nested sequence, or
             - a Python sequence of :class:`int`\s, each of which is a pointer address
@@ -2549,7 +2569,6 @@ cpdef get_state_attribute_dtype(int attr):
     return state_attribute_sizes[attr]
 
 ###########################################################################
-
 
 cpdef state_configure(intptr_t handle, intptr_t tensor_network_state, int attribute, intptr_t attribute_value, size_t attribute_size):
     """Configures computation of the full tensor network state, either in the exact or a factorized form.
@@ -2694,7 +2713,7 @@ cpdef intptr_t create_accessor(intptr_t handle, intptr_t tensor_network_state, i
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
-        amplitudes_tensor_strides (object): Mode strides for the resulting amplitudes tensor. If NULL, the default generalized column-major strides will be assumed. It can be:
+        amplitudes_tensor_strides (object): Mode strides for the resulting amplitudes tensor. The expected length matches the rank of the output tensor: ``N - num_projected_modes`` for pure states and ``2 * N - num_projected_modes`` for mixed states. If NULL, the default generalized column-major strides will be assumed. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int64_t``.
@@ -2739,7 +2758,6 @@ cpdef get_accessor_attribute_dtype(int attr):
     return accessor_attribute_sizes[attr]
 
 ###########################################################################
-
 
 cpdef accessor_configure(intptr_t handle, intptr_t tensor_network_accessor, int attribute, intptr_t attribute_value, size_t attribute_size):
     """Configures computation of the requested tensor network state amplitudes tensor.
@@ -2804,7 +2822,7 @@ cpdef accessor_compute(intptr_t handle, intptr_t tensor_network_accessor, projec
 
 
 cpdef destroy_accessor(intptr_t tensor_network_accessor):
-    """Destroyes the tensor network state amplitudes accessor.
+    """Destroys the tensor network state amplitudes accessor.
 
     Args:
         tensor_network_accessor (intptr_t): Tensor network state amplitudes accessor.
@@ -2859,7 +2877,6 @@ cpdef get_expectation_attribute_dtype(int attr):
     return expectation_attribute_sizes[attr]
 
 ###########################################################################
-
 
 cpdef expectation_configure(intptr_t handle, intptr_t tensor_network_expectation, int attribute, intptr_t attribute_value, size_t attribute_size):
     """Configures computation of the requested tensor network state expectation value.
@@ -2917,7 +2934,7 @@ cpdef expectation_compute(intptr_t handle, intptr_t tensor_network_expectation, 
 
 
 cpdef destroy_expectation(intptr_t tensor_network_expectation):
-    """Destroyes the tensor network state expectation value representation.
+    """Destroys the tensor network state expectation value representation.
 
     Args:
         tensor_network_expectation (intptr_t): Tensor network state expectation value representation.
@@ -3043,7 +3060,7 @@ cpdef int64_t state_apply_network_operator(intptr_t handle, intptr_t tensor_netw
     Args:
         handle (intptr_t): cuTensorNet library handle.
         tensor_network_state (intptr_t): Tensor network state.
-        tensor_network_operator (intptr_t): Tensor network operator containg only a single component.
+        tensor_network_operator (intptr_t): Tensor network operator containing only a single component.
         immutable (int32_t): Whether or not the tensor network operator data may change during the lifetime of the tensor network state.
         adjoint (int32_t): Whether or not the tensor network operator is applied as an adjoint.
         unitary (int32_t): Whether or not the tensor network operator is unitary with respect to the first and second halves of its modes.
@@ -3067,7 +3084,7 @@ cpdef state_initialize_mps(intptr_t handle, intptr_t tensor_network_state, int b
         handle (intptr_t): cuTensorNet library handle.
         tensor_network_state (intptr_t): Tensor network state.
         boundary_condition (BoundaryCondition): The boundary condition of the chosen MPS representation.
-        extents_in (object): Array of size ``nStateModes`` specifying the extents of all tensors defining the initial MPS representation. ``extents[i]`` is expected to be consistent with the mode order (shared mode between (i-1)th and i-th MPS tensor, state mode of the i-th MPS tensor, shared mode between i-th and the (i+1)th MPS tensor). For the open boundary condition, the modes of the first tensor get reduced to (state mode, shared mode with the second site) while the modes of the last tensor become (shared mode with the second to the last site, state mode). It can be:
+        extents_in (object): Array of size ``nStateModes`` specifying the extents of all tensors defining the initial MPS representation. ``extents[i]`` is expected to be consistent with the mode order (shared mode between (i-1)th and i-th MPS tensor, state mode of the i-th MPS tensor, shared mode between the i-th and the (i+1)th MPS tensor). For the open boundary condition, the modes of the first tensor get reduced to (state mode, shared mode with the second site) while the modes of the last tensor become (shared mode with the second to the last site, state mode). It can be:
 
             - an :class:`int` as the pointer address to the nested sequence, or
             - a Python sequence of :class:`int`\s, each of which is a pointer address
@@ -3278,7 +3295,7 @@ cpdef int64_t state_apply_unitary_channel(intptr_t handle, intptr_t tensor_netwo
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int64_t``.
 
-        probabilities (object): Probabilities associated with the individual tensor operators. It can be:
+        probabilities (object): Probabilities associated with the individual tensor operators (must sum to 1.0). It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``float``.
@@ -3319,7 +3336,7 @@ cpdef state_capture_mps(intptr_t handle, intptr_t tensor_network_state):
 
 
 cpdef int64_t state_apply_general_channel(intptr_t handle, intptr_t tensor_network_state, int32_t num_state_modes, state_modes, int32_t num_tensors, tensor_data, tensor_mode_strides) except? -1:
-    """Applies a tensor channel consisting of one or more gneral Kraus operators to the tensor network state.
+    """Applies a tensor channel consisting of one or more general Kraus operators to the tensor network state.
 
     Args:
         handle (intptr_t): cuTensorNet library handle.
@@ -3374,7 +3391,7 @@ cpdef intptr_t create_state_projection_mps(intptr_t handle, int32_t num_states, 
         coeffs (intptr_t): CPU accessible pointer to scalar coefficients for each tensor network state. If the tensor network states are of real datatype, the complex component of the coefficients will be ignored. A nullptr for this argument will be interpreted as unit coefficient for all network states.
         symmetric (int32_t): Whether or not the initial state of all tensor network states is defined by the values of the dual MPS tensors (in case of a symmetric MPS functional).
         num_envs (int32_t): Number of requested environments.
-        spec_envs (intptr_t): Specification of each requested environment. Environments are specified by providing the qudit indices to the left and right of the excluded MPS tensors. Note that currently only 0-site and 1-site environments are supported.
+        spec_envs (intptr_t): Specification of each requested environment. Environments are specified by providing the qudit indices to the left and right of the excluded MPS tensors. 0-, 1-, and 2-site environments are supported. When at least one 2-site environment is requested, subsequent calls to ``cutensornetStateProjectionMPSInsertTensor`` may shrink the shared bond extent of the affected sites via SVD truncation; bond extents in the remainder of the MPS remain unchanged.
         boundary_condition (BoundaryCondition): Boundary condition of the MPS. Currently only open boundary condition MPS are supported.
         num_tensors (int32_t): Number of tensors contained in the MPS. Currently, num_tensors must be equal to the number of qudits in the MPS.
         qudits_per_tensor (object): Number of consecutive qudits in each MPS tensor. Currently, qudits_per_tensor must be equal to 1. A nullptr for this argument will be interpreted as a single qudit per tensor. It can be:
@@ -3396,7 +3413,7 @@ cpdef intptr_t create_state_projection_mps(intptr_t handle, int32_t num_states, 
               to a valid sequence of 'int64_t', or
             - a nested Python sequence of ``int64_t``.
 
-        dual_tensors_data_out (object): GPU-accessible pointers for storing dual MPS tensors. May be nullptr to defer data pointer assignment until :func:`state_projection_mps_update_dual_tensors` is called. Individual elements dual_tensors_data_out[i] may also be nullptr to defer assignment for specific tensors. Note that the MPS tensors residing in these data buffers are not conjugated, and will be conjugated on-the-fly during the environment contraction. :func:`state_projection_mps_extract_tensor` and :func:`state_projection_mps_insert_tensor` have side effects on the provided data. It can be:
+        dual_tensors_data_out (object): GPU-accessible pointers for storing dual MPS tensors. May be nullptr to defer data pointer assignment until ``cutensornetStateProjectionMPSUpdateDualTensors`` is called. Individual elements dual_tensors_data_out[i] may also be nullptr to defer assignment for specific tensors. Note that the MPS tensors residing in these data buffers are not conjugated, and will be conjugated on-the-fly during the environment contraction. ``cutensornetStateProjectionMPSExtractTensor`` and ``cutensornetStateProjectionMPSInsertTensor`` have side effects on the provided data. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of :class:`int`\s (as pointer addresses).
@@ -3429,6 +3446,14 @@ cpdef intptr_t create_state_projection_mps(intptr_t handle, int32_t num_states, 
 
 cdef dict state_projection_mps_attribute_sizes = {
     CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_ORTHO_OPTION: _numpy.int32,
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_ABS_CUTOFF: _numpy.float64,
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_REL_CUTOFF: _numpy.float64,
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_S_NORMALIZATION: _numpy.int32,
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_ALGO: _numpy.int32,
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_DISCARDED_WEIGHT_CUTOFF: _numpy.float64,
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_MAX_EXTENT: _numpy.int64,
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_MAX_EXTENT_PREPARE_POLICY: _numpy.int32,
+    CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_MAX_EXTENT: _numpy.int64,
     CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_NUM_HYPER_SAMPLES: _numpy.int32,
 }
 
@@ -3444,10 +3469,11 @@ cpdef get_state_projection_mps_attribute_dtype(int attr):
     .. note:: This API has no C counterpart and is a convenient helper for
         allocating memory for :func:`state_projection_mps_configure`.
     """
+    if attr == CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_ALGO_PARAMS:
+        raise ValueError('use tensor_svd_algo_params_get_dtype to get the dtype')
     return state_projection_mps_attribute_sizes[attr]
 
 ###########################################################################
-
 
 cpdef state_projection_mps_configure(intptr_t handle, intptr_t tensor_network_projection, int attribute, intptr_t attribute_value, size_t attribute_size):
     """Configures computation of the requested tensor network state MPS projection.
@@ -3492,7 +3518,7 @@ cpdef state_projection_mps_compute_tensor_env(intptr_t handle, intptr_t tensor_n
     Args:
         handle (intptr_t): cuTensorNet library handle.
         tensor_network_projection (intptr_t): Tensor network state MPS projection.
-        env_spec (intptr_t): Specification of the requested environment. Note that currently only 0-site and 1-site environments are supported.
+        env_spec (intptr_t): Specification of the requested environment. 0-, 1-, and 2-site environments are supported.
         strides_in (object): Strides of the provided MPS representation tensor for the specified environment. A nullptr for this argument will use default (column-major) strides. Required to be a nullptr if MPS projection is not symmetric. It can be:
 
             - an :class:`int` as the pointer address to the array, or
@@ -3527,8 +3553,8 @@ cpdef state_projection_mps_get_tensor_info(intptr_t handle, intptr_t tensor_netw
     Args:
         handle (intptr_t): cuTensorNet library handle.
         tensor_network_projection (intptr_t): Tensor network state MPS projection.
-        env_spec (intptr_t): Specification of the environment for which the tensor metadata is requested. Note that currently only 0-site and 1-site environments are supported.
-        extents (intptr_t): Mode extents of the environment MPS tensor. For pure states, the required length of the array is n+2 for an n-site environment specified by env_spec, except for environments which comprise the boundary for open boundary conditions, which are of length n+1. Note that currently only 0-site and 1-site environments are supported.
+        env_spec (intptr_t): Specification of the environment for which the tensor metadata is requested. 0-, 1-, and 2-site environments are supported.
+        extents (intptr_t): Mode extents of the environment MPS tensor. For pure states, the required length of the array is n+2 for an n-site environment specified by env_spec, except for environments which comprise the boundary for open boundary conditions, which are of length n+1. For 2-site environments, the reported extents reflect the ``current`` (possibly truncated) shared bond, which may be smaller than at the time of ``cutensornetStateProjectionMPSPrepare`` after a previous ``cutensornetStateProjectionMPSInsertTensor`` call.
         recommended_strides (intptr_t): Recommended strides of the environment MPS tensor, of the same length as the extents array. Using the recommended strides may offer performance benefits.
 
     .. seealso:: `cutensornetStateProjectionMPSGetTensorInfo`
@@ -3544,13 +3570,13 @@ cpdef state_projection_mps_extract_tensor(intptr_t handle, intptr_t tensor_netwo
     Args:
         handle (intptr_t): cuTensorNet library handle.
         tensor_network_projection (intptr_t): Tensor network state MPS projection.
-        env_spec (intptr_t): Specification of environment. The environment has to have been requested during the creation of the tensor network state MPS projection. Note that currently only 0-site and 1-site environments are supported.
+        env_spec (intptr_t): Specification of environment. The environment has to have been requested during the creation of the tensor network state MPS projection. 0-, 1-, and 2-site environments are supported.
         strides (object): Strides of the externally provided MPS representation tensor for the specified environment. A nullptr for this argument will use default (column-major) strides. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int64_t``.
 
-        env_tensor_data (intptr_t): The computed tensor of the MPS representation for the specified environment will be written to this buffer with the provided strides. Extents of the provided buffer need to be queried using :func:`state_projection_mps_get_tensor_info`.
+        env_tensor_data (intptr_t): The computed tensor of the MPS representation for the specified environment will be written to this buffer with the provided strides. Extents of the provided buffer need to be queried using ``cutensornetStateProjectionMPSGetTensorInfo``. For 2-site environments the extracted tensor is the merged Theta = A_l . A_r at the current shared bond extent (which may be smaller than the maximum after a previous insertion's SVD truncation).
         work_desc (intptr_t): Allocated workspace descriptor.
         cuda_stream (intptr_t): CUDA stream.
 
@@ -3570,13 +3596,13 @@ cpdef state_projection_mps_insert_tensor(intptr_t handle, intptr_t tensor_networ
         handle (intptr_t): cuTensorNet library handle.
         tensor_network_projection (intptr_t): Tensor network state MPS projection.
         env_spec (intptr_t): Specification of environment.
-        ortho_spec (intptr_t): Specification of the orthogonality condition of the MPS after insertion. For insertion of a 1-site environment, this argument is currently required to be identical to env_spec. For insertion of a 0-site environment, the orthogonality center must be a 1-site region adjacent to the bond.
+        ortho_spec (intptr_t): Specification of the orthogonality condition of the MPS after insertion. For insertion of a 1-site environment, this argument is currently required to be identical to ``env_spec``. For insertion of a 0-site environment, the orthogonality center must be a 1-site region adjacent to the bond. For insertion of a 2-site environment, the orthogonality center must be one of the two 1-site sub-regions of ``env_spec`` (left or right site).
         strides (object): Strides of the externally provided MPS representation tensor for the specified environment. A nullptr for this argument will use default (column-major) strides. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int64_t``.
 
-        env_tensor_data (intptr_t): Externally provided MPS representation tensor for the specified environment. If the projection MPS is configured with two-site environments, extents may have changed after insertion of tensors and need to be queried using :func:`state_projection_mps_get_tensor_info`.
+        env_tensor_data (intptr_t): Externally provided MPS representation tensor for the specified environment. For 2-site environments, this tensor is decomposed via SVD according to the configured cutoffs, normalization, algorithm, and ``CUTENSORNET_STATE_PROJECTION_MPS_CONFIG_SVD_MAX_EXTENT`` cap (see ``cutensornetStateProjectionMPSAttributes_t``), which may shrink the shared bond extent of the affected sites. The new extents become observable via ``cutensornetStateProjectionMPSGetTensorInfo`` and govern the shape of subsequently extracted region tensors and computed environments.
         work_desc (intptr_t): Allocated workspace descriptor.
         cuda_stream (intptr_t): CUDA stream.
 
@@ -3645,7 +3671,7 @@ cpdef int64_t network_append_tensor(intptr_t handle, intptr_t network_desc, int3
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int64_t``.
 
-        mode_labels (object): Array of size ``num_modes``; ``mode_labels[j]`` denotes the label of j-th mode of the tensor. It can be:
+        mode_labels (object): Array of size ``num_modes``; ``mode_labels[j]`` denotes the label of the j-th mode of the tensor. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -3676,7 +3702,7 @@ cpdef network_set_output_tensor(intptr_t handle, intptr_t network_desc, int32_t 
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
         network_desc (intptr_t): Opaque handle to a tensor network descriptor, created using :func:`create_network`.
         num_modes (int32_t): The number of modes of the tensor. If this value is ``0``, the network is force reduced.
-        mode_labels (object): Array of size ``num_modes``; ``mode_labels[j]`` denotes the label of j-th mode of the tensor. It can be:
+        mode_labels (object): Array of size ``num_modes``; ``mode_labels[j]`` denotes the label of the j-th mode of the tensor. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -3780,7 +3806,6 @@ cpdef get_network_autotune_preference_attribute_dtype(int attr):
 
 ###########################################################################
 
-
 cpdef network_autotune_preference_get_attribute(intptr_t handle, intptr_t autotune_preference, int attr, intptr_t buffer, size_t size_in_bytes):
     """Gets attributes of network ``autotune_preference``.
 
@@ -3835,14 +3860,14 @@ cpdef destroy_network_autotune_preference(intptr_t autotune_preference):
 
 
 cpdef network_set_input_tensor_memory(intptr_t handle, intptr_t network_desc, int64_t tensor_id, intptr_t buffer, strides):
-    """Provide memory buffer and strides corresponding to an input tensor for the network to be used for data reading.
+    """Provides memory buffer and strides corresponding to an input tensor for the network to be used for data reading.
 
     Args:
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
         network_desc (intptr_t): The network descriptor.
         tensor_id (int64_t): The tensor_id as returned by :func:`network_append_tensor`.
         buffer (intptr_t): Pointer to memory buffer in device memory.
-        strides (object): Array of size the number of modes of the corresponding tensor; ``strides[j]`` corresponding to the linearized offset -- in physical memory -- between two logically-neighboring elements w.r.t the j-th mode of the tensor. It can be:
+        strides (object): Array of size equal to the number of modes of the corresponding tensor; ``strides[j]`` corresponding to the linearized offset -- in physical memory -- between two logically-neighboring elements w.r.t the j-th mode of the tensor. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int64_t``.
@@ -3858,13 +3883,13 @@ cpdef network_set_input_tensor_memory(intptr_t handle, intptr_t network_desc, in
 
 
 cpdef network_set_output_tensor_memory(intptr_t handle, intptr_t network_desc, intptr_t buffer, strides):
-    """Provide memory buffer and strides corresponding to the output tensor of the network to be used for data writing.
+    """Provides memory buffer and strides corresponding to the output tensor of the network to be used for data writing.
 
     Args:
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
         network_desc (intptr_t): The network descriptor.
         buffer (intptr_t): Pointer to memory buffer in device memory.
-        strides (object): Array of size the number of modes of the corresponding tensor; ``strides[j]`` corresponding to the linearized offset -- in physical memory -- between two logically-neighboring elements w.r.t the j-th mode of the tensor. It can be:
+        strides (object): Array of size equal to the number of modes of the corresponding tensor; ``strides[j]`` corresponding to the linearized offset -- in physical memory -- between two logically-neighboring elements w.r.t the j-th mode of the tensor. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int64_t``.
@@ -3880,14 +3905,14 @@ cpdef network_set_output_tensor_memory(intptr_t handle, intptr_t network_desc, i
 
 
 cpdef network_set_gradient_tensor_memory(intptr_t handle, intptr_t network_desc, int64_t corresponding_tensor_id, intptr_t buffer, strides):
-    """Provide memory buffer and strides of the gradient corresponding to tensorId of the network to be used for data writing.
+    """Provides memory buffer and strides of the gradient corresponding to tensorId of the network to be used for data writing.
 
     Args:
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
         network_desc (intptr_t): The network descriptor.
         corresponding_tensor_id (int64_t): The tensorId as returned by :func:`network_append_tensor` for the tensor whose gradient is to be computed.
-        buffer (intptr_t): Pointer to memory bugger in device memory.
-        strides (object): Array of size the number of modes of the corresponding tensor; ``strides[j]`` corresponding to the linearized offset -- in physical memory -- between two logically-neighboring elements w.r.t the j-th mode of the tensor. It can be:
+        buffer (intptr_t): Pointer to memory buffer in device memory.
+        strides (object): Array of size equal to the number of modes of the corresponding tensor; ``strides[j]`` corresponding to the linearized offset -- in physical memory -- between two logically-neighboring elements w.r.t the j-th mode of the tensor. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int64_t``.
@@ -3903,13 +3928,13 @@ cpdef network_set_gradient_tensor_memory(intptr_t handle, intptr_t network_desc,
 
 
 cpdef network_set_adjoint_tensor_memory(intptr_t handle, intptr_t network_desc, intptr_t buffer, strides):
-    """Provide memory buffer and strides for the adjoint/activation tensor of the network to be used for data reading.
+    """Provides memory buffer and strides for the adjoint/activation tensor of the network to be used for data reading.
 
     Args:
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
         network_desc (intptr_t): The network descriptor.
-        buffer (intptr_t): Pointer to memory bugger in device memory.
-        strides (object): Array of size the number of modes of the corresponding tensor; ``strides[j]`` corresponding to the linearized offset -- in physical memory -- between two logically-neighboring elements w.r.t the j-th mode of the tensor. It can be:
+        buffer (intptr_t): Pointer to memory buffer in device memory.
+        strides (object): Array of size equal to the number of modes of the corresponding tensor; ``strides[j]`` corresponding to the linearized offset -- in physical memory -- between two logically-neighboring elements w.r.t the j-th mode of the tensor. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int64_t``.
@@ -3929,10 +3954,10 @@ cpdef network_contract(intptr_t handle, intptr_t network_desc, int32_t accumulat
 
     Args:
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
-        network_desc (intptr_t): The network descriptor whose specifed slices (``slice_group``) will be contracted (see :func:`network_prepare_contraction` and :func:`network_autotune_contraction`). Some internal meta-data may be updated upon contraction.
+        network_desc (intptr_t): The network descriptor whose specified slices (``slice_group``) will be contracted (see :func:`network_prepare_contraction` and :func:`network_autotune_contraction`). Some internal meta-data may be updated upon contraction.
         accumulate_output (int32_t): If 0, write the contraction result into output data buffer as provided by :func:`network_set_output_tensor_memory`; otherwise, accumulate the results.
-        work_desc (intptr_t): Opaque structure describing the workspace. The provided ``CUTENSORNET_WORKSPACE_SCRATCH`` workspace must be ``valid`` (the workspace pointer must be device accessible, see ``cutensornetMemspace_t``, and the workspace size must be the same as or larger than both the minimum needed and the value provided at contraction preparation). See :func:`network_prepare_contraction`, :func:`workspace_get_memory_size` & :func:`workspace_set_memory`. The provided ``CUTENSORNET_WORKSPACE_CACHE`` workspace must be device accessible, see ``cutensornetMemspace_t``; it can be of any size, the larger the better, up to the size that can be queried with :func:`workspace_get_memory_size`. If a device memory handler is set (see ``cutensornetSetDeviceMemHandler()``), then ``work_desc`` can be set to null, or the memory pointer in ``work_desc`` of either the workspace kinds can be set to null, and the workspace size can be set either to a negative value (in which case the "recommended" size is used, see ``CUTENSORNET_WORKSIZE_PREF_RECOMMENDED``) or to a ``valid`` size. For a workspace of kind ``CUTENSORNET_WORKSPACE_SCRATCH``, a memory buffer with the specified size will be drawn from the user's mempool and released back once done. For a workspace of kind ``CUTENSORNET_WORKSPACE_CACHE``, a memory buffer with the specified size will be drawn from the user's mempool and released back once the ``work_desc`` is destroyed, if ``work_desc`` != NULL, otherwise, once the ``network_desc`` is destroyed, :func:`workspace_purge_cache` is called, or an alternative ``work_desc`` with a different memory address/size is provided in a subsequent :func:`network_contract` call.
-        slice_group (intptr_t): Opaque object specifying the slices to be contracted (see :func:`create_slice_group_from_id_range` and ``cutensornetCreateSliceGroupFromIDs()``). ``If set to null, all slices will be contracted.``.
+        work_desc (intptr_t): Opaque structure describing the workspace. The provided ``CUTENSORNET_WORKSPACE_SCRATCH`` workspace must be ``valid`` (the workspace pointer must be device accessible, see ``cutensornetMemspace_t``, and the workspace size must be the same as or larger than both the minimum needed and the value provided at contraction preparation). See :func:`network_prepare_contraction`, :func:`workspace_get_memory_size` & :func:`workspace_set_memory`. The provided ``CUTENSORNET_WORKSPACE_CACHE`` workspace must be device accessible, see ``cutensornetMemspace_t``; it can be of any size, the larger the better, up to the size that can be queried with :func:`workspace_get_memory_size`. If a device memory handler is set (see :func:`set_device_mem_handler`), then ``work_desc`` can be set to null, or the memory pointer in ``work_desc`` of either the workspace kinds can be set to null, and the workspace size can be set either to a negative value (in which case the "recommended" size is used, see ``CUTENSORNET_WORKSIZE_PREF_RECOMMENDED``) or to a ``valid`` size. For a workspace of kind ``CUTENSORNET_WORKSPACE_SCRATCH``, a memory buffer with the specified size will be drawn from the user's mempool and released back once done. For a workspace of kind ``CUTENSORNET_WORKSPACE_CACHE``, a memory buffer with the specified size will be drawn from the user's mempool and released back once the ``work_desc`` is destroyed, if ``work_desc`` != NULL, otherwise, once the ``network_desc`` is destroyed, :func:`workspace_purge_cache` is called, or an alternative ``work_desc`` with a different memory address/size is provided in a subsequent :func:`network_contract` call.
+        slice_group (intptr_t): Opaque object specifying the slices to be contracted (see :func:`create_slice_group_from_id_range` and :func:`create_slice_group_from_ids`). ``If set to null, all slices will be contracted.``.
         stream (intptr_t): The CUDA stream on which the computation is performed.
 
     .. seealso:: `cutensornetNetworkContract`
@@ -3962,10 +3987,10 @@ cpdef network_compute_gradients_backward(intptr_t handle, intptr_t network_desc,
 
     Args:
         handle (intptr_t): Opaque handle holding cuTensorNet's library context.
-        network_desc (intptr_t): The network descriptor whose specifed slices (``slice_group``) gradients will be computed (see :func:`network_prepare_gradients_backward`). Some internal meta-data may be updated upon contraction.
-        accumulate_output (int32_t): If 0, write the gradient results into gradients memory buffers; otherwise accumulates the results into gradients memory buffers.
+        network_desc (intptr_t): The network descriptor whose specified slices (``slice_group``) gradients will be computed (see :func:`network_prepare_gradients_backward`). Some internal meta-data may be updated upon contraction.
+        accumulate_output (int32_t): If 0, write the gradient results into gradients memory buffers; otherwise, accumulate the results into gradients memory buffers.
         work_desc (intptr_t): Opaque structure describing the workspace. The provided ``CUTENSORNET_WORKSPACE_SCRATCH`` workspace must be ``valid`` (the workspace pointer must be device accessible, see ``cutensornetMemspace_t``, and the workspace size must be the same as or larger than the minimum needed). See :func:`workspace_compute_contraction_sizes`, :func:`workspace_get_memory_size` & :func:`workspace_set_memory`. The provided ``CUTENSORNET_WORKSPACE_CACHE`` workspace must be ``valid`` (the workspace pointer must be device accessible, see ``cutensornetMemspace_t``), and contains the cached intermediate tensors from the corresponding :func:`network_contract` call. If a device memory handler is set, and ``work_desc`` is set to null, or the memory pointer in ``work_desc`` of either the workspace kinds is set to null, for both calls to :func:`network_contract` and :func:`network_compute_gradients_backward`, memory will be drawn from the memory pool. See :func:`network_contract` for details.
-        slice_group (intptr_t): Opaque object specifying the slices of the gradients to be computed (see :func:`create_slice_group_from_id_range` and ``cutensornetCreateSliceGroupFromIDs()``). ``If set to null, all slices will be computed.``.
+        slice_group (intptr_t): Opaque object specifying the slices of the gradients to be computed (see :func:`create_slice_group_from_id_range` and :func:`create_slice_group_from_ids`). ``If set to null, all slices will be computed.``.
         stream (intptr_t): The CUDA stream on which the computation is performed.
 
     .. seealso:: `cutensornetNetworkComputeGradientsBackward`
@@ -4102,7 +4127,7 @@ cpdef state_projection_mps_update_coefficients(intptr_t handle, intptr_t tensor_
     Args:
         handle (intptr_t): cuTensorNet library handle.
         tensor_network_projection (intptr_t): MPS projection of a set of tensor network states.
-        num_coeffs (int32_t): Number of scalar coefficients provided. Must be equal to numStates supplied to :func:`create_state_projection_mps`.
+        num_coeffs (int32_t): Number of scalar coefficients provided. Must be equal to ``numStates`` supplied to ``cutensornetCreateStateProjectionMPS``.
         coeffs (intptr_t): CPU-accessible pointer to scalar coefficients for each tensor network state.
 
     .. seealso:: `cutensornetStateProjectionMPSUpdateCoefficients`
@@ -4118,28 +4143,28 @@ cpdef state_projection_mps_update_dual_tensors(intptr_t handle, intptr_t tensor_
     Args:
         handle (intptr_t): cuTensorNet library handle.
         tensor_network_projection (intptr_t): Tensor network state MPS projection.
-        max_extents (object): Extents describing the allocated buffer capacity for each dual MPS tensor, passed as array of length number MPS tensors (currently equal to number of qudits), holding pointers to integer arrays. May not be nullptr at the top level. Individual elements max_extents[i] may be nullptr, meaning "buffer extents for site i match the creation-time extents". Currently max_extents must match the extents passed to ``cutensornetCreateStateProjectionMPS``; mismatches return CUTENSORNET_STATUS_NOT_SUPPORTED. It can be:
+        max_extents (object): Extents describing the allocated buffer capacity for each dual MPS tensor, passed as array of length equal to the number of MPS tensors (currently equal to number of qudits), holding pointers to integer arrays. May not be nullptr at the top level. Individual elements ``max_extents[i]`` may be nullptr, meaning "buffer extents for site i match the creation-time extents". Currently ``max_extents`` must match the extents passed to ``cutensornetCreateStateProjectionMPS``; mismatches return ``CUTENSORNET_STATUS_NOT_SUPPORTED``. It can be:
 
             - an :class:`int` as the pointer address to the nested sequence, or
             - a Python sequence of :class:`int`\s, each of which is a pointer address
               to a valid sequence of 'int64_t', or
             - a nested Python sequence of ``int64_t``.
 
-        valid_extents (object): Extents describing the valid data region within each buffer, passed as array of length number MPS tensors, holding pointers to integer arrays. May not be nullptr at the top level. Individual elements valid_extents[i] may be nullptr, meaning "valid extents for site i match the creation-time extents". Currently valid_extents must match the creation-time extents; mismatches return CUTENSORNET_STATUS_NOT_SUPPORTED. It can be:
+        valid_extents (object): Extents describing the valid data region within each buffer, passed as array of length equal to the number of MPS tensors, holding pointers to integer arrays. May not be nullptr at the top level. Individual elements ``valid_extents[i]`` may be nullptr, meaning "valid extents for site i span the full buffer extents". ``valid_extents`` must be positive and may not exceed the buffer extents specified by ``max_extents`` / ``cutensornetCreateStateProjectionMPS``. It can be:
 
             - an :class:`int` as the pointer address to the nested sequence, or
             - a Python sequence of :class:`int`\s, each of which is a pointer address
               to a valid sequence of 'int64_t', or
             - a nested Python sequence of ``int64_t``.
 
-        strides (object): Strides of all dual MPS tensors, passed as array of length number MPS tensors, holding pointer to integer arrays. May be nullptr to use default (column-major) strides for all tensors. Individual elements strides[i] may also be nullptr to use default strides for tensor i. For pure states all stride arrays are of length 3, with the exception of open boundary condition MPS for which the first and last stride array are of length 2. Note that currently strides needs to match the strides passed to the ``cutensornetCreateStateProjectionMPS`` call. It can be:
+        strides (object): Strides of all dual MPS tensors, passed as array of length equal to the number of MPS tensors, holding pointer to integer arrays. Strides describe the allocated buffer layout, not the possibly smaller ``valid_extents`` region. May be nullptr to use the default (column-major) strides for the full buffer extents of all tensors. Individual elements ``strides[i]`` may also be nullptr to use default full-buffer strides for tensor i. For pure states all stride arrays are of length 3, with the exception of open boundary condition MPS for which the first and last stride array are of length 2. Note that currently ``strides`` needs to match the strides passed to the ``cutensornetCreateStateProjectionMPS`` call (or the corresponding default full-buffer strides). It can be:
 
             - an :class:`int` as the pointer address to the nested sequence, or
             - a Python sequence of :class:`int`\s, each of which is a pointer address
               to a valid sequence of 'int64_t', or
             - a nested Python sequence of ``int64_t``.
 
-        dual_tensors_data (object): GPU-accessible pointers for all dual MPS tensor buffers. Individual elements dual_tensors_data[i] may be nullptr to keep the existing data pointer for site i. If dual_tensors_data[i] is nullptr and site i has no existing data pointer, CUTENSORNET_STATUS_INVALID_VALUE is returned. It can be:
+        dual_tensors_data (object): GPU-accessible pointers for all dual MPS tensor buffers. Individual elements ``dual_tensors_data[i]`` may be nullptr to keep the existing data pointer for site i. If ``dual_tensors_data[i]`` is nullptr and site i has no existing data pointer, ``CUTENSORNET_STATUS_INVALID_VALUE`` is returned. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of :class:`int`\s (as pointer addresses).
@@ -4160,6 +4185,48 @@ cpdef state_projection_mps_update_dual_tensors(intptr_t handle, intptr_t tensor_
     with nogil:
         __status__ = cutensornetStateProjectionMPSUpdateDualTensors(<const Handle>handle, <StateProjectionMPS>tensor_network_projection, <const int64_t**>(_max_extents_.ptrs.data()), <const int64_t**>(_valid_extents_.ptrs.data()), <const int64_t**>(_strides_.ptrs.data()), <void**>(_dual_tensors_data_.data()), <const cutensornetMPSEnvBounds_t*>ortho_spec, <Stream>cuda_stream)
     check_status(__status__)
+
+
+cpdef intptr_t create_marginal_diagonal(intptr_t handle, intptr_t tensor_network_state, int32_t num_marginal_modes, marginal_modes, int32_t num_projected_modes, projected_modes, marginal_diagonal_tensor_strides) except? 0:
+    """Creates a representation of the diagonal of a marginal tensor for a given tensor network state.
+
+    Args:
+        handle (intptr_t): cuTensorNet library handle.
+        tensor_network_state (intptr_t): Tensor network state.
+        num_marginal_modes (int32_t): Number of open state modes defining the marginal.
+        marginal_modes (object): Pointer to the open state modes defining the marginal. It can be:
+
+            - an :class:`int` as the pointer address to the array, or
+            - a Python sequence of ``int32_t``.
+
+        num_projected_modes (int32_t): Number of projected state modes.
+        projected_modes (object): Pointer to the projected state modes. It can be:
+
+            - an :class:`int` as the pointer address to the array, or
+            - a Python sequence of ``int32_t``.
+
+        marginal_diagonal_tensor_strides (object): Storage strides for the marginal-diagonal tensor (number of tensor modes equals ``num_marginal_modes``, half the rank of the full marginal output). If NULL, the default generalized column-major strides are used. It can be:
+
+            - an :class:`int` as the pointer address to the array, or
+            - a Python sequence of ``int64_t``.
+
+
+    Returns:
+        intptr_t: Tensor network state marginal-diagonal handle.
+
+    .. seealso:: `cutensornetCreateMarginalDiagonal`
+    """
+    cdef nullable_unique_ptr[ vector[int32_t] ] _marginal_modes_
+    get_resource_ptr[int32_t](_marginal_modes_, marginal_modes, <int32_t*>NULL)
+    cdef nullable_unique_ptr[ vector[int32_t] ] _projected_modes_
+    get_resource_ptr[int32_t](_projected_modes_, projected_modes, <int32_t*>NULL)
+    cdef nullable_unique_ptr[ vector[int64_t] ] _marginal_diagonal_tensor_strides_
+    get_resource_ptr[int64_t](_marginal_diagonal_tensor_strides_, marginal_diagonal_tensor_strides, <int64_t*>NULL)
+    cdef StateMarginal tensor_network_marginal
+    with nogil:
+        __status__ = cutensornetCreateMarginalDiagonal(<const Handle>handle, <State>tensor_network_state, num_marginal_modes, <const int32_t*>(_marginal_modes_.data()), num_projected_modes, <const int32_t*>(_projected_modes_.data()), <const int64_t*>(_marginal_diagonal_tensor_strides_.data()), &tensor_network_marginal)
+    check_status(__status__)
+    return <intptr_t>tensor_network_marginal
 
 
 # for backward compat

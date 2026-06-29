@@ -6,8 +6,11 @@ from .work_stream import *
 from .elementary_operator import *
 from .matrix_operator import *
 from .matrix_product_operator import *
+from .state_fitting import *
 from .operators import *
 from .state import *
 from .callbacks import *
 from .spectrum import *
+from .svd import *
 from .time_propagation import *
+from .eigen_decomposition import *

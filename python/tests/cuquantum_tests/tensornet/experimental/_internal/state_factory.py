@@ -9,23 +9,73 @@ from cuquantum.tensornet import contract, NetworkOptions
 from cuquantum.tensornet.experimental import NetworkState, NetworkOperator
 from cuquantum.tensornet.experimental._internal.network_state_utils import get_pauli_map
 
+from nvmath.internal.utils import infer_object_package
+
 from ...utils.data import ARRAY_BACKENDS
 from ...utils.helpers import TensorBackend, get_dtype_name
 
 
-def _random_unitary(backend, shape, dtype, rng):
-    """Return a random unitary tensor of the given shape (2D or 4D). Uses QR of a random matrix."""
-    xp = backend.module
+def random_unitary(n, rng=None, *, dtype="complex128"):
+    """Haar-random unitary/orthogonal matrix as a numpy ``(n, n)`` matrix.
+
+    For complex dtypes, returns a Haar-random unitary (U(n)).
+    For real dtypes, returns a Haar-random orthogonal matrix (O(n)), avoiding
+    complex->real casts (and the associated ``ComplexWarning``).
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    dtype_s = get_dtype_name(dtype)
+    n = int(n)
+    if dtype_s in ("float32", "float64"):
+        z = rng.standard_normal((n, n))
+        q, r = np.linalg.qr(z)
+        d = np.diagonal(r)
+        # Fix the sign ambiguity so Q is distributed uniformly over O(n).
+        q *= d / np.abs(d)
+        return q.astype(dtype_s)
+    else:
+        z = rng.standard_normal((n, n)) + 1j * rng.standard_normal((n, n))
+        q, r = np.linalg.qr(z)
+        d = np.diagonal(r)
+        q *= d / np.abs(d)
+        return q.astype(dtype_s)
+
+
+def _hilbert_dim_from_sd_gate_shape(shape):
+    """Hilbert-space dimension for dense gates used in S/D layers only.
+
+    * Rank 2 ``(d, d)``: one site, dimension ``d``.
+    * Rank 4 ``(d1, d2, d1, d2)``: two sites, dimension ``d1 * d2``.
+
+    Other ranks are not produced by :class:`StateFactory` single/double-qudit layers.
+    """
     if len(shape) == 2:
-        size = shape[0]
-        A = backend.random((size, size), dtype, rng)
-        Q, _ = xp.linalg.qr(A)
-        return Q
-    # 4D gate (d1, d2, d1, d2): matrix view is (d1*d2, d1*d2)
-    size = shape[0] * shape[1]
-    A = backend.random((size, size), dtype, rng)
-    Q, _ = xp.linalg.qr(A)
-    return Q.reshape(shape)
+        if shape[0] != shape[1]:
+            raise ValueError(f"expected square 1-site gate (d, d), got {shape=}")
+        return int(shape[0])
+    if len(shape) == 4:
+        return int(shape[0] * shape[1])
+    raise ValueError(
+        f"random_unitary_gate only supports 1-site (d,d) or 2-site (d1,d2,d1,d2) tensors; got {shape=}"
+    )
+
+
+def random_unitary_gate(backend, shape, dtype, rng):
+    """Haar unitary as a gate tensor on ``backend`` (numpy / cupy / torch).
+
+    Builds the unitary in numpy with :func:`random_unitary`, then ``asarray`` and reshape.
+    ``shape`` must be a 1- or 2-site layout as in :meth:`StateFactory._append_single_qudit_layer`
+    / ``_append_double_qudit_layer``.
+    """
+    n = _hilbert_dim_from_sd_gate_shape(shape)
+    q = random_unitary(n, rng, dtype=dtype)
+    t = backend.asarray(q)
+    return t.reshape(shape) if len(shape) == 4 else t
+
+
+def random_unitary_numpy(dim, rng, dtype="complex128"):
+    """Same as ``random_unitary(dim, rng, dtype=...)``; kept for existing test imports."""
+    return random_unitary(dim, rng, dtype=get_dtype_name(dtype))
 
 
 def _random_hermitian(backend, shape, dtype, rng):
@@ -40,6 +90,188 @@ def _random_hermitian(backend, shape, dtype, rng):
     else:
         H = A + xp.conj(A).T
     return H
+
+
+def make_mpo_tensor_hermitian(t, which):
+    """Make MPO tensor Hermitian in physical (ket, bra) indices so the full MPO is Hermitian.
+
+    which: 'first' (ket, n, bra), 'middle' (p, ket, n, bra), or 'last' (p, ket, bra).
+    """
+    pkg = infer_object_package(t)
+    if pkg == "torch":
+        if which == "first":
+            return (t + t.conj().permute(2, 1, 0)) * 0.5
+        if which == "last":
+            return (t + t.conj().permute(0, 2, 1)) * 0.5
+        return (t + t.conj().permute(0, 3, 2, 1)) * 0.5
+    xp = importlib.import_module("cupy") if pkg == "cupy" else np
+    if which == "first":
+        return (t + xp.conj(t).transpose(2, 1, 0)) * 0.5
+    if which == "last":
+        return (t + xp.conj(t).transpose(0, 2, 1)) * 0.5
+    return (t + xp.conj(t).transpose(0, 3, 2, 1)) * 0.5
+
+
+def _mpo_site_random_unitary(backend_obj, shape, which, dtype, rng):
+    """MPO site tensor from Haar-random local ``dim``×``dim`` unitaries (one per bond slice).
+
+    Layout matches :func:`make_mpo_tensor_hermitian` (``which`` is ``first`` / ``middle`` / ``last``).
+    """
+    t = backend_obj.zeros(shape, dtype=dtype)
+    if which == "first":
+        dim, bond, _ = shape
+        for b in range(bond):
+            t[:, b, :] = random_unitary_gate(backend_obj, (dim, dim), dtype, rng)
+        return t
+    if which == "last":
+        bond, dim, _ = shape
+        for b in range(bond):
+            t[b, :, :] = random_unitary_gate(backend_obj, (dim, dim), dtype, rng)
+        return t
+    bond_prev, dim, bond_next, _ = shape
+    for a in range(bond_prev):
+        for b in range(bond_next):
+            t[a, :, b, :] = random_unitary_gate(backend_obj, (dim, dim), dtype, rng)
+    return t
+
+
+def _build_network_operator(
+    state_dims,
+    rng,
+    backend,
+    dtype,
+    options=None,
+    num_repeats=2,
+    real_coefficients=True,
+    use_random_unitary=False,
+    use_random_hermitian=False,
+    use_random_non_unitary=False,
+    add_mpo=False,
+):
+    """Build a :class:`~cuquantum.tensornet.experimental.NetworkOperator`.
+
+    Appends ``num_repeats`` random tensor-product terms. Optional ``add_mpo`` adds one random MPO
+    spanning at least two modes (when ``n_modes >= 2``).
+
+    Tensor choice for **each tensor slot** follows the mutually exclusive precedence below (first
+    matching branch wins, as in the implementation).
+
+    **Product terms**
+
+        Exactly one logical family is selected per tensor slot among the mutually exclusive branches
+        below (first true flag wins):
+
+        #. ``use_random_hermitian``: dense Hermitian per mode (symmetrized); supports qudit
+           ``state_dims``.
+        #. ``use_random_non_unitary``: i.i.d. dense random (not guaranteed Hermitian or unitary).
+        #. ``use_random_unitary``: Haar-style random unitary (orthogonal for real dtypes).
+
+        If none of these are true, raises ``ValueError``. 
+
+    **MPO sites** (when ``add_mpo`` is true)
+        Same precedence as for product tensors. Requires the same validity: not all ``use_random_*``
+        flags may be left false.
+
+    Use ``add_mpo`` when you need product terms plus an MPO.
+
+    Raises
+    ------
+    ValueError
+        If ``use_random_unitary``, ``use_random_hermitian``, and ``use_random_non_unitary`` are all
+        false.
+
+    Parameters
+    ----------
+    state_dims, rng, backend, dtype, options
+        Passed through to ``NetworkOperator`` / tensor construction.
+    num_repeats : int
+        Number of random product terms to append.
+    real_coefficients : bool
+        If false and ``dtype`` is complex, product-term coefficients may gain an imaginary part.
+    use_random_unitary, use_random_hermitian, use_random_non_unitary : bool
+        Select the random-tensor family as above (first matching flag wins); at least one must be true.
+    add_mpo : bool
+        Append one extra MPO term after the products.
+    """
+    if isinstance(options, dict):
+        device_id = options.get("device_id", None)
+    elif isinstance(options, NetworkOptions):
+        device_id = options.device_id
+    else:
+        device_id = None
+    if backend == "numpy":
+        device_id = None
+    backend_obj = TensorBackend(backend=backend, device_id=device_id)
+    operator_obj = NetworkOperator(state_dims, dtype=dtype, options=options)
+    n_modes = len(state_dims)
+    if not (use_random_unitary or use_random_hermitian or use_random_non_unitary):
+        raise ValueError(
+            "Set at least one of use_random_unitary, use_random_hermitian, "
+            "or use_random_non_unitary when building via _build_network_operator."
+        )
+
+    prod_modes_formatted = [(q,) for q in range(n_modes)]
+    for _ in range(num_repeats):
+        coefficient = rng.random(1).item()
+        if dtype.startswith("complex") and not real_coefficients:
+            coefficient += 1j * rng.random(1).item()
+        prod_tensors = []
+        for q in range(n_modes):
+            shape = (state_dims[q],) * 2
+            if use_random_hermitian:
+                prod_tensors.append(_random_hermitian(backend_obj, shape, dtype, rng))
+            elif use_random_non_unitary:
+                prod_tensors.append(backend_obj.random(shape, dtype, rng))
+            else:
+                prod_tensors.append(random_unitary_gate(backend_obj, shape, dtype, rng))
+        operator_obj.append_product(coefficient, prod_modes_formatted, prod_tensors)
+
+    if add_mpo and n_modes >= 2:
+
+        def get_random_modes():
+            num_rand_modes = rng.integers(2, len(state_dims) + 1)
+            rand_modes = list(range(len(state_dims)))
+            rng.shuffle(rand_modes)
+            return rand_modes[:num_rand_modes]
+
+        coefficient = rng.random(1).item()
+        mpo_modes = get_random_modes()
+        num_mpo_modes = len(mpo_modes)
+        mpo_tensors = []
+        bond_prev = None
+        for i, m in enumerate(mpo_modes):
+            bond_next = rng.integers(2, 5)
+            dim = state_dims[m]
+            if i == 0:
+                shape = (dim, bond_next, dim)
+                which = "first"
+            elif i == num_mpo_modes - 1:
+                shape = (bond_prev, dim, dim)
+                which = "last"
+            else:
+                shape = (bond_prev, dim, bond_next, dim)
+                which = "middle"
+            if use_random_hermitian:
+                t = backend_obj.random(shape, dtype, rng)
+                t = make_mpo_tensor_hermitian(t, which)
+            elif use_random_non_unitary:
+                t = backend_obj.random(shape, dtype, rng)
+            else:
+                t = _mpo_site_random_unitary(backend_obj, shape, which, dtype, rng)
+            mpo_tensors.append(t)
+            bond_prev = bond_next
+        operator_obj.append_mpo(coefficient, mpo_modes, mpo_tensors)
+    return operator_obj
+
+
+class NetworkOperatorFactory:
+
+    def __init__(self, *args, **kwargs):
+        self._args = args
+        self._kwargs = kwargs
+
+    def build(self):
+        return _build_network_operator(*self._args, **self._kwargs)
 
 
 def get_random_network_operator(state_dims, rng, backend, *, num_repeats=2, dtype='complex128', options=None):
@@ -174,9 +406,11 @@ def apply_factory_sequence(network_state, sequence):
                 # GATE
                 tensor_id = network_state.apply_tensor_operator(modes, op)
         elif 'gradient' in gate_info:
-                # GATE (plain tensor from S/D layers; unitary=True required for gradient support in C API)
+                # Plain tensor from S/D layers; unitary flag from gate_info (default True).
                 tensor_id = network_state.apply_tensor_operator(
-                    modes, op, gradient=gate_info['gradient'], unitary=True
+                    modes, op,
+                    gradient=gate_info['gradient'],
+                    unitary=gate_info.get('unitary', True),
                 )
         else:
             if 'diagonal_gate' in gate_info:
@@ -213,8 +447,12 @@ class StateFactory:
         ct_target_place="last", # Controlled-Tensor: ct
         initial_mps_dim=None,
         mark_gradients=False,
+        pure_state=None,
+        mark_non_unitary=False, # If True, randomly mark some S/D gates as explicitly non-unitary tensors.
     ):
+        self.pure_state = pure_state
         self.mark_gradients = bool(mark_gradients)
+        self.mark_non_unitary = bool(mark_non_unitary)
         self.gradient_indices = []
         if isinstance(qudits, (int, np.integer)):
             self.num_qudits = qudits
@@ -276,7 +514,14 @@ class StateFactory:
         return self.psi
 
     def __str__(self):
-        return f"StateFactory(num_qudits={self.num_qudits}, dtype={self.dtype}, layers={self.layers}, rng={self.rng.bit_generator.state}, backend={self.backend.name}, adjacent_double_layer={self.adjacent_double_layer}, mpo_bond_dim={self.mpo_bond_dim}, mpo_num_sites={self.mpo_num_sites}, mpo_geometry={self.mpo_geometry}, ct_target_place={self.ct_target_place}, initial_mps_dim={self.initial_mps_dim})"
+        return (
+            f"StateFactory(num_qudits={self.num_qudits}, dtype={self.dtype}, layers={self.layers}, "
+            f"rng={self.rng.bit_generator.state}, backend={self.backend.name}, "
+            f"adjacent_double_layer={self.adjacent_double_layer}, mpo_bond_dim={self.mpo_bond_dim}, "
+            f"mpo_num_sites={self.mpo_num_sites}, mpo_geometry={self.mpo_geometry}, "
+            f"ct_target_place={self.ct_target_place}, initial_mps_dim={self.initial_mps_dim}, "
+            f"mark_gradients={self.mark_gradients}, mark_non_unitary={self.mark_non_unitary})"
+        )
 
     @property
     def sequence(self):
@@ -287,13 +532,15 @@ class StateFactory:
     def get_gate_sequence_for_reference(self):
         """
         Return a gate sequence suitable for TorchRef.compute_expectation_with_gradients: list of (modes, gate_tensor, requires_grad).
-        Only plain tensor gates are supported (gate_info may contain only "gradient"). I nthis way we make sure all gates are unitary for now.
+        Each entry is (modes, gate_tensor, requires_grad, is_unitary). The optional 4th
+        element defaults to True when omitted by callers; when False, the gate is a
+        general (non-unitary) marked tensor for expectation-gradient tests.
         MPO, controlled, diagonal, and channel gates raise NotImplementedError.
         """
         out = []
         for op, modes, gate_info in self.sequence:
            
-            # Only support plain gates: single tensor and at most "gradient" in gate_info
+            # Only support plain gates: single tensor and gate_info limited to {"gradient", "unitary"}.
             if isinstance(op, (list, tuple)):
                 raise NotImplementedError(
                     "get_gate_sequence_for_reference does not support MPO gates; "
@@ -315,8 +562,9 @@ class StateFactory:
                     "(Kraus operators); use a sequence without U/G layers for reference."
                 )
             requires_grad = gate_info.get("gradient", False)
+            is_unitary = gate_info.get("unitary", True)
             gate_np = TensorBackend.to_numpy(op)
-            out.append((tuple(modes), gate_np, requires_grad))
+            out.append((tuple(modes), gate_np, requires_grad, is_unitary))
         return out
 
     def _generate_raw_sequence(self):
@@ -428,16 +676,21 @@ class StateFactory:
         return   
     
     def _create_random_unitary(self, shape):
-        return _random_unitary(self.backend, shape, self.dtype, self.rng)
+        return random_unitary_gate(self.backend, shape, self.dtype, self.rng)
 
     def _append_single_qudit_layer(self):
         for i in range(self.num_qudits):
             shape = (self.state_dims[i],) * 2
             if self.mark_gradients:
-                # Gradient path requires unitary gates
-                t = self._create_random_unitary(shape)
-                gradient = self.mark_gradients and bool(self.rng.choice([True, False]))
-                self._sequence.append((t, (i,), {"gradient": gradient}))
+                non_unitary = bool(self.mark_non_unitary and self.rng.choice([True, False]))
+                gradient = bool(self.rng.choice([True, False]))
+                gate_info = {"gradient": gradient, "unitary": not non_unitary}
+                if non_unitary:
+                    t = self.backend.random(shape, self.dtype, self.rng)
+                    t = t / self.backend.norm(t)
+                else:
+                    t = random_unitary_gate(self.backend, shape, self.dtype, self.rng)
+                self._sequence.append((t, (i,), gate_info))
                 if gradient:
                     self.gradient_indices.append(len(self._sequence) - 1)
             else:
@@ -451,10 +704,15 @@ class StateFactory:
             j = i + 1 if self.adjacent_double_layer else self.rng.integers(i + 1, self.num_qudits)
             shape = (self.state_dims[i], self.state_dims[j]) * 2
             if self.mark_gradients:
-                # Gradient path requires unitary gates
-                t = self._create_random_unitary(shape)
-                gradient = self.mark_gradients and bool(self.rng.choice([True, False]))
-                self._sequence.append((t, (i, j), {"gradient": gradient}))
+                non_unitary = bool(self.mark_non_unitary and self.rng.choice([True, False]))
+                gradient = bool(self.rng.choice([True, False]))
+                gate_info = {"gradient": gradient, "unitary": not non_unitary}
+                if non_unitary:
+                    t = self.backend.random(shape, self.dtype, self.rng)
+                    t = t / self.backend.norm(t)
+                else:
+                    t = random_unitary_gate(self.backend, shape, self.dtype, self.rng)
+                self._sequence.append((t, (i, j), gate_info))
                 if gradient:
                     self.gradient_indices.append(len(self._sequence) - 1)
             else:
@@ -465,8 +723,7 @@ class StateFactory:
                     t = t + t.conj().permute(2, 3, 0, 1)
                 t /= self.backend.norm(t)
                 self._sequence.append((t, (i, j), None))
-            
-    
+
     def _create_unitary_diagonal_gate(self, shape):
         if 'complex' in self.dtype:
             # Random phase between 0 and 2*pi
@@ -835,8 +1092,12 @@ class StateFactory:
         operands = self.get_sv_contraction_expression()
         return contract(*operands)
 
-    def to_network_state(self, *, config=None, options=None):
-        network_state = NetworkState(self.state_dims, dtype=self.dtype, config=config, options=options)
+    def to_network_state(self, *, config=None, options=None, pure_state=None):
+        p = pure_state if pure_state is not None else self.pure_state
+        kwargs = {}
+        if p is not None:
+            kwargs['pure_state'] = p
+        network_state = NetworkState(self.state_dims, dtype=self.dtype, config=config, options=options, **kwargs)
         if self.initial_mps_dim is not None:
             network_state.set_initial_mps(self.get_initial_state())
         apply_factory_sequence(network_state, self.sequence)

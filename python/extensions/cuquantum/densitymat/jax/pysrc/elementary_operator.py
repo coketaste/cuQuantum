@@ -16,7 +16,9 @@ from cuquantum.bindings import cudensitymat as cudm
 from nvmath.internal import typemaps
 
 from ..utils import (
+    get_batch_size,
     get_empty_tensor_callback,
+    get_original_shape,
     get_tensor_gradient_attachment_callback,
     detect_ad_traced_object,
     is_vmap_traced,
@@ -48,11 +50,9 @@ class ElementaryOperator:
                 if data.ndim % 2 == 0:
                     # Expanding to a leading dimension 1 is necessary since we are taking 0 as the batch
                     # dimension when passing to ffi_lowering.
-                    self.data = jnp.expand_dims(data, 0)
-                    self.batch_size = 1
+                    self.data = data
+                    self.batch_size = get_batch_size(data)
                 else:  # batched elementary operator
-                    # TODO: Batch dimension is assumed to be dimension 0. This constraint could be
-                    # relaxed in the future.
                     self.data = data
                     self.batch_size = data.shape[0]
 
@@ -64,8 +64,8 @@ class ElementaryOperator:
                 if data.ndim == 2:
                     # Expanding to a leading dimension 1 is necessary since we are taking 0 as the batch
                     # dimension when passing to ffi_lowering.
-                    self.data = jnp.expand_dims(data, 0)
-                    self.batch_size = 1
+                    self.data = data
+                    self.batch_size = get_batch_size(data)
                 elif data.ndim == 3:
                     # TODO: Batch dimension is assumed to be dimension 0. This constraint could be
                     # relaxed in the future.
@@ -90,7 +90,12 @@ class ElementaryOperator:
                 ket_modes = self.data.shape[-self.num_modes:]
                 if bra_modes != ket_modes:
                     raise ValueError("Dense elementary operator data must have the same shape on the bra and ket modes.")
-            self.mode_extents = self.data.shape[1:self.num_modes + 1]  # skip the batch dimension.
+                self.mode_extents = self.data.shape[-self.num_modes:]
+            else:
+                # For explicitly batched multidiagonal (ndim==3), the leading dim is the
+                # batch dimension — skip it to get the actual mode extents.
+                batch_offset = 1 if data.ndim == 3 else 0
+                self.mode_extents = self.data.shape[batch_offset:batch_offset + self.num_modes]
             self.dtype: jnp.dtype = self.data.dtype
 
         elif type(data) is object:  # data is object() during AD tracing.
@@ -162,7 +167,7 @@ class ElementaryOperator:
         Return the in_axes PyTree spec for vmapping over the batch dimension (axis 0 of data).
         """
         _, aux_data = self.tree_flatten()
-        if is_vmap_traced(self.data) or self.batch_size > 1:
+        if self.batch_size > 1:
             in_axes_data = 0
         else:
             in_axes_data = None
@@ -191,7 +196,7 @@ class ElementaryOperator:
 
         return elem_op
 
-    def _create(self, handle):
+    def _create(self, handle, batch_size: int = 1):
         """
         Create opaque handle to the elementary operator.
         """
@@ -202,7 +207,16 @@ class ElementaryOperator:
             self.requires_grad = detect_ad_traced_object(self.data)
             if self.requires_grad:
                 self._callback = get_empty_tensor_callback()
-                self._grad_callback = get_tensor_gradient_attachment_callback(self.data)
+                # data_shape = get_original_shape(self.data)
+                data_shape = self.data.shape
+                # if self.batch_size == 1:
+                #     # Non-batched op with potentially batched state: cudensitymat writes
+                #     # batch_size gradient tensors with batch as the last dimension.
+                #     grad_shape = (batch_size, *data_shape)
+                # else:
+                #     grad_shape = data_shape
+                grad_shape = (batch_size, *data_shape)
+                self._grad_callback = get_tensor_gradient_attachment_callback(grad_shape, self.data.dtype)
                 self._grad_ptr = self._grad_callback.callback.tensor_grad.data.ptr
 
             if self.batch_size == 1:

@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import math
+import json
+import os
 import numpy as np
 
 import opt_einsum as oe
@@ -25,8 +27,8 @@ def trim_mps_config(mps_config):
     return trimmed_config
 
 def is_converter_mps_compatible(converter):
-    for _, qubits in converter.gates:
-        if len(qubits) > 2:
+    for entry in converter._gate_entries:
+        if len(entry.qubits) > 2:
             return False
     return True
 
@@ -68,6 +70,13 @@ def verify_mps_canonicalization(mps_tensors, canonical_center):
         is_canonical = is_canonical and verify_unitary(t, modes, shared_mode, 
                     SVD_TOLERANCE[dtype], tensor_name=f"Site {i} canonicalization")
     return is_canonical
+
+def _as_float(value):
+    if hasattr(value, "get"):
+        value = value.get()
+    if hasattr(value, "item"):
+        value = value.item()
+    return float(value)
 
 class MPS:
 
@@ -139,6 +148,7 @@ class MPS:
         self.norm = None 
         
         self.gauges = dict()
+        self._norm_trace_counter = 0
         if self.gauge_option == 'simple':
             # First canonicalization sweep to generate a left canonical MPS representation without gauges 
             self._minimal_compression(0, self.n-1, False, check_minimal=False)
@@ -147,6 +157,7 @@ class MPS:
         else: # gauge_option is 'free'
             # To generate a left canonical MPS representation without gauges
             self._minimal_compression(0, self.n-1, False, check_minimal=True) 
+        self._check_nonzero_norms("init")
 
     @property
     def qudits(self):
@@ -161,6 +172,37 @@ class MPS:
         self.mps_tensors[key] = val
         # resetting SV and norm
         self.sv = self.norm = None
+
+    def _norm(self, tensor):
+        return _as_float(self.backend.linalg.norm(tensor))
+
+    def _check_nonzero_norms(self, label, *, qudits=None):
+        dump_path = os.environ.get("CUTENSORNET_REF_MPS_NORM_DUMP")
+        enabled = dump_path or os.environ.get("CUTENSORNET_REF_MPS_NORM_CHECK")
+        if not enabled:
+            return
+        tensor_norms = [self._norm(t) for t in self.mps_tensors]
+        gauge_norms = {str(k): self._norm(v) for k, v in sorted(self.gauges.items())}
+        min_tensor_norm = min(tensor_norms) if tensor_norms else 0.0
+        min_gauge_norm = min(gauge_norms.values()) if gauge_norms else None
+        record = {
+            "seq": self._norm_trace_counter,
+            "label": label,
+            "qudits": list(qudits) if qudits is not None else None,
+            "tensor_norms": tensor_norms,
+            "gauge_norms": gauge_norms,
+            "min_tensor_norm": min_tensor_norm,
+            "min_gauge_norm": min_gauge_norm,
+        }
+        self._norm_trace_counter += 1
+        if dump_path:
+            with open(dump_path, "a") as f:
+                f.write(json.dumps(record) + "\n")
+        if min_tensor_norm == 0.0:
+            raise RuntimeError(f"Reference MPS tensor norm became zero at {label}: {record}")
+        for site, norm in gauge_norms.items():
+            if norm == 0.0:
+                raise RuntimeError(f"Reference MPS gauge norm became zero at {label}, gauge {site}: {record}")
     
     @property
     def tolerance(self):
@@ -224,6 +266,7 @@ class MPS:
         # remove gauge effect back
         self.mps_tensor_absorb_gauge(a, s_left, direction='left', inverse=True)
         self.mps_tensor_absorb_gauge(b, s_right, direction='right', inverse=True)
+        self._check_nonzero_norms("swap", qudits=(self.qudits[a], self.qudits[b]))
 
     def _canonicalize_site(self, i, direction, max_extent=None, **svd_options):
         if direction not in {'right', 'left'}:
@@ -266,6 +309,7 @@ class MPS:
             svd_options['partition'] = partition
             tmp = self.backend.einsum('ipj,jql->ipql', ti, tj)
             self[left], _, self[right] = tensor_decompose('ipql->ipj,jql', tmp, method='svd', max_extent=max_extent, **svd_options)
+        self._check_nonzero_norms("canonicalize_site", qudits=(self.qudits[left], self.qudits[right]))
     
     def _compress_with_gauges(self, i, direction, max_extent=None, **svd_options):
         if direction not in {'right', 'left'}:
@@ -301,6 +345,7 @@ class MPS:
         # remove gauge effect
         self.mps_tensor_absorb_gauge(left, s_left, direction='left', inverse=True)
         self.mps_tensor_absorb_gauge(right, s_right, direction='right', inverse=True)
+        self._check_nonzero_norms("compress_with_gauges", qudits=(self.qudits[left], self.qudits[right]))
     
     def _minimal_compression(self, start, end, keep_gauges, *, check_minimal=False):
         if check_minimal:
@@ -344,6 +389,7 @@ class MPS:
                 # For the last sites, no need to do absorb S
                 V = self.backend.einsum('i,ij->ij', s, V)
             self[i+1] = self.backend.einsum('jlm,ij->ilm', self[i+1], V) 
+            self._check_nonzero_norms("make_canonical", qudits=(self.qudits[i], self.qudits[i+1]))
 
     def mps_tensor_absorb_gauge(self, site, s, *, direction='left', inverse=False):
         assert direction in {'left', 'right'}
@@ -413,6 +459,7 @@ class MPS:
             # remove gauge effect back
             self.mps_tensor_absorb_gauge(i, sa, direction="left", inverse=True)
             self.mps_tensor_absorb_gauge(j, sb, direction="right", inverse=True)
+            self._check_nonzero_norms("apply_gate_2q_adjacent", qudits=(self.qudits[i], self.qudits[j]))
 
         else:
             # insert swap gates recursively
@@ -439,11 +486,13 @@ class MPS:
 
         sites = [self.qudits.index(q) for q in qudits]
         if len(sites) == 1:
-            return self._apply_gate_1q(*sites, operand)
+            self._apply_gate_1q(*sites, operand)
         elif len(sites) == 2:
-            return self._apply_gate_2q(*sites, operand)
+            self._apply_gate_2q(*sites, operand)
         else:
             raise NotImplementedError("Only single- and two- qubit gate supported")
+        self._check_nonzero_norms("apply_gate", qudits=qudits)
+        return
     
     def absorb_gauges(self, mps_tensors):
         """
@@ -570,19 +619,17 @@ class MPS:
     def from_converter(cls, converter, **kwargs):
         dtype = get_dtype_name(converter.dtype)
         mps = cls(converter.qubits, converter.backend.__name__, dtype=dtype, **kwargs)
-        gates = converter.gates
-        gates_are_diagonal = converter._gates_are_diagonal
-        for (operand, qubits), diagonal_gate in zip(gates, gates_are_diagonal):
-            if len(qubits) > 2:
+        for entry in converter._gate_entries:
+            if len(entry.qubits) > 2:
                 return None
-            if diagonal_gate:
+            operand = entry.operand
+            if entry.is_diagonal:
                 if operand.ndim == 2:
                     operand = operand.diagonal()
                 else:
-                    # Extract diagonal using reshape 
                     ndim = operand.ndim
                     operand = operand.reshape(2**(ndim//2), 2**(ndim//2)).diagonal().reshape((2,)*(ndim//2))
-            mps.apply_gate(qubits, operand)
+            mps.apply_gate(entry.qubits, operand)
         mps.canonicalize()
         return mps
     

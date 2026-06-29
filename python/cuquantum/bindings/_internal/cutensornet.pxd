@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.03.1, generator version 0.3.1.dev1471+gd13834924.d20260402. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1668+gb1eb0b259. Do not modify it directly.
 
 from ..cycutensornet cimport *
 
@@ -159,3 +159,4 @@ cdef cutensornetStatus_t _cutensornetStateUpdateTensorOperatorGradient(const cut
 cdef cutensornetStatus_t _cutensornetExpectationComputeWithGradientsBackward(const cutensornetHandle_t handle, cutensornetStateExpectation_t tensorNetworkExpectation, int32_t accumulateGradients, const void* expectationValueAdjoint, const void* stateNormAdjoint, cutensornetWorkspaceDescriptor_t workDesc, void* expectationValue, void* stateNorm, cudaStream_t cudaStream) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cutensornetStatus_t _cutensornetStateProjectionMPSUpdateCoefficients(const cutensornetHandle_t handle, cutensornetStateProjectionMPS_t tensorNetworkProjection, int32_t numCoeffs, const cuDoubleComplex coeffs[]) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cutensornetStatus_t _cutensornetStateProjectionMPSUpdateDualTensors(const cutensornetHandle_t handle, cutensornetStateProjectionMPS_t tensorNetworkProjection, const int64_t* maxExtents[], const int64_t* validExtents[], const int64_t* strides[], void* dualTensorsData[], const cutensornetMPSEnvBounds_t* orthoSpec, cudaStream_t cudaStream) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cutensornetStatus_t _cutensornetCreateMarginalDiagonal(const cutensornetHandle_t handle, cutensornetState_t tensorNetworkState, int32_t numMarginalModes, const int32_t* marginalModes, int32_t numProjectedModes, const int32_t* projectedModes, const int64_t* marginalDiagonalTensorStrides, cutensornetStateMarginal_t* tensorNetworkMarginal) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil

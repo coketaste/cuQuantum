@@ -45,8 +45,9 @@ for i, dim in enumerate(state_mode_extents):
 for i in range(2):
     for site in range(i, n_state_modes, 2):
         if site + 1 < n_state_modes:
-            modes_two_body = (site, site+1)
-            shape = (state_mode_extents[i], state_mode_extents[i+1]) * 2
+            modes_two_body = (site, site + 1)
+            # Leg sizes must match the targeted modes, not the outer loop index.
+            shape = (state_mode_extents[site], state_mode_extents[site + 1]) * 2
             op_two_body = random_complex(shape)
             tensor_id = state.apply_tensor_operator(modes_two_body, op_two_body, unitary=False)
             print(f"Apply two body operator to {modes_two_body}, tensor id {tensor_id}")

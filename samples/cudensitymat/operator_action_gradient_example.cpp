@@ -178,15 +178,9 @@ void exampleWorkflow(cudensitymatHandle_t handle)
   // Query free GPU memory
   std::size_t freeMem = 0, totalMem = 0;
   HANDLE_CUDA_ERROR(cudaMemGetInfo(&freeMem, &totalMem));
-  freeMem = static_cast<std::size_t>(static_cast<double>(freeMem) * 0.45); // take 45% of the free memory for the workspace buffer
+  freeMem = static_cast<std::size_t>(static_cast<double>(freeMem) * 0.95); // take 95% of the free memory as the workspace budget
   if (verbose)
     std::cout << "Max workspace buffer size (bytes) = " << freeMem << std::endl;
-
-  // Allocate GPU storage for the workspace buffer
-  const std::size_t bufferVolume = freeMem / sizeof(NumericalType);
-  auto * workspaceBuffer = createArrayGPU<NumericalType>(bufferVolume);
-  if (verbose)
-    std::cout << "Allocated workspace buffer of size (bytes) = " << freeMem << std::endl;
 
   // Prepare the Liouvillian operator action on a quantum state (needs to be done only once)
   auto startTime = std::chrono::high_resolution_clock::now();
@@ -218,15 +212,21 @@ void exampleWorkflow(cudensitymatHandle_t handle)
     std::exit(1);
   }
 
+  // Allocate GPU storage for the workspace buffer
+  std::size_t workspaceBufferSize = requiredBufferSize;
+  void * workspaceBuffer = createArrayGPU<NumericalType>(workspaceBufferSize / sizeof(NumericalType));
+  if (verbose)
+    std::cout << "Allocated workspace buffer of size (bytes) = " << workspaceBufferSize << std::endl;
+
   // Attach the workspace buffer to the workspace descriptor
   HANDLE_CUDM_ERROR(cudensitymatWorkspaceSetMemory(handle,
                       workspaceDescr,
                       CUDENSITYMAT_MEMSPACE_DEVICE,
                       CUDENSITYMAT_WORKSPACE_SCRATCH,
                       workspaceBuffer,
-                      requiredBufferSize));
+                      workspaceBufferSize));
   if (verbose)
-    std::cout << "Attached workspace buffer of size (bytes) = " << requiredBufferSize << std::endl;
+    std::cout << "Attached workspace buffer of size (bytes) = " << workspaceBufferSize << std::endl;
 
   // Apply the Liouvillian operator to the input quatum state
   // and accumulate its action into the output quantum state (note the accumulative += semantics)
@@ -297,6 +297,15 @@ void exampleWorkflow(cudensitymatHandle_t handle)
   if (requiredBufferSize > freeMem) {
     std::cerr << "Error: Required workspace buffer size is greater than the available GPU free memory!\n";
     std::exit(1);
+  }
+
+  // Reallocate the workspace buffer if the backward pass requires more memory
+  if (requiredBufferSize > workspaceBufferSize) {
+    destroyArrayGPU(workspaceBuffer);
+    workspaceBufferSize = requiredBufferSize;
+    workspaceBuffer = createArrayGPU<NumericalType>(workspaceBufferSize / sizeof(NumericalType));
+    if (verbose)
+      std::cout << "Re-allocated workspace buffer of size (bytes) = " << workspaceBufferSize << std::endl;
   }
 
   // Attach the workspace buffer to the workspace descriptor

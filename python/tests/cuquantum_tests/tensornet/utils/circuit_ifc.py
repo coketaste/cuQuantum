@@ -101,17 +101,18 @@ class PropertyComputeHelper:
             n = sv.ndim
             pauli_map = dict(zip(range(n), operator))
             backend_name = infer_object_package(sv)
-            pauli_gates, gates_are_diagonal = get_pauli_gates(pauli_map, backend_name, sv.dtype)
+            pauli_entries = get_pauli_gates(pauli_map, backend_name, sv.dtype)
             # bra/ket indices
             if backend_name == 'torch':
                 inputs = [sv, list(range(n)), sv.conj().resolve_conj(), list(range(n))]
             else:
                 inputs = [sv, list(range(n)), sv.conj(), list(range(n))]
-            for (o, qs), is_diagonal in zip(pauli_gates, gates_are_diagonal):
-                q = qs[0]
+            for entry in pauli_entries:
+                q = entry.qubits[0]
+                o = entry.operand
                 if backend_name == 'torch' and str(sv.device) == 'cpu':
                     o = o.to(device=sv.device)
-                if is_diagonal:
+                if entry.is_diagonal:
                     inputs.extend([o.diagonal(), [q,]])
                 else:
                     inputs[3][q] += n # update ket indices
@@ -343,3 +344,44 @@ class QuantumStateTestHelper:
     def verify_reduced_density_matrix(sv_ref, where, rdm, fixed=None, **kwargs):
         rdm_ref = PropertyComputeHelper.reduced_density_matrix_from_sv(sv_ref, where, fixed=fixed)
         return TensorBackend.verify_close(rdm, rdm_ref, **kwargs)
+
+    @staticmethod
+    @assert_any_with_batch
+    def verify_marginal_probability(sv_ref, where, probs, fixed=None, **kwargs):
+        # Reference: diagonal of the (reduced) density matrix over `where`, with `fixed` modes
+        # projected and the complement traced out. Works for both pure states and pure-equivalent
+        # mixed states (rho = |psi><psi|).
+        rdm_ref = PropertyComputeHelper.reduced_density_matrix_from_sv(sv_ref, where, fixed=fixed)
+        rdm_ref_np = TensorBackend.to_numpy(rdm_ref)
+        n_where = len(where)
+        dim = int(np.prod(rdm_ref_np.shape[:n_where]))
+        probs_ref = np.diag(rdm_ref_np.reshape(dim, dim)).real.reshape(rdm_ref_np.shape[:n_where])
+        probs_np = TensorBackend.to_numpy(probs).real
+        return TensorBackend.verify_close(probs_np, probs_ref, **kwargs)
+
+    @staticmethod
+    def verify_density_matrix_mixed(sv_ref, density_matrix, **kwargs):
+        """Verify density matrix matches |psi><psi| for a pure-equivalent mixed state."""
+        sv_np = TensorBackend.to_numpy(sv_ref)
+        dm_np = TensorBackend.to_numpy(density_matrix)
+        state_dims = sv_np.shape
+        sv_flat = sv_np.flatten()
+        rho_ref = np.outer(sv_flat, sv_flat.conj()).reshape(state_dims + state_dims)
+        return TensorBackend.verify_close(dm_np, rho_ref, **kwargs)
+
+    @staticmethod
+    def verify_amplitude_mixed(sv_ref, bitstring, diag_elem, **kwargs):
+        """Verify diagonal density matrix element matches |<bs|psi>|^2."""
+        sv_np = TensorBackend.to_numpy(sv_ref)
+        amp_ref = PropertyComputeHelper.amplitude_from_sv(sv_np, bitstring)
+        prob_ref = abs(amp_ref) ** 2
+        diag_np = complex(TensorBackend.to_numpy(diag_elem))
+        return TensorBackend.verify_close(diag_np.real, prob_ref, **kwargs)
+
+    @staticmethod
+    def verify_batched_amplitudes_mixed(sv_ref, fixed, batched_probs, **kwargs):
+        """Verify batched probabilities match |sv[fixed, :]|^2."""
+        batched_amps_ref = PropertyComputeHelper.batched_amplitudes_from_sv(sv_ref, fixed)
+        probs_ref = np.abs(TensorBackend.to_numpy(batched_amps_ref)) ** 2
+        probs_np = TensorBackend.to_numpy(batched_probs).real
+        return TensorBackend.verify_close(probs_np, probs_ref, **kwargs)

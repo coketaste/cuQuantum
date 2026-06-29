@@ -8,7 +8,7 @@ from collections.abc import Sequence
 
 import jax
 
-from cuquantum.lib.cudensitymat_jax import InputType, OutputType
+from cuquantum.lib.cudensitymat_jax import InputType
 
 from .pysrc.context import CudensitymatContext
 from .pysrc.operator import Operator
@@ -22,9 +22,8 @@ from .utils import (
     maybe_squeeze_dim,
     get_state_batch_size_and_purity,
     check_and_return_final_batch_size,
-    check_and_return_op_device,
-    check_and_return_state_device,
-    is_vmap_traced,
+    check_and_return_device,
+    get_original_shape,
     get_vmap_depth,
     is_grad_inside_vmap,
 )
@@ -65,19 +64,9 @@ def operator_action(op: Operator,
         raise NotImplementedError("operator_action does not support grad transformations inside vmap.")
 
     # Check and set device from op and state.
-    op_device = check_and_return_op_device(op)
-    state_device = check_and_return_state_device(state_in_bufs)
-    if op_device is not None and state_device is not None:
-        if op_device != state_device:
-            raise ValueError("Operator and state buffers must be on the same device.")
-        device = op_device  # set device to the common device
-    else:  # if one of them is None, set device to the one that is not None
-        devices = {op_device, state_device}
-        devices.remove(None)
-        if len(devices) > 0:  # set device only when one of them is not None
-            device = devices.pop()
+    device = check_and_return_device(op, state_in_bufs)
 
-    # If device is still None, as in the case of tracing, set it to the first GPU device.
+    # If device is None, as in the case of tracing, set it to the first GPU device.
     if device is None:
         devices = jax.devices('gpu')
         if len(devices) == 0:
@@ -89,19 +78,15 @@ def operator_action(op: Operator,
     state_batch_size, purity = get_state_batch_size_and_purity(state_in_bufs, len(op.dims))
     batch_size = check_and_return_final_batch_size(state_in_bufs, state_batch_size, op.batch_size)
 
-    state_in_bufs = maybe_expand_dim(state_in_bufs, len(op.dims))
+    state_in_bufs, did_expand = maybe_expand_dim(state_in_bufs, len(op.dims))
+    state_shape = get_original_shape(state_in_bufs[0])
 
     # Prepare library context for forward operator action.
     # NOTE: Assuming a single state component.
     if len(state_in_bufs) > 1:
         raise NotImplementedError("More than one state component is not implemented.")
 
-    if is_vmap_traced(state_in_bufs[0]):
-        state_shape = state_in_bufs[0].val.shape
-    else:
-        state_shape = state_in_bufs[0].shape
-
-    CudensitymatContext.maybe_create_operator_context(op)
+    CudensitymatContext.maybe_create_operator_context(op, batch_size)
     CudensitymatContext.maybe_create_state_context(purity, state_shape, batch_size, state_in_bufs[0].dtype)
 
     # Create metadata objects for the other inputs.
@@ -129,7 +114,7 @@ def operator_action(op: Operator,
         op._total_coeffs_ptrs,
         strict=True
     )):
-        is_op_term_coeff_batched = is_vmap_traced(op_term_coeff) or len(op_term_coeff) > 1
+        is_op_term_coeff_batched = op._op_term_batch_sizes[i] != 1
         if is_op_term_coeff_batched:
             dynamic_ptr = op_term_total_coeffs_ptr
             dynamic_type = InputType.OPERATOR_TERM_BATCHED_COEFFS.value
@@ -146,12 +131,10 @@ def operator_action(op: Operator,
 
         if op_term_coeff_grad_ptr != 0:
             op_term_coeff_grad_metadata.indices.append(i)
-            op_term_coeff_grad_metadata.types.append(OutputType.GRADIENT.value)
             op_term_coeff_grad_metadata.ptrs.append(op_term_coeff_grad_ptr)
-            if is_vmap_traced(op_term_coeff):
-                shape_dtype = jax.ShapeDtypeStruct(op_term_coeff.val.shape, op_term_coeff.val.dtype)
-            else:
-                shape_dtype = jax.ShapeDtypeStruct(op_term_coeff.shape, op_term_coeff.dtype)
+            # The gradient buffer is always sized (batch_size,) regardless of whether the
+            # coefficient is batched, so JAX must read batch_size elements from the ptr.
+            shape_dtype = jax.ShapeDtypeStruct((batch_size,), op_term_coeff.dtype)
             op_term_coeff_grad_metadata.shape_dtypes.append(shape_dtype)
 
         # Extract temporary batched coefficient buffers for operator products.
@@ -169,7 +152,7 @@ def operator_action(op: Operator,
             op_term._total_coeffs_ptrs,
             strict=True,
         )):
-            is_op_prod_coeff_batched = is_vmap_traced(op_prod_coeff) or len(op_prod_coeff) > 1
+            is_op_prod_coeff_batched = op_term._op_prod_batch_sizes[j] != 1
             if is_op_prod_coeff_batched:
                 dynamic_ptr = op_prod_total_coeffs_ptr
                 dynamic_type = InputType.OPERATOR_PRODUCT_BATCHED_COEFFS.value
@@ -186,12 +169,10 @@ def operator_action(op: Operator,
 
             if op_prod_coeff_grad_ptr != 0:
                 op_prod_coeff_grad_metadata.indices.append((i, j))
-                op_prod_coeff_grad_metadata.types.append(OutputType.GRADIENT.value)
                 op_prod_coeff_grad_metadata.ptrs.append(op_prod_coeff_grad_ptr)
-                if is_vmap_traced(op_prod_coeff):
-                    shape_dtype = jax.ShapeDtypeStruct(op_prod_coeff.val.shape, op_prod_coeff.val.dtype)
-                else:
-                    shape_dtype = jax.ShapeDtypeStruct(op_prod_coeff.shape, op_prod_coeff.dtype)
+                # The gradient buffer is always sized (batch_size,) regardless of whether the
+                # coefficient is batched, so JAX must read batch_size elements from the ptr.
+                shape_dtype = jax.ShapeDtypeStruct((batch_size,), op_prod_coeff.dtype)
                 op_prod_coeff_grad_metadata.shape_dtypes.append(shape_dtype)
 
             # Assign certain static attributes to the operator action context.
@@ -208,12 +189,15 @@ def operator_action(op: Operator,
 
                 if base_op._grad_ptr != 0 and base_op._grad_ptr not in base_op_grad_metadata.ptrs:
                     base_op_grad_metadata.indices.append((i, j, k))
-                    base_op_grad_metadata.types.append(OutputType.GRADIENT.value)
                     base_op_grad_metadata.ptrs.append(base_op._grad_ptr)
-                    if is_vmap_traced(base_op.data):
-                        shape_dtype = jax.ShapeDtypeStruct(base_op.data.val.shape, base_op.data.val.dtype)
+                    data_shape = get_original_shape(base_op.data)
+                    if base_op.batch_size == 1:
+                        # Non-batched base op: cudensitymat writes batch_size gradient tensors
+                        # with batch as the last dimension, so buffer has (batch_size, *data_shape).
+                        grad_shape = (batch_size, *data_shape)
                     else:
-                        shape_dtype = jax.ShapeDtypeStruct(base_op.data.shape, base_op.data.dtype)
+                        grad_shape = data_shape  # already includes batch dim
+                    shape_dtype = jax.ShapeDtypeStruct(grad_shape, base_op.data.dtype)
                     base_op_grad_metadata.shape_dtypes.append(shape_dtype)
 
     # Combine types and pointers in the same order as they are unpacked in primitive wrappers.
@@ -233,7 +217,6 @@ def operator_action(op: Operator,
         tuple(other_in_metadata.types),
         tuple(other_in_metadata.ptrs),
         tuple(other_out_metadata.shape_dtypes),
-        tuple(other_out_metadata.types),
         tuple(other_out_metadata.ptrs),
         tuple(op_term_coeff_metadata.indices),
         tuple(op_prod_coeff_metadata.indices),
@@ -241,10 +224,11 @@ def operator_action(op: Operator,
         tuple(op_term_coeff_grad_metadata.indices),
         tuple(op_prod_coeff_grad_metadata.indices),
         tuple(base_op_grad_metadata.indices),
+        state_shape,
     )
 
     # Undo the leading batch dim when it was added by maybe_expand_dim (single-state, non-vmap).
-    state_out_bufs = maybe_squeeze_dim(state_out_bufs, len(op.dims))
+    state_out_bufs = maybe_squeeze_dim(state_out_bufs, len(op.dims), did_expand)
 
     # Process output argument.
     if len(state_out_bufs) == 1:
@@ -263,7 +247,6 @@ def _operator_action(op: Operator,
                      other_in_types: tuple[int, ...],
                      other_in_ptrs: tuple[int, ...],
                      other_out_shape_dtypes: tuple[jax.ShapeDtypeStruct, ...],
-                     other_out_types: tuple[int, ...],
                      other_out_ptrs: tuple[int, ...],
                      op_term_coeffs_indices: tuple[int, ...],
                      op_prod_coeffs_indices: tuple[int, ...],
@@ -271,6 +254,7 @@ def _operator_action(op: Operator,
                      op_term_coeff_grad_indices: tuple[int, ...],
                      op_prod_coeff_grad_indices: tuple[tuple[int, int], ...],
                      base_op_grad_indices: tuple[tuple[int, int, int], ...],
+                     state_shape: tuple[int, ...],
                      ) -> list[jax.Array]:
     """
     Custom VJP rule for operator_action.
@@ -286,7 +270,6 @@ def _operator_action(op: Operator,
         other_in_types,
         other_in_ptrs,
         other_out_shape_dtypes,
-        other_out_types,
         other_out_ptrs,
         op_term_coeffs_indices,
         op_prod_coeffs_indices,
@@ -294,6 +277,7 @@ def _operator_action(op: Operator,
         op_term_coeff_grad_indices,
         op_prod_coeff_grad_indices,
         base_op_grad_indices,
+        state_shape,
     )
     return state_out_bufs
 
@@ -307,7 +291,6 @@ def _operator_action_fwd(op: Operator,
                          other_in_types: tuple[int, ...],
                          other_in_ptrs: tuple[int, ...],
                          other_out_shape_dtypes: tuple[jax.ShapeDtypeStruct, ...],
-                         other_out_types: tuple[int, ...],
                          other_out_ptrs: tuple[int, ...],
                          op_term_coeffs_indices: tuple[int, ...],
                          op_prod_coeffs_indices: tuple[int, ...],
@@ -315,6 +298,7 @@ def _operator_action_fwd(op: Operator,
                          op_term_coeff_grad_indices: tuple[int, ...],
                          op_prod_coeff_grad_indices: tuple[tuple[int, int], ...],
                          base_op_grad_indices: tuple[tuple[int, int, int], ...],
+                         state_shape: tuple[int, ...],
                          ) -> tuple[list[jax.Array], tuple[Operator, tuple[jax.Array, ...]]]:
     """
     Forward rule for operator_action.
@@ -329,12 +313,10 @@ def _operator_action_fwd(op: Operator,
         purity,
         other_in_types,
         other_in_ptrs,
-        other_out_shape_dtypes,
-        other_out_types,
-        other_out_ptrs,
         op_term_coeffs_indices,
         op_prod_coeffs_indices,
         base_op_indices,
+        state_shape,
     )
     return state_out_bufs, (op, state_in_bufs)
 
@@ -346,7 +328,6 @@ def _operator_action_bwd(device: jax.Device,
                          other_in_types: tuple[int, ...],
                          other_in_ptrs: tuple[int, ...],
                          other_out_shape_dtypes: tuple[jax.ShapeDtypeStruct, ...],
-                         other_out_types: tuple[int, ...],
                          other_out_ptrs: tuple[int, ...],
                          op_term_coeffs_indices: tuple[int, ...],
                          op_prod_coeffs_indices: tuple[int, ...],
@@ -354,6 +335,7 @@ def _operator_action_bwd(device: jax.Device,
                          op_term_coeff_grad_indices: tuple[int, ...],
                          op_prod_coeff_grad_indices: tuple[tuple[int, int], ...],
                          base_op_grad_indices: tuple[tuple[int, int, int], ...],
+                         state_shape: tuple[int, ...],
                          res: tuple[Operator, tuple[jax.Array, ...]],
                          state_out_adj_bufs: jax.Array | Sequence[jax.Array]
                          ) -> tuple[Operator, tuple[jax.Array, ...]]:
@@ -380,10 +362,6 @@ def _operator_action_bwd(device: jax.Device,
     op, state_in_bufs = res
 
     # Prepare library context for backward operator action
-    if is_vmap_traced(state_in_bufs[0]):
-        state_shape = state_in_bufs[0].val.shape
-    else:
-        state_shape = state_in_bufs[0].shape
     state_ctx = CudensitymatContext.get_state_context(purity, state_shape, batch_size, state_in_bufs[0].dtype)
     state_ctx.create_adjoint_buffers()
 
@@ -408,7 +386,6 @@ def _operator_action_bwd(device: jax.Device,
         other_in_types,
         other_in_ptrs,
         other_out_shape_dtypes,
-        other_out_types,
         other_out_ptrs,
         op_term_coeffs_indices,
         op_prod_coeffs_indices,

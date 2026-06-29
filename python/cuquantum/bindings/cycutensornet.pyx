@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.03.1, generator version 0.3.1.dev1471+gd13834924.d20260402. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1668+gb1eb0b259. Do not modify it directly.
 
 from ._internal cimport cutensornet as _cutensornet
 
@@ -601,3 +601,7 @@ cdef cutensornetStatus_t cutensornetStateProjectionMPSUpdateCoefficients(const c
 
 cdef cutensornetStatus_t cutensornetStateProjectionMPSUpdateDualTensors(const cutensornetHandle_t handle, cutensornetStateProjectionMPS_t tensorNetworkProjection, const int64_t* maxExtents[], const int64_t* validExtents[], const int64_t* strides[], void* dualTensorsData[], const cutensornetMPSEnvBounds_t* orthoSpec, cudaStream_t cudaStream) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     return _cutensornet._cutensornetStateProjectionMPSUpdateDualTensors(handle, tensorNetworkProjection, maxExtents, validExtents, strides, dualTensorsData, orthoSpec, cudaStream)
+
+
+cdef cutensornetStatus_t cutensornetCreateMarginalDiagonal(const cutensornetHandle_t handle, cutensornetState_t tensorNetworkState, int32_t numMarginalModes, const int32_t* marginalModes, int32_t numProjectedModes, const int32_t* projectedModes, const int64_t* marginalDiagonalTensorStrides, cutensornetStateMarginal_t* tensorNetworkMarginal) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cutensornet._cutensornetCreateMarginalDiagonal(handle, tensorNetworkState, numMarginalModes, marginalModes, numProjectedModes, projectedModes, marginalDiagonalTensorStrides, tensorNetworkMarginal)

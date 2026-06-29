@@ -22,7 +22,7 @@ STATE_CONFIG_MAP = {"tn": TNConfig(),
                     "mps_value_su": MPSConfig(rel_cutoff=1e-4, gauge_option='simple')}
 
 
-def network_state_config(n_qubits, algo: str, dtype="complex128") -> NetworkState:
+def network_state_config(n_qubits, algo: str, dtype="complex128", pure_state=None) -> NetworkState:
     """
     Helper function to configure NetworkState to use MPS or TN
 
@@ -30,15 +30,20 @@ def network_state_config(n_qubits, algo: str, dtype="complex128") -> NetworkStat
         - n_qubits: int
         - algo: str
             algorithm config id from network_state_config.STATE_CONFIG_MAP
+        - pure_state: bool or None
+            ``False`` for density-matrix simulation, ``None`` for default (pure).
     """
     # workaround for MPS, one qubit isn't working
-    if n_qubits == 1:
+    if n_qubits == 1 and pure_state is None:
         n_qubits = 2
     state_mode_extents = (2,) * n_qubits
     if algo not in STATE_CONFIG_MAP:
         raise ValueError(f"Unknown state config id: {algo}")
     config = STATE_CONFIG_MAP[algo]
-    nstate = NetworkState(state_mode_extents, dtype=dtype, config=config)
+    kwargs = dict(state_mode_extents=state_mode_extents, dtype=dtype, config=config)
+    if pure_state is not None:
+        kwargs['pure_state'] = pure_state
+    nstate = NetworkState(**kwargs)
     return nstate
 
 

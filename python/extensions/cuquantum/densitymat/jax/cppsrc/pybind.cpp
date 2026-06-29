@@ -42,10 +42,4 @@ PYBIND11_MODULE(cudensitymat_jax, m)
         .value("NON_BATCHED_COEFFS", InputType::NonBatchedCoeffs)
         .export_values();
 
-    // Expose OutputType enum to Python
-    py::enum_<OutputType>(m, "OutputType", py::arithmetic())
-        .value("OPERATOR_TERM_BATCHED_COEFFS", OutputType::OperatorTermBatchedCoeffs)
-        .value("OPERATOR_PRODUCT_BATCHED_COEFFS", OutputType::OperatorProductBatchedCoeffs)
-        .value("GRADIENT", OutputType::Gradient)
-        .export_values();
 }

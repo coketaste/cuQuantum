@@ -7,6 +7,7 @@
 
 [build-system]
 requires = [
+    "cmake>=3.22",
     "setuptools>=77.0.3",
     "wheel",
     "pybind11",
@@ -16,7 +17,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cuquantum-python-jax-cu@CUDA_MAJOR_VER@"
-version = "0.0.5.post0"
+version = "0.0.6"
 description = "NVIDIA cuQuantum Python JAX"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -34,12 +35,13 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
     "Environment :: GPU :: NVIDIA CUDA",
     "@CUDA_CLASSIFIER@",
 ]
 dependencies = [
-    "cuquantum-python-cu@CUDA_MAJOR_VER@~=26.3.0",
+    "cuquantum-python-cu@CUDA_MAJOR_VER@~=26.6.0",
     "jax[cuda@CUDA_MAJOR_VER@-local]@JAX_VERSION_SPEC@",
 ]
 

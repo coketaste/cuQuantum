@@ -19,12 +19,9 @@
 
 xla::ffi::Error OperatorActionImpl(cudaStream_t stream,
                                    xla::ffi::RemainingArgs inBufs,
-                                   xla::ffi::Result<xla::ffi::AnyBuffer> workspaceBuf,
-                                   xla::ffi::RemainingRets otherOutBufs,
+                                   xla::ffi::RemainingRets outBufs,
                                    xla::ffi::Span<const int64_t> otherInTypes,
                                    xla::ffi::Span<const int64_t> otherInPtrs,
-                                   xla::ffi::Span<const int64_t> otherOutTypes,
-                                   xla::ffi::Span<const int64_t> otherOutPtrs,
                                    int64_t batchSize,
                                    int64_t numStateComponents,
                                    intptr_t handleIntPtr,
@@ -119,6 +116,8 @@ xla::ffi::Error OperatorActionImpl(cudaStream_t stream,
 
         // NOTE: In Python/JAX we added 255 to the required buffer size. Here we clear the lower 8 bits
         // of the buffer address to ensure the buffer is 256-aligned.
+        // outBufs layout: [workspace, state out components...]
+        xla::ffi::Result<xla::ffi::AnyBuffer> workspaceBuf = outBufs.get<xla::ffi::AnyBuffer>(0).value();
         uintptr_t workspaceIntPtr = reinterpret_cast<uintptr_t>(workspaceBuf->untyped_data());
         void* workspacePtrAligned = reinterpret_cast<void*>((workspaceIntPtr + 255) & ~255);
         size_t workspaceSizeAligned = workspaceBuf->size_bytes() - 255;
@@ -134,7 +133,8 @@ xla::ffi::Error OperatorActionImpl(cudaStream_t stream,
         std::vector<size_t> stateOutComponentSizes;
 
         for (int i = 0; i < numStateComponents; ++i) {
-            xla::ffi::Result<xla::ffi::AnyBuffer> resBuf = otherOutBufs.get<xla::ffi::AnyBuffer>(i).value();
+            // i + 1 is for skipping the workspace buffer.
+            xla::ffi::Result<xla::ffi::AnyBuffer> resBuf = outBufs.get<xla::ffi::AnyBuffer>(i + 1).value();
             stateOutComponentBufs.push_back(resBuf->untyped_data());
             stateOutComponentSizes.push_back(resBuf->size_bytes());
         }
@@ -194,12 +194,9 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     xla::ffi::Ffi::Bind()
         .Ctx<xla::ffi::PlatformStream<cudaStream_t>>()
         .RemainingArgs() // all input buffers
-        .Ret<xla::ffi::AnyBuffer>() // workspace
-        .RemainingRets() // other output buffers
+        .RemainingRets() // all output buffers (workspace first, then state out components)
         .Attr<xla::ffi::Span<const int64_t>>("other_in_types")
         .Attr<xla::ffi::Span<const int64_t>>("other_in_ptrs")
-        .Attr<xla::ffi::Span<const int64_t>>("other_out_types")
-        .Attr<xla::ffi::Span<const int64_t>>("other_out_ptrs")
         .Attr<int64_t>("batch_size")
         .Attr<int64_t>("num_state_components")
         .Attr<intptr_t>("handle")
@@ -211,11 +208,9 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 
 xla::ffi::Error OperatorActionBackwardDiffImpl(cudaStream_t stream,
                                                xla::ffi::RemainingArgs inBufs,
-                                               xla::ffi::Result<xla::ffi::AnyBuffer> workspaceBuf,
-                                               xla::ffi::RemainingRets otherOutBufs,
+                                               xla::ffi::RemainingRets outBufs,
                                                xla::ffi::Span<const int64_t> otherInTypes,
                                                xla::ffi::Span<const int64_t> otherInPtrs,
-                                               xla::ffi::Span<const int64_t> otherOutTypes,
                                                xla::ffi::Span<const int64_t> otherOutPtrs,
                                                int64_t batchSize,
                                                int64_t numStateComponents,
@@ -321,11 +316,13 @@ xla::ffi::Error OperatorActionBackwardDiffImpl(cudaStream_t stream,
                                                                      stateOutAdjComponentSizes.data()));
 
         // Attach storage to output state.
+        // outBufs layout: [workspace, state in adj components..., grad bufs...]
         std::vector<void*> stateInAdjComponentBufs;
         std::vector<size_t> stateInAdjComponentSizes;
 
         for (int i = 0; i < numStateComponents; ++i) {
-            xla::ffi::Result<xla::ffi::AnyBuffer> resBuf = otherOutBufs.get<xla::ffi::AnyBuffer>(i).value();
+            // i + 1 is for skipping the workspace buffer.
+            xla::ffi::Result<xla::ffi::AnyBuffer> resBuf = outBufs.get<xla::ffi::AnyBuffer>(i + 1).value();
             stateInAdjComponentBufs.push_back(resBuf->untyped_data());
             stateInAdjComponentSizes.push_back(resBuf->size_bytes());
         }
@@ -344,6 +341,7 @@ xla::ffi::Error OperatorActionBackwardDiffImpl(cudaStream_t stream,
 
         // NOTE: In Python/JAX we added 255 to the required buffer size. Here we clear the lower 8 bits
         // of the buffer address to ensure the buffer is 256-aligned.
+        xla::ffi::Result<xla::ffi::AnyBuffer> workspaceBuf = outBufs.get<xla::ffi::AnyBuffer>(0).value();
         uintptr_t workspaceIntPtr = reinterpret_cast<uintptr_t>(workspaceBuf->untyped_data());
         void* workspacePtrAligned = reinterpret_cast<void*>((workspaceIntPtr + 255) & ~255);
         size_t workspaceSizeAligned = workspaceBuf->size_bytes() - 255;
@@ -392,10 +390,10 @@ xla::ffi::Error OperatorActionBackwardDiffImpl(cudaStream_t stream,
         // so that all callback writes are guaranteed to be visible to the memcpy below.
         FFI_CUDA_ERROR_CHECK(cudaStreamSynchronize(cudaStreamDefault));
 
-        // otherOutBufs layout (after numStateComponents state adj bufs): [grad bufs].
-        for (int i = 0; i < otherOutTypes.size(); ++i) {
+        // outBufs layout (after workspace and numStateComponents state adj bufs): [grad bufs].
+        for (int i = 0; i < otherOutPtrs.size(); ++i) {
             xla::ffi::Result<xla::ffi::AnyBuffer> resBuf =
-                otherOutBufs.get<xla::ffi::AnyBuffer>(i + numStateComponents).value();
+                outBufs.get<xla::ffi::AnyBuffer>(i + numStateComponents + 1).value();
             void* coeffsGradPtr = reinterpret_cast<void*>(otherOutPtrs[i]);
             FFI_CUDA_ERROR_CHECK(cudaMemcpyAsync(resBuf->untyped_data(),
                                                  coeffsGradPtr,
@@ -421,11 +419,9 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     xla::ffi::Ffi::Bind()
         .Ctx<xla::ffi::PlatformStream<cudaStream_t>>()
         .RemainingArgs() // all input buffers
-        .Ret<xla::ffi::AnyBuffer>() // workspace
-        .RemainingRets() // other output buffers
+        .RemainingRets() // all output buffers (workspace first, then state in adj components, then grad bufs)
         .Attr<xla::ffi::Span<const int64_t>>("other_in_types")
         .Attr<xla::ffi::Span<const int64_t>>("other_in_ptrs")
-        .Attr<xla::ffi::Span<const int64_t>>("other_out_types")
         .Attr<xla::ffi::Span<const int64_t>>("other_out_ptrs")
         .Attr<int64_t>("batch_size")
         .Attr<int64_t>("num_state_components")

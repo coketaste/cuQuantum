@@ -43,6 +43,7 @@ all: check-env
 	${CUDA_PATH}/bin/nvcc high_level/expectation_example.cu -o expectation_example ${CXX_FLAGS}
 	${CUDA_PATH}/bin/nvcc high_level/expectation_gradient_example.cu -o expectation_gradient_example ${CXX_FLAGS}
 	${CUDA_PATH}/bin/nvcc high_level/marginal_example.cu -o marginal_example ${CXX_FLAGS}
+	${CUDA_PATH}/bin/nvcc high_level/mixed_state_example.cu -o mixed_state_example ${CXX_FLAGS}
 	${CUDA_PATH}/bin/nvcc high_level/sampling_example.cu -o sampling_example ${CXX_FLAGS}
 	${CUDA_PATH}/bin/nvcc high_level/mps_amplitudes_example.cu -o mps_amplitudes_example ${CXX_FLAGS}
 	${CUDA_PATH}/bin/nvcc high_level/mps_expectation_example.cu -o mps_expectation_example ${CXX_FLAGS}
@@ -93,6 +94,7 @@ clean:
 	rm -f expectation_example expectation_example.o
 	rm -f expectation_gradient_example expectation_gradient_example.o
 	rm -f marginal_example marginal_example.o
+	rm -f mixed_state_example mixed_state_example.o
 	rm -f sampling_example sampling_example.o
 	rm -f mps_amplitudes_example mps_amplitudes_example.o
 	rm -f mps_expectation_example mps_expectation_example.o

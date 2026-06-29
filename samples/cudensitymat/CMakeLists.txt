@@ -432,6 +432,185 @@ target_link_libraries(mps_tdvp_example
     CUDA::cudart
 )
 
+add_executable(mps_tdvp_two_site_example
+  mps_tdvp_two_site_example.cpp
+)
+
+set_target_properties(mps_tdvp_two_site_example
+  PROPERTIES
+    CXX_STANDARD ${CMAKE_CXX_STANDARD}
+    CUDA_STANDARD ${CMAKE_CUDA_STANDARD}
+    POSITION_INDEPENDENT_CODE ON
+)
+
+target_include_directories(mps_tdvp_two_site_example
+  PUBLIC
+    ${CUDENSITYMAT_INC_DIR}
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+)
+
+target_link_directories(mps_tdvp_two_site_example
+  PUBLIC
+    ${CUDENSITYMAT_LIB_DIR}
+    ${CUTENSORNET_LIB_DIR}
+    ${CUTENSOR_LIB_DIR}
+)
+
+target_link_libraries(mps_tdvp_two_site_example
+  PUBLIC
+    cudensitymat
+    cutensornet
+    cutensor
+    CUDA::cusolver
+    CUDA::cublas
+    CUDA::curand
+    CUDA::cudart
+)
+
+# Single-GPU DMRG eigensolver example
+add_executable(dmrg_eigensolver_one_site_example
+  dmrg_eigensolver_one_site_example.cpp
+)
+
+set_target_properties(dmrg_eigensolver_one_site_example
+  PROPERTIES
+    CXX_STANDARD ${CMAKE_CXX_STANDARD}
+    CUDA_STANDARD ${CMAKE_CUDA_STANDARD}
+    POSITION_INDEPENDENT_CODE ON
+)
+
+target_include_directories(dmrg_eigensolver_one_site_example
+  PUBLIC
+    ${CUDENSITYMAT_INC_DIR}
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+)
+
+target_link_directories(dmrg_eigensolver_one_site_example
+  PUBLIC
+    ${CUDENSITYMAT_LIB_DIR}
+    ${CUTENSORNET_LIB_DIR}
+    ${CUTENSOR_LIB_DIR}
+)
+
+target_link_libraries(dmrg_eigensolver_one_site_example
+  PUBLIC
+    cudensitymat
+    cutensornet
+    cutensor
+    CUDA::cusolver
+    CUDA::cublas
+    CUDA::curand
+    CUDA::cudart
+)
+
+# Single-GPU 2-site DMRG eigensolver example
+add_executable(dmrg_eigensolver_two_site_example
+  dmrg_eigensolver_two_site_example.cpp
+)
+
+set_target_properties(dmrg_eigensolver_two_site_example
+  PROPERTIES
+    CXX_STANDARD ${CMAKE_CXX_STANDARD}
+    CUDA_STANDARD ${CMAKE_CUDA_STANDARD}
+    POSITION_INDEPENDENT_CODE ON
+)
+
+target_include_directories(dmrg_eigensolver_two_site_example
+  PUBLIC
+    ${CUDENSITYMAT_INC_DIR}
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+)
+
+target_link_directories(dmrg_eigensolver_two_site_example
+  PUBLIC
+    ${CUDENSITYMAT_LIB_DIR}
+    ${CUTENSORNET_LIB_DIR}
+    ${CUTENSOR_LIB_DIR}
+)
+
+target_link_libraries(dmrg_eigensolver_two_site_example
+  PUBLIC
+    cudensitymat
+    cutensornet
+    cutensor
+    CUDA::cusolver
+    CUDA::cublas
+    CUDA::curand
+    CUDA::cudart
+)
+
+# Single-GPU MPS-MPO operator action example (ALS fitting)
+add_executable(mps_mpo_action_example
+  mps_mpo_action_example.cpp
+)
+
+set_target_properties(mps_mpo_action_example
+  PROPERTIES
+    CXX_STANDARD ${CMAKE_CXX_STANDARD}
+    CUDA_STANDARD ${CMAKE_CUDA_STANDARD}
+    POSITION_INDEPENDENT_CODE ON
+)
+
+target_include_directories(mps_mpo_action_example
+  PUBLIC
+    ${CUDENSITYMAT_INC_DIR}
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+)
+
+target_link_directories(mps_mpo_action_example
+  PUBLIC
+    ${CUDENSITYMAT_LIB_DIR}
+    ${CUTENSORNET_LIB_DIR}
+    ${CUTENSOR_LIB_DIR}
+)
+
+target_link_libraries(mps_mpo_action_example
+  PUBLIC
+    cudensitymat
+    cutensornet
+    cutensor
+    CUDA::cusolver
+    CUDA::cublas
+    CUDA::curand
+    CUDA::cudart
+)
+
+# Single-GPU MPS-MPO operator action performance benchmark (ALS fitting)
+add_executable(mps_mpo_action_benchmark
+  mps_mpo_action_benchmark.cpp
+)
+
+set_target_properties(mps_mpo_action_benchmark
+  PROPERTIES
+    CXX_STANDARD ${CMAKE_CXX_STANDARD}
+    CUDA_STANDARD ${CMAKE_CUDA_STANDARD}
+    POSITION_INDEPENDENT_CODE ON
+)
+
+target_include_directories(mps_mpo_action_benchmark
+  PUBLIC
+    ${CUDENSITYMAT_INC_DIR}
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+)
+
+target_link_directories(mps_mpo_action_benchmark
+  PUBLIC
+    ${CUDENSITYMAT_LIB_DIR}
+    ${CUTENSORNET_LIB_DIR}
+    ${CUTENSOR_LIB_DIR}
+)
+
+target_link_libraries(mps_mpo_action_benchmark
+  PUBLIC
+    cudensitymat
+    cutensornet
+    cutensor
+    CUDA::cusolver
+    CUDA::cublas
+    CUDA::curand
+    CUDA::cudart
+)
+
 # Single-GPU operator eigen-spectrum example
 add_executable(operator_eigenspectrum_example
   operator_eigenspectrum_example.cpp

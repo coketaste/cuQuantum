@@ -4,6 +4,7 @@
 
 import atexit
 import glob
+import importlib.util
 import os
 import sys
 import tempfile
@@ -60,8 +61,13 @@ _cffi_mod2 = None
 def _can_use_cffi():
     if cffi is None or os.environ.get('CUDA_PATH') is None:
         return False
-    else:
-        return True
+    # cffi's runtime compile path (ffi.compile) needs distutils, which on
+    # Python >=3.12 is provided only via setuptools (stdlib distutils was
+    # removed). Without it, cffi._shimmed_dist_utils raises ModuleNotFoundError
+    # at compile time, so skip rather than error.
+    if sys.version_info >= (3, 12) and importlib.util.find_spec("setuptools") is None:
+        return False
+    return True
 
 
 class MemoryResourceFactory:

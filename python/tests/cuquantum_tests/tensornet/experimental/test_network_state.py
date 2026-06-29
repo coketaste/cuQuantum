@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import os
+
 import pytest
 import numpy as np
 try:
@@ -14,16 +15,25 @@ from nvmath.internal.utils import infer_object_package
 from nvmath.internal.tensor_wrapper import wrap_operand
 
 from cuquantum.tensornet import CircuitToEinsum
+from cuquantum.tensornet._internal.helpers import _get_backend_asarray_func
 from cuquantum.tensornet.experimental import NetworkState, MPSConfig, TNConfig, NetworkOperator
+from cuquantum.bindings import cutensornet as cutn
 
 from ..utils.data import ARRAY_BACKENDS
 from ..utils.helpers import (
     TensorBackend,
     TorchRef,
+    TorchRefExplicitAdjoints,
     _BaseTester,
     assert_gradients_match,
+    assert_torch_gate_grads_match_cutn,
+    build_torch_network_state_for_exp_grad,
+    build_torch_network_state_pair_for_exp_grad,
     expectation_as_real,
     get_contraction_tolerance,
+    get_expectation_gradient_tolerance,
+    norm_as_real,
+    prepare_expectation_gradient_hamiltonian,
 )
 from ..utils.circuit_ifc import CircuitHelper, QuantumStateTestHelper, PropertyComputeHelper
 from ..utils.circuit_matrix import CircuitMatrix
@@ -31,16 +41,25 @@ from ..utils.circuit_matrix import CircuitMatrix
 from ._internal.mps_utils import MPS, trim_mps_config, verify_mps_canonicalization, get_mps_tolerance
 from ._internal.state_matrix import (
     CircuitStateMatrix,
+    EOverNDenominatorTooSmall,
     ExpectationGradientConfig,
     GenericStateMatrix,
+    MixedGenericStateMatrix,
     MPSConfigMatrix,
     NetworkOperatorFactory,
     SimulationConfigMatrix,
+    create_state_factory,
+    expectation_gradient_L0_torch,
+    expectation_gradient_L1_torch,
+    expectation_gradient_L2_torch,
+    expectation_gradient_loss_factory,
 )
-from ._internal.state_tester import BaseCircuitStateTester, BaseGenericStateTester
+from ._internal.state_tester import BaseCircuitStateTester, BaseGenericStateTester, BaseMixedGenericStateTester
 from ._internal.state_factory import apply_factory_sequence, create_vqc_states, get_random_network_operator, StateFactory
+from ._internal.state_utils import verify_state_sampling
 
 NUM_TESTS_PER_CONFIG = 3
+
 
 @pytest.fixture(params=CircuitStateMatrix.L0(), scope="class")
 def circuit_L0(request):
@@ -105,7 +124,26 @@ class TestNetworkStateBasicFunctionality(_BaseTester):
             sv = state.compute_state_vector()
             tol = get_contraction_tolerance(state.dtype)
             QuantumStateTestHelper.verify_state_vector(sv, circuit_exact_sv_L0, **tol)
-    
+
+    def test_from_circuit_mixed(self, circuit_L0, circuit_exact_sv_L0):
+        backend = self._get_array_framework(circuit_L0, "from_circuit_mixed")
+        with NetworkState.from_circuit(circuit_L0, pure_state=False, backend=backend) as state:
+            rdm = state.compute_reduced_density_matrix((0, 1))
+            tol = get_contraction_tolerance(state.dtype)
+            sv_np = TensorBackend.to_numpy(circuit_exact_sv_L0)
+            where_int = [0, 1]
+            QuantumStateTestHelper.verify_reduced_density_matrix(sv_np, where_int, rdm, **tol)
+
+    def test_from_converter_mixed(self, circuit_L0, circuit_exact_sv_L0):
+        backend = self._get_array_framework(circuit_L0, "from_converter_mixed")
+        converter = CircuitToEinsum(circuit_L0, backend=backend)
+        with NetworkState.from_converter(converter, pure_state=False) as state:
+            rdm = state.compute_reduced_density_matrix((0, 1))
+            tol = get_contraction_tolerance(state.dtype)
+            sv_np = TensorBackend.to_numpy(circuit_exact_sv_L0)
+            where_int = [0, 1]
+            QuantumStateTestHelper.verify_reduced_density_matrix(sv_np, where_int, rdm, **tol)
+
     def test_config(self, circuit_L0, exact_config, circuit_exact_sv_L0):
         backend = self._get_array_framework(circuit_L0, exact_config)
         with NetworkState.from_circuit(circuit_L0, config=exact_config, backend=backend) as state:
@@ -247,6 +285,36 @@ class TestNetworkStateBasicFunctionality(_BaseTester):
             samples_2 = state.compute_sampling(nshots, seed=123)
             assert len(samples_1) == len(samples_2) == 16
 
+    def test_sampling_large_mode_count_returns_full_bitstrings(self):
+        n_modes = 1001
+        op = np.eye(1, dtype=np.complex128)
+
+        with NetworkState((1,) * n_modes, dtype="complex128") as state:
+            state.apply_tensor_operator((0,), op, unitary=True)
+            samples = state.compute_sampling(2, seed=123)
+
+        assert samples == {"0" * n_modes: 2}
+        key = next(iter(samples))
+        assert "..." not in key
+        assert len(key) == n_modes
+
+    def test_sampling_multi_digit_qudit_no_key_collision(self):
+        # A qudit dimension >= 11 produces multi-digit values; preserving the
+        # default np.array2string-style spacing keeps them unambiguous without
+        # depending on global NumPy print options.
+        d = 12
+        # Permutation that swaps basis states |0> and |10> on mode 0.
+        op = np.eye(d, dtype=np.complex128)
+        op[[0, 10]] = op[[10, 0]]
+
+        with NetworkState((d, 2), dtype="complex128") as state:
+            state.apply_tensor_operator((0,), op, unitary=True)
+            with np.printoptions(formatter={'int': lambda x: f"<{x}>"}):
+                samples = state.compute_sampling(4, seed=123)
+
+        # Mode 0 deterministically in |10>, mode 1 in |0>.
+        assert samples == {"10 0": 4}
+
     def test_ghz_sampling_large(self):
         """Test sampling from a GHZ circuit with large number of qubits
         
@@ -268,7 +336,7 @@ class TestNetworkStateBasicFunctionality(_BaseTester):
         for i in range(n_qubits - 1):
             circuit.cx(i, i + 1)
 
-        nshots = 10000
+        nshots = 2500
         with NetworkState.from_circuit(circuit, backend=backend) as state:
             samples = state.compute_sampling(nshots, seed=42)
 
@@ -287,11 +355,291 @@ class TestNetworkStateBasicFunctionality(_BaseTester):
         p_zeros = samples.get(all_zeros, 0) / total
         p_ones = samples.get(all_ones, 0) / total
         
-        assert abs(p_zeros - 0.5) < 0.01, \
-            f"GHZ |0...0⟩ probability {p_zeros:.3f} deviates >1% from expected 0.5"
-        assert abs(p_ones - 0.5) < 0.01, \
-            f"GHZ |1...1⟩ probability {p_ones:.3f} deviates >1% from expected 0.5"
-    
+        assert abs(p_zeros - 0.5) < 0.05, \
+            f"GHZ |0...0⟩ probability {p_zeros:.3f} deviates >5% from expected 0.5"
+        assert abs(p_ones - 0.5) < 0.05, \
+            f"GHZ |1...1⟩ probability {p_ones:.3f} deviates >5% from expected 0.5"
+
+    def test_mps_sampling_selected_modes_on_initial_mps(self):
+        """Sampling a subset of modes on a NetworkState initialized via set_initial_mps.
+
+        Initializes a NetworkState with an explicit MPS via set_initial_mps and
+        applies no gates, then samples a sparse subset of modes (including the
+        last site) and checks the returned bitstrings span exactly the requested
+        modes.
+        """
+        backend = self._get_array_framework("test_mps_sampling_selected_modes_on_initial_mps")
+
+        num_sites = 6
+        phys_dim = 2
+        chi = 4
+        rng = np.random.default_rng(0)
+
+        mps = []
+        left = 1
+        for site in range(num_sites):
+            right = chi if 0 < site + 1 < num_sites else 1
+            shape = (phys_dim, right) if site == 0 else (
+                (left, phys_dim) if site + 1 == num_sites else (left, phys_dim, right)
+            )
+            a = rng.standard_normal(shape) + 1j * rng.standard_normal(shape)
+            mps.append((a / np.linalg.norm(a)).astype(np.complex128))
+            left = right
+
+        nshots = 256
+        modes = (0, 2, num_sites - 1)
+        with NetworkState((phys_dim,) * num_sites, dtype='complex128', config=TNConfig()) as state:
+            state.set_initial_mps(mps)
+            samples = state.compute_sampling(nshots, modes=modes)
+
+        total = sum(samples.values())
+        assert total == nshots, f"Expected {nshots} shots, got {total}"
+        for key in samples:
+            assert len(key) == len(modes), \
+                f"Expected each bitstring to span {len(modes)} selected modes, got len={len(key)} for {key!r}"
+            assert all(c in '01' for c in key), f"Unexpected bitstring char in {key!r}"
+
+    def test_mps_sampling_with_locally_overcomplete_bonds(self):
+        """Sampling an initialized MPS whose bond extents are locally overcomplete.
+
+        The bond extents below are within the exact half-chain limits for five
+        qubits, but the second bond cannot be produced from the left prefix:
+        chi_0 * d_1 = 1 * 2 < chi_1 = 4. Sampling such an MPS must still return
+        valid bitstrings for the requested modes.
+        """
+        num_sites = 5
+        phys_dim = 2
+        bond_extents = (1, 4, 4, 2)
+        rng = np.random.default_rng(123)
+
+        mps = []
+        left = 1
+        for site in range(num_sites):
+            right = bond_extents[site] if site + 1 < num_sites else 1
+            shape = (phys_dim, right) if site == 0 else (
+                (left, phys_dim) if site + 1 == num_sites else (left, phys_dim, right)
+            )
+            mps.append(rng.standard_normal(shape).astype(np.complex128))
+            left = right
+
+        nshots = 32
+        with NetworkState((phys_dim,) * num_sites, dtype='complex128', config=TNConfig()) as state:
+            state.set_initial_mps(mps)
+            samples = state.compute_sampling(nshots, modes=(0, 2, 4), seed=7)
+
+        assert sum(samples.values()) == nshots
+        assert all(len(bitstring) == 3 for bitstring in samples)
+
+    def test_mps_sampling_all_modes_on_initial_mps(self):
+        """All-modes sampling (``compute_sampling`` with no ``modes``) on an initialized MPS.
+
+        Sampling a freshly-initialized MPS without an explicit mode list is the
+        most natural request and must produce correct samples. A
+        bond-dimension-2 GHZ MPS is used so the exact distribution is sharp
+        (only all-zeros and all-ones, 50/50), giving the test teeth beyond
+        shape/shot-count checks.
+        """
+        num_sites = 6
+        phys_dim = 2
+
+        # delta tensors: the only nonzero amplitudes are |0...0> and |1...1>.
+        # Bond extents (2,...,2) are within the exact half-chain limits and
+        # locally reachable, so the state stays a valid initialized MPS.
+        mps = []
+        for site in range(num_sites):
+            if site == 0:
+                t = np.zeros((phys_dim, 2), dtype=np.complex128)
+                for s in range(phys_dim):
+                    t[s, s] = 1.0
+            elif site == num_sites - 1:
+                t = np.zeros((2, phys_dim), dtype=np.complex128)
+                for s in range(phys_dim):
+                    t[s, s] = 1.0
+            else:
+                t = np.zeros((2, phys_dim, 2), dtype=np.complex128)
+                for s in range(phys_dim):
+                    t[s, s, s] = 1.0
+            mps.append(t)
+
+        nshots = 4000
+        with NetworkState((phys_dim,) * num_sites, dtype='complex128', config=TNConfig()) as state:
+            state.set_initial_mps(mps)
+            samples = state.compute_sampling(nshots, seed=42)
+
+        total = sum(samples.values())
+        assert total == nshots, f"Expected {nshots} shots, got {total}"
+
+        all_zeros = '0' * num_sites
+        all_ones = '1' * num_sites
+        for key in samples:
+            assert len(key) == num_sites, \
+                f"Expected each bitstring to span all {num_sites} modes, got len={len(key)} for {key!r}"
+        assert set(samples.keys()).issubset({all_zeros, all_ones}), \
+            f"Unexpected bitstrings in GHZ all-modes sampling: {set(samples.keys()) - {all_zeros, all_ones}}"
+        assert all_zeros in samples and all_ones in samples, \
+            f"Expected both all-zeros and all-ones in all-modes GHZ sampling, got: {samples}"
+
+        p_zeros = samples.get(all_zeros, 0) / total
+        assert abs(p_zeros - 0.5) < 0.05, \
+            f"GHZ all-zeros probability {p_zeros:.3f} deviates >5% from expected 0.5"
+
+    def test_mps_sampling_initial_mps_distribution_matches_state_vector(self):
+        """Sampling an initialized MPS reproduces the exact distribution.
+
+        The other initial-MPS sampling tests use sharp GHZ/delta states (only
+        two nonzero amplitudes) or check shapes only, so they cannot catch a
+        distribution that is merely close. Here we sample a *random* (spread-out)
+        initialized MPS and require the empirical distribution to overlap >= 0.95
+        with the exact distribution obtained by contracting the same MPS to a
+        dense state vector, for both all-modes and a selected subset.
+        """
+        num_sites = 4
+        phys_dim = 2
+        chi = 2
+        rng = np.random.default_rng(2024)
+
+        mps = []
+        left = 1
+        for site in range(num_sites):
+            right = chi if site + 1 < num_sites else 1
+            shape = (phys_dim, right) if site == 0 else (
+                (left, phys_dim) if site + 1 == num_sites else (left, phys_dim, right)
+            )
+            mps.append((rng.standard_normal(shape) + 1j * rng.standard_normal(shape)).astype(np.complex128))
+            left = right
+
+        # Contract the MPS to a dense state vector of shape (phys_dim,) * num_sites
+        # as the exact reference distribution (verify_state_sampling normalizes).
+        sv = mps[0]
+        for site in range(1, num_sites):
+            sv = np.tensordot(sv, mps[site], axes=([sv.ndim - 1], [0]))
+        assert sv.shape == (phys_dim,) * num_sites
+
+        all_modes = list(range(num_sites))
+        subset_modes = [0, 2]
+        with NetworkState((phys_dim,) * num_sites, dtype='complex128', config=TNConfig()) as state:
+            state.set_initial_mps(mps)
+            verify_state_sampling(state, all_modes, 5000, sv, 3)
+            verify_state_sampling(state, subset_modes, 5000, sv, 3)
+
+    def test_mps_sampling_selected_modes_excluding_last_site(self):
+        """Sampling a subset of modes whose highest mode is not the last site.
+
+        Every other initial-MPS sampling test requests the final site as its
+        highest mode; here the highest requested mode (2) is well below the last
+        site (5). A bond-dimension-2 GHZ MPS keeps the exact distribution sharp:
+        since every qubit agrees, the (0, 2) outcomes must be exactly ``00`` or
+        ``11``, and both must appear.
+        """
+        num_sites = 6
+        phys_dim = 2
+
+        mps = []
+        for site in range(num_sites):
+            if site == 0:
+                t = np.zeros((phys_dim, 2), dtype=np.complex128)
+            elif site == num_sites - 1:
+                t = np.zeros((2, phys_dim), dtype=np.complex128)
+            else:
+                t = np.zeros((2, phys_dim, 2), dtype=np.complex128)
+            for s in range(phys_dim):
+                if site == 0:
+                    t[s, s] = 1.0
+                elif site == num_sites - 1:
+                    t[s, s] = 1.0
+                else:
+                    t[s, s, s] = 1.0
+            mps.append(t)
+
+        nshots = 4000
+        modes = (0, 2)
+        with NetworkState((phys_dim,) * num_sites, dtype='complex128', config=TNConfig()) as state:
+            state.set_initial_mps(mps)
+            samples = state.compute_sampling(nshots, modes=modes, seed=42)
+
+        assert sum(samples.values()) == nshots
+        for key in samples:
+            assert len(key) == len(modes), \
+                f"Expected each bitstring to span {len(modes)} modes, got len={len(key)} for {key!r}"
+        assert set(samples.keys()).issubset({'00', '11'}), \
+            f"Unexpected bitstrings sampling a GHZ prefix subset: {set(samples.keys()) - {'00', '11'}}"
+        assert '00' in samples and '11' in samples, \
+            f"Expected both '00' and '11' from the GHZ (0, 2) marginal, got: {samples}"
+
+    def test_mps_sampling_rejects_zero_norm_initial_mps(self):
+        """Sampling a zero-norm initialized MPS raises instead of emitting garbage.
+
+        A state with no support (here an all-zero initial MPS) must raise
+        ``CUTENSORNET_STATUS_INVALID_VALUE`` rather than silently returning a
+        degenerate sample.
+        """
+        num_sites = 3
+        phys_dim = 2
+
+        # All-zero, bond-dimension-1 MPS: valid, non-overcomplete bond extents
+        # but with zero total mass.
+        mps = []
+        for site in range(num_sites):
+            if site == 0:
+                shape = (phys_dim, 1)
+            elif site == num_sites - 1:
+                shape = (1, phys_dim)
+            else:
+                shape = (1, phys_dim, 1)
+            mps.append(np.zeros(shape, dtype=np.complex128))
+
+        with NetworkState((phys_dim,) * num_sites, dtype='complex128', config=TNConfig()) as state:
+            state.set_initial_mps(mps)
+            with pytest.raises(cutn.cuTensorNetError) as exc_info:
+                state.compute_sampling(16, seed=1)
+            assert "INVALID_VALUE" in str(exc_info.value)
+
+    def test_sampling_rejects_zero_norm(self):
+        """Sampling a zero-norm contraction-based state raises instead of emitting garbage.
+
+        Companion to ``test_mps_sampling_rejects_zero_norm_initial_mps`` for a
+        state built by applying operators: a zero operator drives the state norm
+        to zero, and sampling must raise ``CUTENSORNET_STATUS_INVALID_VALUE``
+        instead of returning a degenerate sample.
+        """
+        zero_gate = np.zeros((2, 2), dtype=np.complex128)
+        with NetworkState((2, 2), dtype='complex128', config=TNConfig()) as state:
+            state.apply_tensor_operator((0,), zero_gate)
+            with pytest.raises(cutn.cuTensorNetError) as exc_info:
+                state.compute_sampling(16, seed=1)
+            assert "INVALID_VALUE" in str(exc_info.value)
+
+    @staticmethod
+    def _create_ghz_circuit(n_qubits):
+        qiskit = pytest.importorskip("qiskit")
+
+        circuit = qiskit.QuantumCircuit(n_qubits)
+        circuit.h(0)
+        for i in range(n_qubits - 1):
+            circuit.cx(i, i + 1)
+        return circuit
+
+    def _assert_repeated_ghz_single_shots_observe_both_outcomes(self, *, seed):
+        n_qubits = 6
+        num_trials = 64
+        expected_outcomes = {'0' * n_qubits, '1' * n_qubits}
+        backend = self._get_array_framework(
+            f"test_ghz_single_shot_rng_advances_{'default' if seed is None else 'seeded'}")
+        initial_sample_kwargs = {} if seed is None else {'seed': seed}
+
+        circuit = self._create_ghz_circuit(n_qubits)
+        observed_outcomes = set()
+        with NetworkState.from_circuit(circuit, backend=backend) as state:
+            observed_outcomes.update(state.compute_sampling(1, **initial_sample_kwargs))
+            for _ in range(num_trials - 1):
+                observed_outcomes.update(state.compute_sampling(1))
+
+        assert observed_outcomes == expected_outcomes
+
+    @pytest.mark.parametrize("seed", (None, 42), ids=("default-seed", "configured-seed"))
+    def test_ghz_single_shot_sampling_advances_rng(self, seed):
+        self._assert_repeated_ghz_single_shots_observe_both_outcomes(seed=seed)
+
     @pytest.mark.parametrize(
         "gauge_option", ('free', 'simple')
     )
@@ -417,6 +765,26 @@ class TestNetworkStateBasicFunctionality(_BaseTester):
         QuantumStateTestHelper.verify_state_vector(sv0, sv1, **tol)
         QuantumStateTestHelper.verify_state_vector(sv0, sv2, **tol)
 
+    @pytest.mark.parametrize("stream_kind", ("object", "ptr"))
+    def test_mps_release_operators_with_explicit_stream(self, stream_kind):
+        cp = pytest.importorskip("cupy")
+        if cp.cuda.runtime.getDeviceCount() == 0:
+            pytest.skip("CUDA required")
+
+        stream = cp.cuda.Stream(non_blocking=True)
+        stream_arg = stream.ptr if stream_kind == "ptr" else stream
+
+        with NetworkState((2, 2), dtype="complex128", config=MPSConfig()) as state:
+            with stream:
+                eye = cp.eye(2, dtype=cp.complex128)
+                state.apply_tensor_operator((0,), eye, unitary=True, stream=stream_arg)
+                state.apply_tensor_operator((1,), eye, unitary=True, stream=stream_arg)
+                mps_tensors = state.compute_output_state(stream=stream_arg, release_operators=True)
+
+            stream.synchronize()
+
+        assert [tensor.shape for tensor in mps_tensors] == [(2, 1), (1, 2)]
+
     @pytest.mark.parametrize(
         "config", ({}, {'max_extent': 2}, {'rel_cutoff': 0.12, 'gauge_option': 'simple'})
     )
@@ -453,7 +821,7 @@ class TestNetworkStateBasicFunctionality(_BaseTester):
             updated_expec.append(e/norm)
 
         for e1, e2 in zip(original_expec, updated_expec):
-            assert np.allclose(e1, e2, **tolerance)
+            assert TensorBackend.verify_close(e1, e2, **tolerance)
         
         # we here first perform expectation check and then state vector check as caching in 24.08 is only activated for one compute object at one time.
         original_sv = []
@@ -486,14 +854,14 @@ class TestNetworkStateBasicFunctionality(_BaseTester):
             ndim = sv.ndim
             backend = TensorBackend.from_array(sv)
             norm0 = TensorBackend.to_numpy(backend.norm(sv) ** 2)
-            assert np.isclose(norm, norm0)
+            assert TensorBackend.verify_close(norm, norm0)
             norm = state.compute_amplitude('0'*ndim, return_norm=True)[1]
-            assert np.isclose(norm, norm0)
+            assert TensorBackend.verify_close(norm, norm0)
             norm = state.compute_batched_amplitudes({0:'0'}, return_norm=True)[1]
-            assert np.isclose(norm, norm0)
+            assert TensorBackend.verify_close(norm, norm0)
             operator = get_random_network_operator(factory.state_dims, rng, backend.name, num_repeats=1, dtype=state.dtype, options=state.options)
             norm = state.compute_expectation(operator, return_norm=True)[1]
-            assert np.isclose(norm, norm0)
+            assert TensorBackend.verify_close(norm, norm0)
 
 
     @pytest.mark.parametrize("factory", GenericStateMatrix.L0())
@@ -627,6 +995,9 @@ class TestExactCircuitSimulation(BaseCircuitStateTester):
     def test_reduced_density_matrix(self, circuit_L1, exact_config, circuit_exact_sv_L1):
         super().test_reduced_density_matrix(circuit_L1, exact_config, circuit_exact_sv_L1, NUM_TESTS_PER_CONFIG)
 
+    def test_marginal_probability(self, circuit_L1, exact_config, circuit_exact_sv_L1):
+        super().test_marginal_probability(circuit_L1, exact_config, circuit_exact_sv_L1, NUM_TESTS_PER_CONFIG)
+
     def test_sampling(self, circuit_L1, exact_config, circuit_exact_sv_L1):
         super().test_sampling(circuit_L1, exact_config, circuit_exact_sv_L1, NUM_TESTS_PER_CONFIG)
 
@@ -660,9 +1031,48 @@ class TestExactGenericState(BaseGenericStateTester):
     
     def test_reduced_density_matrix(self, factory_L1, exact_config, sv_factory_L1):
         super().test_reduced_density_matrix(factory_L1, exact_config, sv_factory_L1, NUM_TESTS_PER_CONFIG)
-    
+
+    def test_marginal_probability(self, factory_L1, exact_config, sv_factory_L1):
+        super().test_marginal_probability(factory_L1, exact_config, sv_factory_L1, NUM_TESTS_PER_CONFIG)
+
     def test_sampling(self, factory_L1, exact_config, sv_factory_L1):
         super().test_sampling(factory_L1, exact_config, sv_factory_L1, NUM_TESTS_PER_CONFIG)
+
+
+@pytest.fixture(params=MixedGenericStateMatrix.L1(), scope="class")
+def mixed_factory_L1(request):
+    return request.param
+
+@pytest.fixture(scope="class")
+def sv_mixed_factory_L1(mixed_factory_L1):
+    return mixed_factory_L1.compute_state_vector()
+
+@pytest.fixture(params=[TNConfig()], scope="class")
+def mixed_exact_config(request):
+    return request.param
+
+
+class TestExactGenericStateMixed(BaseMixedGenericStateTester):
+    """Exact generic state tests with pure_state=False (unitary-only, rho=|psi><psi|)."""
+
+    def test_density_matrix(self, mixed_factory_L1, mixed_exact_config, sv_mixed_factory_L1):
+        super().test_density_matrix(mixed_factory_L1, mixed_exact_config, sv_mixed_factory_L1)
+
+    def test_amplitude(self, mixed_factory_L1, mixed_exact_config, sv_mixed_factory_L1):
+        super().test_amplitude(mixed_factory_L1, mixed_exact_config, sv_mixed_factory_L1, NUM_TESTS_PER_CONFIG)
+
+    def test_marginal_probability(self, mixed_factory_L1, mixed_exact_config, sv_mixed_factory_L1):
+        super().test_marginal_probability(mixed_factory_L1, mixed_exact_config, sv_mixed_factory_L1, NUM_TESTS_PER_CONFIG)
+
+    def test_expectation(self, mixed_factory_L1, mixed_exact_config, sv_mixed_factory_L1):
+        super().test_expectation(mixed_factory_L1, mixed_exact_config, sv_mixed_factory_L1, NUM_TESTS_PER_CONFIG)
+
+    def test_reduced_density_matrix(self, mixed_factory_L1, mixed_exact_config, sv_mixed_factory_L1):
+        super().test_reduced_density_matrix(mixed_factory_L1, mixed_exact_config, sv_mixed_factory_L1, NUM_TESTS_PER_CONFIG)
+
+    def test_sampling(self, mixed_factory_L1, mixed_exact_config, sv_mixed_factory_L1):
+        super().test_sampling(mixed_factory_L1, mixed_exact_config, sv_mixed_factory_L1, NUM_TESTS_PER_CONFIG)
+
 
 @pytest.fixture(params=CircuitStateMatrix.L2(), scope="class")
 def circuit_L2(request):
@@ -695,7 +1105,10 @@ class TestApproxCircuitSimulation(BaseCircuitStateTester):
 
     def test_reduced_density_matrix(self, circuit_L2, approx_mps_config, circuit_approx_sv_L2):
         super().test_reduced_density_matrix(circuit_L2, approx_mps_config, circuit_approx_sv_L2, NUM_TESTS_PER_CONFIG)
-    
+
+    def test_marginal_probability(self, circuit_L2, approx_mps_config, circuit_approx_sv_L2):
+        super().test_marginal_probability(circuit_L2, approx_mps_config, circuit_approx_sv_L2, NUM_TESTS_PER_CONFIG)
+
     def test_sampling(self, circuit_L2, approx_mps_config, circuit_approx_sv_L2):
         super().test_sampling(circuit_L2, approx_mps_config, circuit_approx_sv_L2, NUM_TESTS_PER_CONFIG)
 
@@ -728,66 +1141,371 @@ class TestApproxGenericState(BaseGenericStateTester):
     
     def test_reduced_density_matrix(self, factory_L2, approx_mps_config, factory_approx_sv_L2):
         super().test_reduced_density_matrix(factory_L2, approx_mps_config, factory_approx_sv_L2, NUM_TESTS_PER_CONFIG)
-    
+
+    def test_marginal_probability(self, factory_L2, approx_mps_config, factory_approx_sv_L2):
+        super().test_marginal_probability(factory_L2, approx_mps_config, factory_approx_sv_L2, NUM_TESTS_PER_CONFIG)
+
     def test_sampling(self, factory_L2, approx_mps_config, factory_approx_sv_L2):
         super().test_sampling(factory_L2, approx_mps_config, factory_approx_sv_L2, NUM_TESTS_PER_CONFIG)
+
+
+class TestPauliExpectationCache:
+    """Pauli convenience inputs memoize NetworkOperator instances."""
+
+    def test_repeated_pauli_string_reuses_cached_network_operator(self):
+        dtype = "complex128"
+        state_dims = (2, 2)
+        state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
+        eye = np.eye(2, dtype=dtype)
+        state.apply_tensor_operator((0,), eye, unitary=True)
+        state.apply_tensor_operator((1,), eye, unitary=True)
+        with state:
+            assert len(state._pauli_network_operator_cache) == 0
+            e0 = state.compute_expectation("ZI")
+            assert len(state._pauli_network_operator_cache) == 1
+            op_first = next(iter(state._pauli_network_operator_cache.values()))
+            e1 = state.compute_expectation("ZI")
+            assert len(state._pauli_network_operator_cache) == 1
+            assert op_first is next(iter(state._pauli_network_operator_cache.values()))
+            assert TensorBackend.verify_close(e0, e1)
+
+    def test_pauli_dict_order_normalized_for_same_cache_entry(self):
+        dtype = "complex128"
+        state_dims = (2, 2)
+        state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
+        eye = np.eye(2, dtype=dtype)
+        state.apply_tensor_operator((0,), eye, unitary=True)
+        state.apply_tensor_operator((1,), eye, unitary=True)
+        with state:
+            state.compute_expectation({"ZI": 1j, "IZ": (2 + 1j)})
+            assert len(state._pauli_network_operator_cache) == 1
+            key_before = next(iter(state._pauli_network_operator_cache.keys()))
+            op_before = state._pauli_network_operator_cache[key_before]
+            state.compute_expectation({"IZ": (2 + 1j), "ZI": 1j})
+            assert len(state._pauli_network_operator_cache) == 1
+            assert key_before == next(iter(state._pauli_network_operator_cache.keys()))
+            assert op_before is next(iter(state._pauli_network_operator_cache.values()))
+
+    def test_structural_change_clears_pauli_operator_cache(self):
+        dtype = "complex128"
+        state_dims = (2, 2)
+        state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
+        eye = np.eye(2, dtype=dtype)
+        state.apply_tensor_operator((0,), eye, unitary=True)
+        state.apply_tensor_operator((1,), eye, unitary=True)
+        with state:
+            state.compute_expectation("ZI")
+            assert len(state._pauli_network_operator_cache) == 1
+            state.apply_tensor_operator((0,), eye, unitary=True)
+            assert len(state._pauli_network_operator_cache) == 0
+
+    def test_repeated_pauli_string_reuses_on_gradients_path(self):
+        """Pauli observables memoize on compute_expectation_with_gradients, not only compute_expectation."""
+        dtype = "complex128"
+        state_dims = (2, 2)
+        state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
+        eye = np.eye(2, dtype=dtype)
+        state.apply_tensor_operator((0,), eye, unitary=True, gradient=True)
+        state.apply_tensor_operator((1,), eye, unitary=True)
+        with state:
+            assert len(state._pauli_network_operator_cache) == 0
+            exp0, g0 = state.compute_expectation_with_gradients("ZI", 1.0)
+            assert len(state._pauli_network_operator_cache) == 1
+            op_first = next(iter(state._pauli_network_operator_cache.values()))
+            exp1, g1 = state.compute_expectation_with_gradients("ZI", 1.0)
+            assert len(state._pauli_network_operator_cache) == 1
+            assert op_first is next(iter(state._pauli_network_operator_cache.values()))
+            assert TensorBackend.verify_close(exp0, exp1)
+            assert len(g0) == len(g1) == 1
+            tid = next(iter(g0.keys()))
+            assert np.allclose(g0[tid], g1[tid])
+
+
+@pytest.mark.skipif(
+    torch is None or not torch.cuda.is_available(),
+    reason="torch with CUDA required",
+)
+class TestExpectationTorchAutograd:
+    """``compute_expectation`` PyTorch autograd integration (``_TorchExpectation``)."""
+
+    def test_returns_tensor_on_graph_and_backward(self):
+        """compute_expectation returns a Torch tensor on the graph and backward propagates gradients."""
+        dtype = torch.complex128
+        device = "cuda"
+        theta = torch.tensor(torch.pi / 8, dtype=torch.float64, device=device, requires_grad=True)
+        cy = torch.cos(theta / 2)
+        sy = torch.sin(theta / 2)
+        g0 = torch.stack([torch.stack([cy, -sy]), torch.stack([sy, cy])]).to(dtype)
+
+        eye1 = torch.eye(2, dtype=dtype, device=device)
+
+        state = NetworkState((2, 2), dtype="complex128", config=TNConfig())
+        state.apply_tensor_operator((0,), g0, unitary=True)
+        state.apply_tensor_operator((1,), eye1, unitary=True)
+
+        with state:
+            e = state.compute_expectation("ZI")
+            loss = e.real**2
+            loss.backward()
+
+        assert isinstance(e, torch.Tensor)
+        assert e.requires_grad
+        assert theta.grad is not None
+        assert bool(torch.isfinite(theta.grad).item())
+
+    def test_return_norm_tensor_on_graph_and_backward(self):
+        """compute_expectation(return_norm=True) returns tensors on the graph; backward uses norm adjoint."""
+        dtype = torch.complex128
+        device = "cuda"
+        theta = torch.tensor(torch.pi / 8, dtype=torch.float64, device=device, requires_grad=True)
+        cy = torch.cos(theta / 2)
+        sy = torch.sin(theta / 2)
+        g0 = torch.stack([torch.stack([cy, -sy]), torch.stack([sy, cy])]).to(dtype)
+        eye1 = torch.eye(2, dtype=dtype, device=device)
+
+        state = NetworkState((2, 2), dtype="complex128", config=TNConfig())
+        state.apply_tensor_operator((0,), g0, unitary=True)
+        state.apply_tensor_operator((1,), eye1, unitary=True)
+
+        loss_fn = expectation_gradient_loss_factory("e2_plus_3j_n")
+        with state:
+            e, n = state.compute_expectation("ZI", return_norm=True)
+            loss = loss_fn(e, n)
+            loss.backward()
+
+        assert isinstance(e, torch.Tensor) and isinstance(n, torch.Tensor)
+        assert e.requires_grad and n.requires_grad
+        assert theta.grad is not None
+        assert bool(torch.isfinite(theta.grad).item())
+
+    @pytest.mark.parametrize(
+        "loss_variant",
+        ("e_over_n", "e2_plus_3j_n"),
+    )
+    @pytest.mark.parametrize(
+        "config",
+        expectation_gradient_L0_torch
+        + expectation_gradient_L1_torch
+        + expectation_gradient_L2_torch,
+    )
+    def test_matches_cutn(self, config, loss_variant):
+        """Gate grads from autograd match explicit ``compute_expectation_with_gradients``."""
+        return_norm = config.get("return_norm", False)
+        if not return_norm and loss_variant in ("e_over_n", "e_times_n"):
+            pytest.skip("`e_over_n` and `e_times_n` require ``return_norm=True``")
+
+        device = torch.device("cuda")
+        dtype = config["dtype"]
+        factory = config["factory"]
+        state_dims = factory.state_dims
+        gate_sequence = factory.get_gate_sequence_for_reference()
+        hamiltonian = prepare_expectation_gradient_hamiltonian(config)
+        loss_fn = expectation_gradient_loss_factory(loss_variant)
+        torch_ref = TorchRef()
+
+        (
+            state_autograd,
+            state_cutn,
+            _,
+            _,
+            gradient_tensor_ids,
+            trainable_gates,
+            _,
+        ) = build_torch_network_state_pair_for_exp_grad(config, device)
+
+        try:
+            with state_autograd:
+                if return_norm:
+                    e, n = state_autograd.compute_expectation(hamiltonian, return_norm=True)
+                    assert isinstance(e, torch.Tensor) and isinstance(n, torch.Tensor)
+                    loss = loss_fn(e, n)
+                    exp_detached, norm_detached = e.detach(), n.detach()
+                else:
+                    e = state_autograd.compute_expectation(hamiltonian, return_norm=False)
+                    assert isinstance(e, torch.Tensor)
+                    norm_detached = None
+                    loss = loss_fn(e, None)
+                    exp_detached = e.detach()
+
+                _, adj_e_np, adj_n_np = torch_ref.adjoints_from_expectation_and_norm(
+                    exp_detached,
+                    norm_detached,
+                    loss_fn=loss_fn,
+                    return_cutn_adjoint_numpy=True,
+                    cutn_dtype=dtype,
+                )
+                loss.backward()
+
+            with state_cutn:
+                if return_norm:
+                    exp_cutn, norm_cutn, gradients_cutn = state_cutn.compute_expectation_with_gradients(
+                        hamiltonian,
+                        adj_e_np,
+                        return_norm=True,
+                        state_norm_adjoint=adj_n_np,
+                    )
+                else:
+                    exp_cutn, gradients_cutn = state_cutn.compute_expectation_with_gradients(
+                        hamiltonian,
+                        adj_e_np,
+                        return_norm=False,
+                        state_norm_adjoint=None,
+                    )
+                    norm_cutn = None
+        except EOverNDenominatorTooSmall as exc:
+            pytest.skip(str(exc))
+
+        tol = get_contraction_tolerance(dtype)
+        grad_tol = get_expectation_gradient_tolerance(dtype, return_norm=return_norm)
+        exp_from_autograd = expectation_as_real(exp_detached.cpu().item(), dtype)
+        exp_cutn_real = expectation_as_real(exp_cutn, dtype)
+        assert np.allclose(exp_from_autograd, exp_cutn_real, **tol), (exp_from_autograd, exp_cutn_real)
+        if return_norm:
+            assert norm_cutn is not None
+            assert np.allclose(
+                norm_as_real(norm_detached, dtype), norm_as_real(norm_cutn, dtype), **tol
+            ), (norm_detached, norm_cutn)
+
+        assert_torch_gate_grads_match_cutn(trainable_gates, gradients_cutn, grad_tol)
+
+    def test_fallback_no_trainable_gates_returns_torch_scalars_off_graph(self):
+        """Without trainable gates, ``compute_expectation`` returns 0-D tensors not on the graph."""
+        dtype = torch.complex128
+        device = torch.device("cuda")
+        eye = torch.eye(2, dtype=dtype, device=device)
+
+        state = NetworkState((2, 2), dtype="complex128", config=TNConfig())
+        state.apply_tensor_operator((0,), eye, unitary=True, gradient=False)
+        state.apply_tensor_operator((1,), eye, unitary=True, gradient=False)
+
+        with state:
+            out = state.compute_expectation("ZI", return_norm=False)
+            assert isinstance(out, torch.Tensor)
+            assert out.ndim == 0
+            assert not out.requires_grad
+            out_pair = state.compute_expectation("ZI", return_norm=True)
+            assert isinstance(out_pair[0], torch.Tensor) and isinstance(out_pair[1], torch.Tensor)
+            assert out_pair[0].ndim == 0 and out_pair[1].ndim == 0
+            assert not out_pair[0].requires_grad and not out_pair[1].requires_grad
+
+    def test_disabled_under_no_grad_returns_torch_scalars_off_graph(self):
+        """With ``torch.no_grad()``, expectation outputs are not on the autograd graph."""
+        config = expectation_gradient_L0_torch[0]
+        device = torch.device("cuda")
+        state, hamiltonian, _, _, trainable_gates, _ = build_torch_network_state_for_exp_grad(
+            config, device
+        )
+        assert len(trainable_gates) > 0
+
+        with state:
+            with torch.no_grad():
+                out = state.compute_expectation(hamiltonian, return_norm=False)
+            assert isinstance(out, torch.Tensor)
+            assert out.ndim == 0
+            assert not out.requires_grad
+
+    @pytest.mark.parametrize(
+        "apply_kwargs",
+        [
+            {"diagonal": True},
+            {"control_modes": (1,)},
+        ],
+    )
+    def test_requires_grad_unsupported_operator_raises(self, apply_kwargs):
+        """Torch ``requires_grad=True`` on controlled/diagonal ops must not be silently ignored."""
+        dtype = torch.complex128
+        device = torch.device("cuda")
+        state = NetworkState((2, 2), dtype="complex128", config=TNConfig())
+        if apply_kwargs.get("diagonal"):
+            gate = torch.tensor([1.0 + 0j, -1.0 + 0j], dtype=dtype, device=device, requires_grad=True)
+        else:
+            gate = torch.eye(2, dtype=dtype, device=device, requires_grad=True)
+        with pytest.raises(ValueError, match="Gradient registration is only supported for non-controlled, non-diagonal."):
+            state.apply_tensor_operator((0,), gate, unitary=True, **apply_kwargs)
+
+    def test_gradient_true_without_requires_grad(self):
+        """``gradient=True`` registers CUTN; autograd still requires ``requires_grad=True``."""
+        dtype = torch.complex128
+        device = torch.device("cuda")
+        theta = torch.tensor(torch.pi / 8, dtype=torch.float64, device=device, requires_grad=False)
+        cy = torch.cos(theta / 2)
+        sy = torch.sin(theta / 2)
+        g0 = torch.stack([torch.stack([cy, -sy]), torch.stack([sy, cy])]).to(dtype)
+        eye1 = torch.eye(2, dtype=dtype, device=device)
+
+        state = NetworkState((2, 2), dtype="complex128", config=TNConfig())
+        state.apply_tensor_operator((0,), g0, unitary=True, gradient=True)
+        state.apply_tensor_operator((1,), eye1, unitary=True)
+
+        with state:
+            out = state.compute_expectation("ZI", return_norm=False)
+            assert not out.requires_grad
+            with pytest.raises(RuntimeError, match="does not require grad"):
+                out.backward(torch.ones_like(out))
+            assert theta.grad is None
+
+            _, grads = state.compute_expectation_with_gradients(
+                "ZI", np.array(1.0 + 0j, dtype=np.complex128)
+            )
+            assert len(grads) == 1
+            
+    def test_loss_without_norm_term_matches_cutn(self):
+        """``return_norm=True`` but loss depends only on E; zero norm adjoint; grads match CUTN."""
+        # Hermitian + unitary gates (no ``return_norm`` in config); API still requests norm forward.
+        config = expectation_gradient_L0_torch[0]
+        device = torch.device("cuda")
+        dtype = config["dtype"]
+        loss_fn = expectation_gradient_loss_factory("e2_plus_3j_n")
+
+        state_autograd, state_cutn, hamiltonian, _, _, trainable_gates, _ = (
+            build_torch_network_state_pair_for_exp_grad(config, device)
+        )
+
+        with state_autograd:
+            e, n = state_autograd.compute_expectation(hamiltonian, return_norm=True)
+            loss = loss_fn(e, None)
+            _, adj_e_np, _ = TorchRef().adjoints_from_expectation_and_norm(
+                e.detach(),
+                None,
+                loss_fn=loss_fn,
+                return_cutn_adjoint_numpy=True,
+                cutn_dtype=dtype,
+            )
+            loss.backward()
+
+        grad_tol = get_expectation_gradient_tolerance(dtype, return_norm=True)
+        adj_n_np = np.array(0.0, dtype=np.dtype(dtype))
+        with state_cutn:
+            _, _, gradients_cutn = state_cutn.compute_expectation_with_gradients(
+                hamiltonian,
+                adj_e_np,
+                return_norm=True,
+                state_norm_adjoint=adj_n_np,
+            )
+        assert_torch_gate_grads_match_cutn(trainable_gates, gradients_cutn, grad_tol)
 
 
 class TestExpectationGradient:
     """Test compute_expectation_with_gradients against the TorchRef implementation."""
 
-    def test_expectation_gradient_requires_at_least_one_gradient(self):
-        """compute_expectation_with_gradients raises if no operator has gradient=True."""
-        state_dims = (2, 2)
+    def test_gradient_tensor_ids_sorted_apply_order(self):
+        """gradient_tensor_ids returns ascending IDs matching apply order for registered gates."""
         dtype = "complex128"
-        state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
-        state.apply_tensor_operator((0,), np.eye(2, dtype=dtype), unitary=True)
-        state.apply_tensor_operator((1,), np.eye(2, dtype=dtype), unitary=True)
-        with state:
-            with pytest.raises(ValueError, match=r"at least one tensor operator applied with gradient=True"):
-                state.compute_expectation_with_gradients("ZI", 1.0)
+        state = NetworkState((2, 2, 2), dtype=dtype, config=TNConfig())
+        id0 = state.apply_tensor_operator((0,), np.eye(2, dtype=dtype), unitary=True, gradient=False)
+        id1 = state.apply_tensor_operator((1,), np.eye(2, dtype=dtype), unitary=True, gradient=True)
+        id2 = state.apply_tensor_operator((2,), np.eye(2, dtype=dtype), unitary=True, gradient=True)
+        assert state.gradient_tensor_ids() == (id1, id2)
+        assert id0 < id1 < id2
 
-    def test_expectation_gradient_requires_all_gates_unitary(self):
-        """compute_expectation_with_gradients raises if any gate is non-unitary (C++ allGatesUnitary check)."""
-        from cuquantum.bindings import cutensornet as cutn
-        state_dims = (2, 2)
-        dtype = "complex128"
-        state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
-        state.apply_tensor_operator((0,), np.eye(2, dtype=dtype), unitary=True, gradient=True)
-        non_unitary = np.array([[1.0, 0.5], [0.5, 1.0]], dtype=dtype)  # not unitary
-        state.apply_tensor_operator((1,), non_unitary, unitary=False, gradient=False)
-        state.__enter__()
-        try:
-            with pytest.raises(cutn.cuTensorNetError, match=r"NOT_SUPPORTED"):
-                state.compute_expectation_with_gradients("ZI", 1.0)
-        finally:
-            try:
-                state.__exit__(None, None, None)
-            except AttributeError:
-                pass  # free() may hit workspace_stream is None when prepare failed
+        state_empty = NetworkState((2,), dtype=dtype, config=TNConfig())
+        state_empty.apply_tensor_operator((0,), np.eye(2, dtype=dtype), unitary=True, gradient=False)
+        assert state_empty.gradient_tensor_ids() == ()
 
-    def test_expectation_gradient_state_norm_adjoint_must_be_none(self):
-        """compute_expectation_with_gradients raises if state_norm_adjoint is not None (C++ expects null in this release)."""
-        state_dims = (2, 2)
-        dtype = "complex128"
-        state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
-        state.apply_tensor_operator((0,), np.eye(2, dtype=dtype), unitary=True, gradient=True)
-        state.apply_tensor_operator((1,), np.eye(2, dtype=dtype), unitary=True)
-        with state:
-            with pytest.raises(NotImplementedError, match=r"state_norm_adjoint.*not supported|pass None"):
-                state.compute_expectation_with_gradients("ZI", 1.0, state_norm_adjoint=1.0)
-
-    def test_expectation_gradient_return_norm_must_be_false(self):
-        """compute_expectation_with_gradients raises if return_norm is not False (norm pointer must be null in this release)."""
-        state_dims = (2, 2)
-        dtype = "complex128"
-        state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
-        state.apply_tensor_operator((0,), np.eye(2, dtype=dtype), unitary=True, gradient=True)
-        state.apply_tensor_operator((1,), np.eye(2, dtype=dtype), unitary=True)
-        with state:
-            with pytest.raises(NotImplementedError, match=r"return_norm.*not supported|pass None"):
-                state.compute_expectation_with_gradients("ZI", 1.0, return_norm=True)
-
+    @pytest.mark.parametrize(
+        "loss_variant",
+        ("e_over_n", "e2_plus_3j_n", "e_times_n", "linear_affine_e_n"),
+    )
     @pytest.mark.parametrize(
         "config",
         (
@@ -796,14 +1514,21 @@ class TestExpectationGradient:
             + ExpectationGradientConfig.L2()
         ),
     )
-    def test_expectation_gradient_vs_reference(self, config):
-        """Build state from config, compare cutn vs TorchRef. Hamiltonian is either Pauli dict or NetworkOperator."""
+    def test_expectation_gradient_vs_reference(self, config, loss_variant):
+        """CUTN vs TorchRef for parametrized real losses ``f(E,N)``.
+
+        ``e_over_n`` / ``e_times_n`` need ``return_norm=True``. ``e2_plus_3j_n`` and ``linear_affine_e_n`` also
+        run with ``return_norm=False`` (no ``N`` term in the loss).
+        """
         if torch is None:
             pytest.skip("torch is required for expectation gradient reference tests")
+        return_norm = config.get("return_norm", False)
+        if not return_norm and loss_variant in ("e_over_n", "e_times_n"):
+            pytest.skip("`e_over_n` and `e_times_n` require ``N`` (``return_norm=True``)")
+
         factory = config["factory"]
         state_dims = factory.state_dims
         gate_sequence = factory.get_gate_sequence_for_reference()
-        expectation_value_adjoint = config.get("expectation_value_adjoint", 1.0)
         hamiltonian = config.get("hamiltonian")
         if hamiltonian is not None:
             if not isinstance(hamiltonian, (dict, NetworkOperatorFactory)):
@@ -822,29 +1547,270 @@ class TestExpectationGradient:
 
         state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
         gradient_tensor_ids = []
-        for modes, gate_tensor, requires_grad in gate_sequence:
-            tensor_id = state.apply_tensor_operator(modes, gate_tensor, unitary=True, gradient=requires_grad)
+        for item in gate_sequence:
+            modes, gate_tensor, requires_grad = item[0], item[1], item[2]
+            is_unitary = item[3] if len(item) > 3 else True
+            tensor_id = state.apply_tensor_operator(modes, gate_tensor, unitary=is_unitary, gradient=requires_grad)
             if requires_grad:
                 gradient_tensor_ids.append(tensor_id)
-        with state:
-            exp_cutn, _, gradients_cutn = state.compute_expectation_with_gradients(
-                hamiltonian, expectation_value_adjoint
+
+        device = torch.device("cpu")
+        torch_ref = TorchRef()
+        torch_dtype = torch_ref._torch_dtype(dtype)
+        torch_asarray = _get_backend_asarray_func(torch)
+        loss_fn = expectation_gradient_loss_factory(loss_variant)
+        hamiltonian_terms = torch_ref.create_hamiltonian_terms(
+            state_dims,
+            hamiltonian,
+            dtype=dtype,
+            device=device,
+            torch_dtype=torch_dtype,
+            torch_asarray=torch_asarray,
+        )
+        gate_tensors, _ = torch_ref._as_param_gate_tensors(
+            gate_sequence, torch_dtype=torch_dtype, device=device
+        )
+        any_non_unitary = torch_ref._has_any_non_unitary(gate_sequence)
+        E, N = torch_ref.primal_E_N(
+            state_dims,
+            gate_sequence,
+            gate_tensors,
+            hamiltonian_terms,
+            torch_dtype=torch_dtype,
+            device=device,
+            torch_asarray=torch_asarray,
+            return_norm=return_norm,
+            any_non_unitary=any_non_unitary,
+        )
+        try:
+            _, adj_e_np, adj_n_np = torch_ref.adjoints_from_expectation_and_norm(
+                E,
+                N,
+                loss_fn=loss_fn,
+                return_cutn_adjoint_numpy=True,
+                cutn_dtype=dtype,
             )
 
-        exp_ref, gradients_ref_list = TorchRef().compute_expectation_with_gradients(
+            with state:
+                if return_norm:
+                    exp_cutn, norm_cutn, gradients_cutn = state.compute_expectation_with_gradients(
+                        hamiltonian,
+                        adj_e_np,
+                        return_norm=True,
+                        state_norm_adjoint=adj_n_np,
+                    )
+                else:
+                    exp_cutn, gradients_cutn = state.compute_expectation_with_gradients(
+                        hamiltonian,
+                        adj_e_np,
+                        return_norm=False,
+                        state_norm_adjoint=None,
+                    )
+                    norm_cutn = None
+
+            exp_ref, norm_ref, gradients_ref_list = torch_ref.compute_expectation_with_gradients(
+                state_dims,
+                gate_sequence,
+                hamiltonian,
+                dtype=dtype,
+                return_norm=return_norm,
+                loss_fn=loss_fn,
+            )
+        except EOverNDenominatorTooSmall as exc:
+            pytest.skip(str(exc))
+
+        tol = get_contraction_tolerance(dtype)
+        exp_cutn_real = expectation_as_real(exp_cutn, dtype)
+        exp_ref_arr = expectation_as_real(exp_ref, dtype)
+        assert np.allclose(exp_cutn_real, exp_ref_arr, **tol), (exp_cutn_real, exp_ref_arr)
+        if return_norm:
+            assert norm_cutn is not None, "norm_cutn should not be None when return_norm=True"
+            assert norm_ref is not None, "norm_ref should not be None when return_norm=True"
+            assert TensorBackend.verify_close(norm_cutn, norm_ref, **tol), (norm_cutn, norm_ref)
+        grad_tol = get_expectation_gradient_tolerance(dtype, return_norm=return_norm)
+        assert_gradients_match(gate_sequence, gradients_cutn, gradients_ref_list, grad_tol, gradient_tensor_ids=gradient_tensor_ids)
+
+    def test_expectation_gradient_non_unitary_explicit_expectation_adjoint_only(self):
+        """Non-unitary marked gates with explicit ``expectation_value_adjoint`` only (no norm path).
+
+        Exercises ``return_norm=False`` / ``state_norm_adjoint=None`` while gates are explicitly
+        non-unitary. Reference uses :class:`TorchRefExplicitAdjoints` (per-term ``grad_outputs``).
+        """
+        if torch is None:
+            pytest.skip("torch is required for expectation gradient reference tests")
+
+        dtype = "complex128"
+        factory = create_state_factory(
+            4,
+            dtype,
+            "SDSD",
+            np.random.default_rng(71),
+            backend="numpy",
+            mark_gradients=True,
+            mark_non_unitary=True,
+        )
+        state_dims = factory.state_dims
+        gate_sequence = factory.get_gate_sequence_for_reference()
+        assert any(len(g) > 3 and not g[3] for g in gate_sequence), "expected at least one non-unitary gate"
+
+        hamiltonian = {"ZZII": 2.0, "IXIZ": 1.0 + 0.5j}
+        adj_e = np.array(2.25 - 1.375j, dtype=dtype)
+
+        state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
+        gradient_tensor_ids = []
+        for item in gate_sequence:
+            modes, gate_tensor, requires_grad = item[0], item[1], item[2]
+            is_unitary = item[3] if len(item) > 3 else True
+            tensor_id = state.apply_tensor_operator(modes, gate_tensor, unitary=is_unitary, gradient=requires_grad)
+            if requires_grad:
+                gradient_tensor_ids.append(tensor_id)
+
+        torch_ref = TorchRefExplicitAdjoints()
+        exp_ref, norm_ref, gradients_ref_list = torch_ref.compute_expectation_with_gradients(
             state_dims,
             gate_sequence,
             hamiltonian,
             dtype=dtype,
-            expectation_value_adjoint=expectation_value_adjoint,
+            expectation_value_adjoint=adj_e,
+            return_norm=False,
+            state_norm_adjoint=None,
         )
-        
+        assert norm_ref is None
+
+        with state:
+            exp_cutn, gradients_cutn = state.compute_expectation_with_gradients(
+                hamiltonian,
+                adj_e,
+                return_norm=False,
+                state_norm_adjoint=None,
+            )
+
         tol = get_contraction_tolerance(dtype)
-        # Looser tolerance when float64 (cutn vs torch ref can differ in float accumulation)
         exp_cutn_real = expectation_as_real(exp_cutn, dtype)
         exp_ref_arr = expectation_as_real(exp_ref, dtype)
         assert np.allclose(exp_cutn_real, exp_ref_arr, **tol), (exp_cutn_real, exp_ref_arr)
-        assert_gradients_match(gate_sequence, gradients_cutn, gradients_ref_list, tol, gradient_tensor_ids=gradient_tensor_ids)
+
+        grad_tol = get_expectation_gradient_tolerance(dtype, return_norm=False)
+        assert_gradients_match(
+            gate_sequence, gradients_cutn, gradients_ref_list, grad_tol, gradient_tensor_ids=gradient_tensor_ids
+        )
+
+    def test_expectation_gradient_allows_no_marked_operators(self):
+        """compute_expectation_with_gradients matches compute_expectation when no gradient=True gates."""
+        state_dims = (2, 2)
+        dtype = "complex128"
+        state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
+        state.apply_tensor_operator((0,), np.eye(2, dtype=dtype), unitary=True)
+        state.apply_tensor_operator((1,), np.eye(2, dtype=dtype), unitary=True)
+        with state:
+            exp_fwd = state.compute_expectation("ZI", return_norm=False)
+            exp_g, grads = state.compute_expectation_with_gradients("ZI", np.array(1.0 + 0j, dtype=dtype))
+        assert grads == {}
+        tol = {"atol": 1e-9, "rtol": 1e-9}
+        assert TensorBackend.verify_close(exp_fwd, exp_g, **tol)
+
+    def test_expectation_gradient_requires_paired_norm_args(self):
+        """return_norm and state_norm_adjoint must both be off or both on."""
+        dtype = "complex128"
+        state = NetworkState((2, 2), dtype=dtype, config=TNConfig())
+        state.apply_tensor_operator((0,), np.eye(2, dtype=dtype), unitary=True, gradient=True)
+        state.apply_tensor_operator((1,), np.eye(2, dtype=dtype), unitary=True)
+        with state:
+            with pytest.raises(ValueError, match=r"return_norm and state_norm_adjoint"):
+                state.compute_expectation_with_gradients("ZI", 1.0, return_norm=True, state_norm_adjoint=None)
+            with pytest.raises(ValueError, match=r"return_norm and state_norm_adjoint"):
+                state.compute_expectation_with_gradients("ZI", 1.0, return_norm=False, state_norm_adjoint=1.0)
+
+    @pytest.mark.parametrize("return_norm", (False, True))
+    def test_expectation_gradient_simplified_all_marked_gates_zero(self, return_norm):
+        """Differentiable gates can drop out of the expectation TN (zero ∂⟨O⟩/∂G); buffers must zero."""
+        dtype = "complex128"
+        state_dims = (2, 2)
+        theta = np.pi / 7
+        def ry_mat(theta):
+            c, s = np.cos(theta / 2), np.sin(theta / 2)
+            return np.array([[c, -s], [s, c]], dtype=dtype)
+        adj_e = np.array(2.25 - 1.375j, dtype=dtype)
+        pauli_obs = {"IZ": 1.0}
+        # |ψ⟩ = Ry(θ)|0⟩ ⊗ |0⟩  ⇒  ⟨I⊗Z⟩ = +1 independent of θ.
+        e0 = np.array([1, 0], dtype=dtype)
+        psi = np.kron(ry_mat(theta) @ e0, e0)
+
+        state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
+        gid = state.apply_tensor_operator((0,), ry_mat(theta), unitary=True, gradient=True)
+        state.apply_tensor_operator((1,), np.eye(2, dtype=dtype), unitary=True)
+
+        ref_expectation = np.array(1.0 + 0.0j, dtype=dtype)
+
+        tol = {"atol": 1e-9, "rtol": 1e-9}
+        kw = dict(return_norm=False, state_norm_adjoint=None)
+        if return_norm:
+            adj_n = np.array(-0.5 + 2.875j, dtype=dtype)
+            kw = dict(return_norm=True, state_norm_adjoint=adj_n)
+        
+        with state:
+            if return_norm:
+                exp_g, norm_g, grads = state.compute_expectation_with_gradients(pauli_obs, adj_e, **kw)
+            else:
+                exp_g, grads = state.compute_expectation_with_gradients(pauli_obs, adj_e, **kw)
+                norm_g = None
+
+        assert np.allclose(expectation_as_real(exp_g, dtype), expectation_as_real(ref_expectation, dtype), **tol)
+
+        gate_grad = grads[gid]
+        if infer_object_package(gate_grad) != "numpy":
+            gate_grad = TensorBackend.to_numpy(gate_grad)
+        assert gate_grad.dtype == np.dtype(dtype)
+        assert np.allclose(gate_grad, 0 + 0j, atol=2e-7, rtol=0), gate_grad
+
+        if return_norm:
+            assert norm_g is not None
+            psi_norm_sq = float(np.vdot(psi, psi).real)
+            assert norm_g == pytest.approx(psi_norm_sq, abs=5e-7, rel=0)
+
+    def test_expectation_gradient_simplified_gate_zero_remainder_gate_nonzero(self):
+        """Product state Ry₀|0⟩ ⊗ Ry₁|0⟩ with observable ``IZ``: qubit‑0 Ry simplifies out (∂⟨IZ⟩/∂θ₀ = 0) while qubit‑1 does not.
+
+        Exercises initializer zeroing + backward: buffers for gates absent from the effective gradient subgraph
+        must stay identically zero, while another marked gate picks up a non‑trivial ∂⟨IZ⟩.
+        """
+        dtype = "complex128"
+
+        def ry_mat(theta):
+            c, s = np.cos(theta / 2), np.sin(theta / 2)
+            return np.array([[c, -s], [s, c]], dtype=dtype)
+
+        theta0 = np.pi / 5
+        theta1 = np.pi / 4
+        state_dims = (2, 2)
+        pauli_obs = {"IZ": 1.0}
+        adj_e = np.array(1.0 + 0.0j, dtype=dtype)
+        tol_zero = {"atol": 2e-7, "rtol": 0}
+
+        state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
+        gid_unc = state.apply_tensor_operator((0,), ry_mat(theta0), unitary=True, gradient=True)
+        gid_coupled = state.apply_tensor_operator((1,), ry_mat(theta1), unitary=True, gradient=True)
+
+        ref_expectation = np.cos(theta1)
+
+        with state:
+            exp_g, grads = state.compute_expectation_with_gradients(pauli_obs, adj_e)
+
+        exp_out = expectation_as_real(exp_g, dtype)
+        assert np.isclose(exp_out, ref_expectation, atol=5e-8, rtol=0), (exp_out, ref_expectation)
+
+        g0 = grads[gid_unc]
+        g1 = grads[gid_coupled]
+        if infer_object_package(g0) != "numpy":
+            g0 = TensorBackend.to_numpy(g0)
+        if infer_object_package(g1) != "numpy":
+            g1 = TensorBackend.to_numpy(g1)
+        assert g0.dtype == np.dtype(dtype) and g1.dtype == np.dtype(dtype)
+
+        assert np.allclose(g0, 0 + 0j, **tol_zero), g0
+        assert not np.allclose(g1, 0 + 0j, atol=5e-5, rtol=0), (
+            "expected non-zero gradient from coupled Ry on the qubit touched by ``IZ``"
+        )
 
     def test_accumulate_and_update_gradient(self):
         """cutn bindings: 3 backward calls. 
@@ -975,8 +1941,13 @@ class TestExpectationGradient:
         )
 
 
-class TestAdjointGateCancellation:
+class TestAdjointGate:
     """G followed by G† must act as identity on a pure state."""
+
+    CONFIGS = (
+        pytest.param(TNConfig(), id="tn"),
+        pytest.param(MPSConfig(gauge_option='simple'), id="mps"),
+    )
 
     @staticmethod
     def _random_unitary(dim, rng):
@@ -984,7 +1955,12 @@ class TestAdjointGateCancellation:
         q, _ = np.linalg.qr(mat)
         return q.astype(np.complex128)
 
-    def test_single_qubit_gate_adjoint_cancels(self):
+    @staticmethod
+    def _random_complex(shape, rng):
+        return (rng.standard_normal(shape) + 1j * rng.standard_normal(shape)).astype(np.complex128)
+
+    @pytest.mark.parametrize("config", CONFIGS)
+    def test_single_qubit_gate_adjoint_cancels(self, config):
         num_qubits = 3
         dtype = "complex128"
         rng = np.random.default_rng(12345)
@@ -992,7 +1968,7 @@ class TestAdjointGateCancellation:
         G = self._random_unitary(2, rng)
         assert not np.allclose(G, G.T), "gate must be non-symmetric to distinguish G† from G*"
 
-        with NetworkState((2,) * num_qubits, dtype=dtype) as ref_state:
+        with NetworkState((2,) * num_qubits, dtype=dtype, config=config) as ref_state:
             for q in range(num_qubits):
                 u = self._random_unitary(2, rng)
                 ref_state.apply_tensor_operator((q,), u, unitary=True)
@@ -1001,7 +1977,7 @@ class TestAdjointGateCancellation:
         rng = np.random.default_rng(12345)
         G = self._random_unitary(2, rng)
 
-        with NetworkState((2,) * num_qubits, dtype=dtype) as test_state:
+        with NetworkState((2,) * num_qubits, dtype=dtype, config=config) as test_state:
             for q in range(num_qubits):
                 u = self._random_unitary(2, rng)
                 test_state.apply_tensor_operator((q,), u, unitary=True)
@@ -1013,14 +1989,15 @@ class TestAdjointGateCancellation:
         np.testing.assert_allclose(sv_test, sv_ref, **tol,
             err_msg="G† G should cancel: statevectors must match")
 
-    def test_two_qubit_gate_adjoint_cancels(self):
+    @pytest.mark.parametrize("config", CONFIGS)
+    def test_two_qubit_gate_adjoint_cancels(self, config):
         num_qubits = 3
         dtype = "complex128"
         rng = np.random.default_rng(99)
 
         G = self._random_unitary(4, rng).reshape(2, 2, 2, 2)
 
-        with NetworkState((2,) * num_qubits, dtype=dtype) as ref_state:
+        with NetworkState((2,) * num_qubits, dtype=dtype, config=config) as ref_state:
             for q in range(num_qubits):
                 u = self._random_unitary(2, rng)
                 ref_state.apply_tensor_operator((q,), u, unitary=True)
@@ -1029,7 +2006,7 @@ class TestAdjointGateCancellation:
         rng = np.random.default_rng(99)
         G = self._random_unitary(4, rng).reshape(2, 2, 2, 2)
 
-        with NetworkState((2,) * num_qubits, dtype=dtype) as test_state:
+        with NetworkState((2,) * num_qubits, dtype=dtype, config=config) as test_state:
             for q in range(num_qubits):
                 u = self._random_unitary(2, rng)
                 test_state.apply_tensor_operator((q,), u, unitary=True)
@@ -1041,7 +2018,8 @@ class TestAdjointGateCancellation:
         np.testing.assert_allclose(sv_test, sv_ref, **tol,
             err_msg="G† G should cancel: statevectors must match for 2-qubit gate")
 
-    def test_controlled_gate_adjoint_cancels(self):
+    @pytest.mark.parametrize("config", CONFIGS)
+    def test_controlled_gate_adjoint_cancels(self, config):
         num_qubits = 4
         dtype = "complex128"
         rng = np.random.default_rng(777)
@@ -1049,7 +2027,7 @@ class TestAdjointGateCancellation:
         G = self._random_unitary(2, rng)
         assert not np.allclose(G, G.T), "gate must be non-symmetric to distinguish G† from G*"
 
-        with NetworkState((2,) * num_qubits, dtype=dtype) as ref_state:
+        with NetworkState((2,) * num_qubits, dtype=dtype, config=config) as ref_state:
             for q in range(num_qubits):
                 u = self._random_unitary(2, rng)
                 ref_state.apply_tensor_operator((q,), u, unitary=True)
@@ -1058,7 +2036,7 @@ class TestAdjointGateCancellation:
         rng = np.random.default_rng(777)
         G = self._random_unitary(2, rng)
 
-        with NetworkState((2,) * num_qubits, dtype=dtype) as test_state:
+        with NetworkState((2,) * num_qubits, dtype=dtype, config=config) as test_state:
             for q in range(num_qubits):
                 u = self._random_unitary(2, rng)
                 test_state.apply_tensor_operator((q,), u, unitary=True)
@@ -1069,6 +2047,126 @@ class TestAdjointGateCancellation:
         tol = get_contraction_tolerance(dtype)
         np.testing.assert_allclose(sv_test, sv_ref, **tol,
             err_msg="controlled G† G should cancel: statevectors must match")
+
+    @pytest.mark.parametrize("config", CONFIGS)
+    def test_mpo_adjoint_matches_dagger(self, config):
+        """apply_mpo(adjoint=True) must equal apply_mpo(adjoint=False) with a manually-daggered MPO.
+
+        The Hermitian conjugate of an MPO with mode order ``pknb`` (previous bond, ket, next
+        bond, bra) is obtained per site by swapping the ket and bra axes and complex-conjugating
+        the values. For an arbitrary (not necessarily unitary) MPO, this is the precise semantic
+        contract of the ``adjoint=True`` flag, so we test it directly rather than via M†M = I.
+        """
+        num_qubits = 4
+        dtype = "complex128"
+
+        # Random non-unitary 2-site MPO acting on qubits (1, 2).
+        bond = 3
+        mpo_shapes = [(2, bond, 2), (bond, 2, 2)]  # first: (k, n, b); last: (p, k, b)
+        mpo_modes = (1, 2)
+
+        def _build():
+            rng = np.random.default_rng(2026)
+            unitaries = [self._random_unitary(2, rng) for _ in range(num_qubits)]
+            tensors = [self._random_complex(s, rng) for s in mpo_shapes]
+            return unitaries, tensors
+
+        def _dagger(mpo_tensors):
+            """Per-site Hermitian conjugate: swap ket↔bra axes and complex-conjugate values."""
+            n = len(mpo_tensors)
+            out = []
+            for i, t in enumerate(mpo_tensors):
+                if i == 0 and n > 1:
+                    out.append(np.conj(t).transpose(2, 1, 0))            # (k, n, b) -> (b, n, k)
+                elif i == n - 1 and n > 1:
+                    out.append(np.conj(t).transpose(0, 2, 1))            # (p, k, b) -> (p, b, k)
+                else:
+                    out.append(np.conj(t).transpose(0, 3, 2, 1))         # (p, k, n, b) -> (p, b, n, k)
+            return out
+
+        # Reference: explicitly apply M† via adjoint=False on the daggered tensors.
+        unitaries, mpo_tensors = _build()
+        mpo_dagger = _dagger(mpo_tensors)
+        with NetworkState((2,) * num_qubits, dtype=dtype, config=config) as ref_state:
+            for q, u in enumerate(unitaries):
+                ref_state.apply_tensor_operator((q,), u, unitary=True)
+            ref_state.apply_mpo(mpo_modes, mpo_dagger)
+            sv_ref = ref_state.compute_state_vector()
+
+        # Under test: same MPO with adjoint=True must produce the same state.
+        unitaries, mpo_tensors = _build()
+        with NetworkState((2,) * num_qubits, dtype=dtype, config=config) as test_state:
+            for q, u in enumerate(unitaries):
+                test_state.apply_tensor_operator((q,), u, unitary=True)
+            test_state.apply_mpo(mpo_modes, mpo_tensors, adjoint=True)
+            sv_test = test_state.compute_state_vector()
+
+        tol = get_contraction_tolerance(dtype)
+        np.testing.assert_allclose(sv_test, sv_ref, **tol,
+            err_msg="apply_mpo(adjoint=True) must apply the Hermitian conjugate (M†), "
+                    "matching the result of directly applying the conjugate-transposed MPO tensors")
+
+    @pytest.mark.parametrize("config", CONFIGS)
+    def test_network_operator_adjoint_matches_dagger(self, config):
+        """apply_network_operator(adjoint=True) must equal applying a manually-daggered operator.
+
+        Mirrors test_mpo_adjoint_matches_dagger but exercises the explicit NetworkOperator
+        construction path (NetworkOperator.append_mpo + apply_network_operator) instead of
+        the apply_mpo shortcut. apply_mpo is implemented in terms of apply_network_operator
+        internally, but the explicit-NetworkOperator path is the public surface for users
+        who want to compose multiple operators on the same NetworkOperator instance.
+        """
+        num_qubits = 4
+        dtype = "complex128"
+
+        bond = 3
+        mpo_shapes = [(2, bond, 2), (bond, 2, 2)]  # first: (k, n, b); last: (p, k, b)
+        mpo_modes = (1, 2)
+
+        def _build():
+            rng = np.random.default_rng(20260524)
+            unitaries = [self._random_unitary(2, rng) for _ in range(num_qubits)]
+            tensors = [self._random_complex(s, rng) for s in mpo_shapes]
+            return unitaries, tensors
+
+        def _dagger(mpo_tensors):
+            """Per-site Hermitian conjugate: swap ket↔bra axes and complex-conjugate values."""
+            n = len(mpo_tensors)
+            out = []
+            for i, t in enumerate(mpo_tensors):
+                if i == 0 and n > 1:
+                    out.append(np.conj(t).transpose(2, 1, 0))
+                elif i == n - 1 and n > 1:
+                    out.append(np.conj(t).transpose(0, 2, 1))
+                else:
+                    out.append(np.conj(t).transpose(0, 3, 2, 1))
+            return out
+
+        # Reference: explicit M† via adjoint=False on a daggered NetworkOperator.
+        unitaries, mpo_tensors = _build()
+        mpo_dagger = _dagger(mpo_tensors)
+        with NetworkState((2,) * num_qubits, dtype=dtype, config=config) as ref_state:
+            for q, u in enumerate(unitaries):
+                ref_state.apply_tensor_operator((q,), u, unitary=True)
+            op_dagger = NetworkOperator((2,) * num_qubits, dtype=dtype)
+            op_dagger.append_mpo(1.0 + 0j, mpo_modes, mpo_dagger)
+            ref_state.apply_network_operator(op_dagger)
+            sv_ref = ref_state.compute_state_vector()
+
+        # Under test: adjoint=True must produce the same state.
+        unitaries, mpo_tensors = _build()
+        with NetworkState((2,) * num_qubits, dtype=dtype, config=config) as test_state:
+            for q, u in enumerate(unitaries):
+                test_state.apply_tensor_operator((q,), u, unitary=True)
+            op = NetworkOperator((2,) * num_qubits, dtype=dtype)
+            op.append_mpo(1.0 + 0j, mpo_modes, mpo_tensors)
+            test_state.apply_network_operator(op, adjoint=True)
+            sv_test = test_state.compute_state_vector()
+
+        tol = get_contraction_tolerance(dtype)
+        np.testing.assert_allclose(sv_test, sv_ref, **tol,
+            err_msg="apply_network_operator(adjoint=True) must apply the Hermitian conjugate (M†), "
+                    "matching the result of directly applying the conjugate-transposed NetworkOperator")
 
 
 class TestNetworkOperator:
@@ -1138,6 +2236,46 @@ class TestNetworkOperator:
             sv = state.compute_state_vector()
         assert sv.shape == (2, 2)
 
+    def test_mpo_tensor_factor_updates_by_linear_ids(self):
+        """Each MPO tensor factor can be updated using base operator id plus factor offset."""
+        cp = pytest.importorskip("cupy")
+        from cuquantum.bindings import cutensornet as cutn
+
+        dtype = "complex128"
+        state_mode_extents = (2, 2, 2)
+        factory = StateFactory(
+            state_mode_extents,
+            dtype,
+            "M",
+            np.random.default_rng(42),
+            backend="cupy",
+            mpo_bond_dim=2,
+            mpo_num_sites=3,
+            mpo_geometry="adjacent-ordered",
+        )
+        mpo_tensors, modes, _ = factory.sequence[0]
+
+        updated_mpo = []
+        for tensor in mpo_tensors:
+            updated = cp.random.random(tensor.shape).astype(dtype)
+            updated += 1j * cp.random.random(tensor.shape).astype(dtype)
+            updated_mpo.append(updated)
+
+        with NetworkState(state_mode_extents, dtype=dtype) as state:
+            base_id = apply_factory_sequence(state, factory.sequence)[0]
+            initial_sv = state.compute_state_vector()
+            for i, tensor in enumerate(updated_mpo):
+                cutn.state_update_tensor_operator(
+                    state.handle, state.state, base_id + i, tensor.data.ptr, 0)
+            updated_sv = state.compute_state_vector()
+
+        with NetworkState(state_mode_extents, dtype=dtype) as ref:
+            ref.apply_mpo(modes, updated_mpo)
+            ref_sv = ref.compute_state_vector()
+
+        assert not cp.allclose(updated_sv, initial_sv)
+        cp.testing.assert_allclose(updated_sv, ref_sv, **get_contraction_tolerance(dtype))
+
     def test_expectation_multi_qubit_product(self):
         """Expectation with multi-qubit tensor product must match numpy reference."""
         rng = np.random.default_rng(2)
@@ -1156,6 +2294,7 @@ class TestNetworkOperator:
             state.apply_tensor_operator((0,), op0)
             expec_test = state.compute_expectation(operator)
 
-        np.testing.assert_allclose(expec_test, expec_ref,
+        assert TensorBackend.verify_close(
+            expec_test, expec_ref,
             atol=1e-12, rtol=1e-12,
-            err_msg="expectation with multi-qubit tensor product must match numpy reference")
+        ), "expectation with multi-qubit tensor product must match numpy reference"

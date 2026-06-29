@@ -16,7 +16,7 @@ import numpy as np
 from nvmath.internal import utils
 
 from ._internal import circuit_converter_utils as circ_utils
-from ._internal.helpers import get_auto_backend, get_dtype_name
+from ._internal.helpers import get_auto_backend, get_dtype_name, _get_backend_asarray_func
 
 EMPTY_DICT = circ_utils.EMPTY_DICT
 
@@ -58,6 +58,13 @@ class CircuitToEinsum:
     The supported circuit types include :class:`cirq.Circuit` and :class:`qiskit.QuantumCircuit`. The input circuit must 
     be fully parameterized and can not contain operations that are not well-defined in tensor network simulation, for instance, 
     resetting the quantum state or performing any intermediate measurement. 
+
+    The converter automatically targets a density-matrix (mixed-state) network when the input circuit
+    contains quantum channels (Kraus/general and unitary channels), and a state-vector (pure-state)
+    network otherwise. In the mixed case, the accessors return density-matrix quantities; see
+    :meth:`density_matrix`, :meth:`amplitude`, and :meth:`batched_amplitudes` for details. For
+    trajectory-based noisy simulation of a pure state, use
+    :meth:`~cuquantum.tensornet.experimental.NetworkState.from_circuit` instead.
 
     Args:
         circuit : A fully parameterized :class:`cirq.Circuit` or :class:`qiskit.QuantumCircuit` object.
@@ -151,9 +158,12 @@ class CircuitToEinsum:
         self.dtype = dtype
         self.dtype_name = get_dtype_name(dtype)
 
-        # unfold circuit metadata
-        self._qubits, self._gates, self._gates_are_diagonal = self.parser.unfold_circuit(
+        # unfold circuit metadata; channels are always parsed into channel entries
+        self._qubits, self._gate_entries = self.parser.unfold_circuit(
             circuit, self.backend_name, self.dtype, check_diagonal=self.check_diagonal, decompose_gates=self.decompose_gates)
+        # density-matrix (mixed) mode is enabled automatically when the circuit contains
+        # quantum channels; a channel-free circuit is simulated as a pure state.
+        self.is_mixed = any(e.kind != 'gate' for e in self._gate_entries)
         self.n_qubits = len(self.qubits)
         self._metadata = None
     
@@ -161,46 +171,121 @@ class CircuitToEinsum:
     def qubits(self):
         """A sequence of all qubits in the circuit."""
         return self._qubits
-    
+
     @property
     def gates(self):
         """
-        A sequence of 2-tuple (``gate_operand``, ``qubits``) representing all gates in the circuit:
+        A sequence of 2-tuple (``gate_operand``, ``qubits``) representing all gates and quantum
+        channels in the circuit:
 
         Returns:
             - tuple ``gates``:
-                - ``gate_operand``: A ndarray-like tensor object.
-                  The modes of the operands are ordered as ``AB...ab...``, where ``AB...`` denotes all output modes and
-                  ``ab...`` denotes all input modes.
+                - ``gate_operand``: Always a single ndarray-like tensor object (never a list).
+                  For a unitary gate acting on ``k`` qubits it is a rank-``2k`` tensor whose modes
+                  are ordered as ``AB...ab...``, where ``AB...`` denotes all output modes and
+                  ``ab...`` denotes all input modes. For a quantum channel (present only when the
+                  circuit is noisy) it is a rank-``(2k+1)`` tensor stacking the ``m`` Kraus operators
+                  along a leading mode, i.e. shape ``(m, AB...ab...)``. Unitary channels are returned
+                  in Kraus form :math:`\\sqrt{p_k}\\, K_k`, so the stacked tensor fully describes the
+                  channel action :math:`\\sum_k K_k \\rho K_k^\\dagger` (the individual probabilities
+                  :math:`p_k` are not returned separately). Gate operands therefore have even rank
+                  ``2k`` and channel operands odd rank ``2k+1``; the parity of ``gate_operand.ndim``
+                  distinguishes the two.
                 - ``qubits``: A list of arrays corresponding to all the qubits and gate tensor operands.
         """
-        return self._gates
+        result = []
+        asarray = _get_backend_asarray_func(self.backend)
+        for e in self._gate_entries:
+            if e.kind == 'gate':
+                result.append((e.operand, e.qubits))
+            else:
+                result.append((circ_utils.stack_kraus_operators(e, self.backend, asarray, self.dtype), e.qubits))
+        return result
+
+    @property
+    def _gates_are_diagonal(self):
+        """Backward-compatible accessor for diagonal flags."""
+        return [e.is_diagonal for e in self._gate_entries]
         
     def state_vector(self):
         """
         Generate the Einstein summation expression and tensor operands to compute the statevector for the input circuit.
 
+        This is only supported for channel-free (pure-state) circuits. For circuits containing
+        quantum channels (which are simulated as mixed states) use :meth:`density_matrix` to obtain
+        the full density matrix.
+
         Returns:
-            The Einstein summation expression and a list of tensor operands. The order of the output mode labels is consistent with :attr:`CircuitToEinsum.qubits`.
+            The Einstein summation expression and a list of tensor operands. The output shape is
+            ``(d_0, d_1, ..., d_{N-1})`` and the order of the output mode labels is consistent with
+            :attr:`CircuitToEinsum.qubits`.
             For :class:`cirq.Circuit`, this order corresponds to all qubits in the circuit sorted in ascending order. 
             For :class:`qiskit.QuantumCircuit`, this order is the same as :attr:`qiskit.QuantumCircuit.qubits`.
         """
+        if self.is_mixed:
+            raise TypeError("state_vector() is not supported for mixed-state (channel-containing) circuits. "
+                            "Use density_matrix() to obtain the full density matrix.")
         return self.batched_amplitudes(dict())
+
+    def density_matrix(self):
+        """
+        Generate the Einstein summation expression and tensor operands to compute the full density matrix for the input circuit.
+
+        This is supported for both channel-free circuits (where it yields :math:`\\rho = |\\psi\\rangle\\langle\\psi|`)
+        and circuits with channels (mixed states). For a channel-free circuit, :meth:`state_vector` is the cheaper rank-N alternative.
+
+        Returns:
+            The Einstein summation expression and a list of tensor operands. The output shape is
+            ``(d_0, ..., d_{N-1}, d_0, ..., d_{N-1})`` where the first N modes are ket (row) indices
+            and the last N modes are bra (column) indices, each in :attr:`CircuitToEinsum.qubits` order.
+            For :class:`cirq.Circuit`, this order corresponds to all qubits in the circuit sorted in ascending order. 
+            For :class:`qiskit.QuantumCircuit`, this order is the same as :attr:`qiskit.QuantumCircuit.qubits`.
+        """
+        return self.reduced_density_matrix(self.qubits, lightcone=False)
 
     def batched_amplitudes(self, fixed):
         """
-        Generate the Einstein summation expression and tensor operands to compute a batch of bitstring amplitudes for the input circuit.
+        Generate the Einstein summation expression and tensor operands to compute a slice of the
+        underlying state tensor for the input circuit.
+
+        For channel-free (pure-state) circuits, returns a slice of the state vector
+        :math:`\\langle \\text{bs} | \\psi \\rangle` over the open ket modes.
+
+        For circuits with channels (mixed states), returns a slice of the density matrix with the
+        requested ket and bra modes projected independently. Output modes are ordered as
+        ``(open_ket_modes, open_bra_modes)`` (each in :attr:`CircuitToEinsum.qubits` order).
 
         Args:    
-            fixed: A dictionary that maps certain qubits to the corresponding fixed states 0 or 1.
+            fixed: A dictionary mapping qubits to fixed states; qubits absent from the dictionary
+                are left open.
+
+                * For pure-state (channel-free) circuits, each value is a single state ``0`` or ``1`` (as
+                  :class:`int` or ``'0'``/``'1'`` :class:`str`).
+                * For mixed-state (channel-containing) circuits, each value selects the ket and bra index for that qubit
+                  and may be either
+
+                  - a single state ``0``/``1`` -- shorthand for fixing the ket and bra to the same
+                    value (a diagonal/symmetric projection), or
+                  - a 2-tuple ``(ket, bra)`` where each entry is ``0``/``1`` or ``None``; ``None``
+                    leaves that side open, enabling independent ket/bra projection
+                    (e.g. ``(0, None)`` fixes only the ket).
 
         Returns:
-            The Einstein summation expression and a list of tensor operands. The order of the output mode labels is consistent with :attr:`CircuitToEinsum.qubits`.
+            The Einstein summation expression and a list of tensor operands. The order of the
+            output mode labels is consistent with :attr:`CircuitToEinsum.qubits`.
             For :class:`cirq.Circuit`, this order corresponds to all qubits in the circuit sorted in ascending order. 
             For :class:`qiskit.QuantumCircuit`, this order is the same as :attr:`qiskit.QuantumCircuit.qubits`.
         """
+        if self.is_mixed:
+            if not isinstance(fixed, collections.abc.Mapping):
+                raise TypeError("for mixed-state (channel-containing) circuits, `fixed` must be a dict "
+                                "mapping qubits to 0/1 or a (ket, bra) 2-tuple")
+            fixed_ket, fixed_bra = circ_utils.split_mixed_fixed(fixed)
+            return circ_utils.build_mixed_dm_slice_tn(
+                self.qubits, self._gate_entries, self.dtype, self.backend_name,
+                fixed_ket, fixed_bra)
         if not isinstance(fixed, collections.abc.Mapping):
-            raise TypeError('fixed must be a dictionary')
+            raise TypeError("for pure-state (channel-free) circuits, `fixed` must be a dictionary")
         input_mode_labels, input_operands, qubits_frontier = self._get_inputs()
         
         fixed_qubits, fixed_bitstring = circ_utils.parse_fixed_qubits(fixed)
@@ -214,18 +299,39 @@ class CircuitToEinsum:
         return expression, operands 
     
     def amplitude(self, bitstring):
-        """Generate the Einstein summation expression and tensor operands to compute the probability amplitude of
-        a bitstring for the input circuit.
+        """Generate the Einstein summation expression and tensor operands to compute a single
+        element of the underlying state tensor for the input circuit.
+
+        For channel-free (pure-state) circuits, returns the complex amplitude :math:`\\langle \\text{bitstring} | \\psi \\rangle`.
+
+        For circuits with channels (mixed states), returns the density matrix element
+        :math:`\\langle \\text{ket\\_bitstring} | \\rho | \\text{bra\\_bitstring} \\rangle`. Use the
+        same bitstring on both sides to extract a diagonal element (probability).
 
         Args:    
-            bitstring: A sequence of 0/1 specifying the desired measured state. 
-                The order of the bitstring is expected to be consistent with :attr:`CircuitToEinsum.qubits`.
+            bitstring:
+                * For pure-state (channel-free) circuits, a sequence of 0/1 specifying the desired measured state.
+                * For mixed-state (channel-containing) circuits, either a single length-N sequence of 0/1 -- interpreted
+                  symmetrically as ``ket == bra`` to extract a diagonal element (probability) -- or
+                  a 2-tuple ``(ket_bitstring, bra_bitstring)`` of length-N sequences specifying the
+                  row (ket) and column (bra) indices of the density matrix element to compute.
+
+                The order of the bitstring(s) is consistent with :attr:`CircuitToEinsum.qubits`.
                 For :class:`cirq.Circuit`, this order corresponds to all qubits in the circuit sorted in ascending order. 
                 For :class:`qiskit.QuantumCircuit`, this order is the same as :attr:`qiskit.QuantumCircuit.qubits`.
 
         Returns:
             The Einstein summation expression and a list of tensor operands
         """
+        if self.is_mixed:
+            ket_spec, bra_spec = circ_utils.split_mixed_bitstring(bitstring, self.n_qubits)
+            ket_bs = circ_utils.parse_bitstring(ket_spec, n_qubits=self.n_qubits)
+            bra_bs = circ_utils.parse_bitstring(bra_spec, n_qubits=self.n_qubits)
+            fixed_ket = dict(zip(self.qubits, ket_bs))
+            fixed_bra = dict(zip(self.qubits, bra_bs))
+            return circ_utils.build_mixed_dm_slice_tn(
+                self.qubits, self._gate_entries, self.dtype, self.backend_name,
+                fixed_ket, fixed_bra)
         bitstring = circ_utils.parse_bitstring(bitstring, n_qubits=self.n_qubits)
         input_mode_labels, input_operands, qubits_frontier = self._get_inputs()
         mode_labels = input_mode_labels + [[qubits_frontier[q]] for q in self.qubits]
@@ -235,12 +341,13 @@ class CircuitToEinsum:
         operands = input_operands + circ_utils.get_bitstring_tensors(bitstring, self.backend_name, self.dtype)
         return expression, operands 
     
-    def reduced_density_matrix(self, where, *, fixed=EMPTY_DICT, lightcone=True):
+    def reduced_density_matrix(self, where, *, fixed=EMPTY_DICT, lightcone=True, diagonal=False):
         r"""
-        reduced_density_matrix(where, fixed=None, lightcone=True)
+        reduced_density_matrix(where, fixed=None, lightcone=True, diagonal=False)
 
         Generate the Einstein summation expression and tensor operands to compute the reduced density matrix for
-        the input circuit.
+        the input circuit. This is supported for both channel-free (pure-state) circuits and circuits with
+        channels, in which case the reduced density matrix is obtained from the mixed state :math:`\rho`.
 
         Unitary reverse lightcone cancellation refers to removing the identity formed by a unitary gate (from
         the ket state) and its inverse (from the bra state) when there exists no additional operators
@@ -251,17 +358,28 @@ class CircuitToEinsum:
             where: A sequence of qubits specifying where the density matrix are reduced onto. 
             fixed: Optional, a dictionary that maps certain qubits to the corresponding fixed states 0 or 1.
             lightcone: Whether to apply the unitary reverse lightcone cancellation technique to reduce the number of tensors in density matrix computation.
+            diagonal: If ``False`` (default), the full reduced density matrix is computed. If ``True``, the bra modes are
+                contracted onto the ket modes so that only the diagonal of the reduced density matrix is computed, i.e. the
+                marginal probability distribution over ``where``. With ``diagonal=True`` this is functionally equivalent to
+                :meth:`marginal_probability`.
             
         Returns:
             The Einstein summation expression and a list of tensor operands.
-            The mode labels for output of the expression has the same order as the where argument. 
-            For example, if where = (:math:`a, b`), the mode labels for the reduced density matrix would be (:math:`a, b, a^{\prime}, b^{\prime}`)
+            With ``diagonal=False`` the mode labels for the output of the expression has the same order as the where argument.
+            For example, if where = (:math:`a, b`), the mode labels for the reduced density matrix would be (:math:`a, b, a^{\prime}, b^{\prime}`).
+            With ``diagonal=True`` the output carries only the ket modes (e.g. (:math:`a, b`)), holding the diagonal entries.
         
         .. seealso:: `unitary reverse lightcone cancellation <https://quimb.readthedocs.io/en/latest/tensor-circuit.html#Unitary-Reverse-Lightcone-Cancellation>`_
         """
+        if self.is_mixed:
+            expression, operands = self._build_mixed_tn(where, fixed=fixed, lightcone=lightcone)
+            if diagonal:
+                expression = self._collapse_rdm_expression_to_diagonal(expression, len(where))
+            return expression, operands
+
         n_qubits = self.n_qubits
         coned_qubits = list(where) + list(fixed.keys())
-        input_mode_labels, input_operands, qubits_frontier, next_frontier, inverse_gates, inverse_gates_diagonals = self._get_forward_inverse_metadata(lightcone, coned_qubits)
+        input_mode_labels, input_operands, qubits_frontier, next_frontier, inverse_gate_entries = self._get_forward_inverse_metadata(lightcone, coned_qubits)
 
         # handle tensors/mode labels for qubits with fixed state
         fixed_qubits, fixed_bitstring = circ_utils.parse_fixed_qubits(fixed)
@@ -281,7 +399,7 @@ class CircuitToEinsum:
             next_frontier += 1
 
         igate_mode_labels, igate_operands = circ_utils.parse_gates_to_mode_labels_operands(
-            inverse_gates, qubits_frontier, next_frontier, inverse_gates_diagonals)
+            inverse_gate_entries, qubits_frontier, next_frontier)
         mode_labels += igate_mode_labels
         operands += igate_operands
         
@@ -295,8 +413,24 @@ class CircuitToEinsum:
             output_right_mode_labels.append(right_mode_labels)
         output_mode_labels = output_left_mode_labels + output_right_mode_labels
         expression = circ_utils.convert_mode_labels_to_expression(mode_labels, output_mode_labels)
+        if diagonal:
+            expression = self._collapse_rdm_expression_to_diagonal(expression, len(where))
         return expression, operands
-    
+
+    @staticmethod
+    def _collapse_rdm_expression_to_diagonal(expression, num_target_qubits):
+        """
+        Rewrite a reduced-density-matrix einsum expression (output modes ``ket... bra...``) so that the bra
+        modes are identified with the corresponding ket modes and only the ket modes are emitted, yielding the
+        RDM diagonal (the marginal probability distribution).
+        """
+        input_modes, output_modes = expression.split('->')
+        ket_modes = output_modes[:num_target_qubits]
+        bra_modes = output_modes[num_target_qubits:]
+        for ket_mode, bra_mode in zip(ket_modes, bra_modes):
+            input_modes = input_modes.replace(bra_mode, ket_mode)
+        return f"{input_modes}->{ket_modes}"
+
     def marginal_probability(self, where, *, fixed=EMPTY_DICT, lightcone=True):
         r"""
         marginal_probability(where, fixed=None, lightcone=True)
@@ -321,24 +455,22 @@ class CircuitToEinsum:
         .. note::
 
             The marginal probability resulting from the contraction may be a complex tensor with zero imaginary part depending on the underlying data type.
+
+        .. note::
+
+            This is functionally equivalent to :meth:`reduced_density_matrix` with ``diagonal=True``.
          
         .. seealso:: `unitary reverse lightcone cancellation <https://quimb.readthedocs.io/en/latest/tensor-circuit.html#Unitary-Reverse-Lightcone-Cancellation>`_
         """
-        expression, operands = self.reduced_density_matrix(where, fixed=fixed, lightcone=lightcone)
-        input_modes, output_modes = expression.split('->')
-        num_target_qubits = len(where)
-        ket_modes = output_modes[:num_target_qubits]
-        bra_modes = output_modes[num_target_qubits:]
-        for ket_mode, bra_mode in zip(ket_modes, bra_modes):
-            input_modes = input_modes.replace(bra_mode, ket_mode)
-        expression = f"{input_modes}->{ket_modes}"
-        return expression, operands
+        return self.reduced_density_matrix(where, fixed=fixed, lightcone=lightcone, diagonal=True)
 
     
     def expectation(self, pauli_string, lightcone=True):
         """
         Generate the Einstein summation expression and tensor operands to compute the expectation value of a Pauli
-        string for the input circuit.
+        string for the input circuit. This is supported for both channel-free (pure-state) circuits and circuits
+        with channels, in which case the expectation value :math:`\\mathrm{Tr}(\\rho P)` is computed from the
+        mixed state :math:`\\rho`.
 
         Unitary reverse lightcone cancellation refers to removing the identity formed by a unitary gate (from
         the ket state) and its inverse (from the bra state) when there exists no additional operators
@@ -382,20 +514,23 @@ class CircuitToEinsum:
             pauli_map = {qubit: pauli_char for qubit, pauli_char in pauli_string.items() if pauli_char!='I'}
         else:
             pauli_map = pauli_string
-        coned_qubits = pauli_map.keys()
+
         if self.dtype_name.startswith("float"):
             pauli_chars = set(pauli_map.values())
             if 'Y' in pauli_chars:
                 raise ValueError(f"Pauli Y operator is not supported when the underlying dtype is {self.dtype_name}")
-        input_mode_labels, input_operands, qubits_frontier, next_frontier, inverse_gates, inverse_gates_diagonals = self._get_forward_inverse_metadata(lightcone, coned_qubits)
 
-        pauli_gates, pauli_gates_diagonal = circ_utils.get_pauli_gates(pauli_map, self.backend_name, self.dtype)
-        gates = pauli_gates + inverse_gates
+        if self.is_mixed:
+            return self._build_mixed_expectation(pauli_map, lightcone=lightcone)
 
-        gate_mode_labels, gate_operands = circ_utils.parse_gates_to_mode_labels_operands(gates, 
-                                                                                         qubits_frontier, 
-                                                                                         next_frontier,
-                                                                                         pauli_gates_diagonal + inverse_gates_diagonals)
+        coned_qubits = pauli_map.keys()
+        input_mode_labels, input_operands, qubits_frontier, next_frontier, inverse_gate_entries = self._get_forward_inverse_metadata(lightcone, coned_qubits)
+
+        pauli_entries = circ_utils.get_pauli_gates(pauli_map, self.backend_name, self.dtype)
+        combined_entries = pauli_entries + inverse_gate_entries
+
+        gate_mode_labels, gate_operands = circ_utils.parse_gates_to_mode_labels_operands(
+            combined_entries, qubits_frontier, next_frontier)
         
         mode_labels = input_mode_labels + gate_mode_labels + [[qubits_frontier[ix]] for ix in self.qubits]
         operands = input_operands + gate_operands + input_operands[:n_qubits]
@@ -403,6 +538,32 @@ class CircuitToEinsum:
         output_mode_labels = []
         expression = circ_utils.convert_mode_labels_to_expression(mode_labels, output_mode_labels)
         return expression, operands
+
+    def _get_mixed_gate_entries(self, lightcone, coned_qubits):
+        """Get gate entries for the mixed path, applying lightcone if requested."""
+        parser = self.parser
+        if lightcone:
+            circuit = parser.get_lightcone_circuit(self.circuit, coned_qubits)
+            _, gate_entries = parser.unfold_circuit(
+                circuit, self.backend_name, self.dtype,
+                decompose_gates=self.decompose_gates, check_diagonal=self.check_diagonal)
+        else:
+            gate_entries = self._gate_entries
+        return gate_entries
+
+    def _build_mixed_tn(self, where, *, fixed=EMPTY_DICT, lightcone=True):
+        """Build the doubled TN for mixed-state reduced density matrix."""
+        coned_qubits = list(where) + list(fixed.keys())
+        gate_entries = self._get_mixed_gate_entries(lightcone, coned_qubits)
+        return circ_utils.build_mixed_tn(
+            self.qubits, gate_entries, self.dtype, self.backend_name, where, fixed)
+
+    def _build_mixed_expectation(self, pauli_map, *, lightcone=True):
+        """Build the doubled TN for mixed-state expectation value of a Pauli string."""
+        coned_qubits = list(pauli_map.keys())
+        gate_entries = self._get_mixed_gate_entries(lightcone, coned_qubits)
+        return circ_utils.build_mixed_expectation_tn(
+            self.qubits, gate_entries, self.dtype, self.backend_name, pauli_map)
 
     def _get_inputs(self):
         """transform the qubits and gates in the circuit to a prelimary Einsum form.
@@ -415,7 +576,7 @@ class CircuitToEinsum:
                 - ``qubits_frontier`` : A dictionary that maps all qubits to their current mode labels.
         """
         if self._metadata is None:
-            self._metadata = circ_utils.parse_inputs(self.qubits, self._gates, self._gates_are_diagonal, self.dtype, self.backend_name)
+            self._metadata = circ_utils.parse_inputs(self.qubits, self._gate_entries, self.dtype, self.backend_name)
         return self._metadata
     
     def _get_forward_inverse_metadata(self, lightcone, coned_qubits):
@@ -426,21 +587,19 @@ class CircuitToEinsum:
             coned_qubits: An iterable of qubits to be coned.
 
         Returns:
-            tuple: A 5-tuple (``input_mode_labels``, ``input_operands``, ``qubits_frontier``, ``next_frontier``, ``inverse_gates``):
+            tuple: A 6-tuple (``input_mode_labels``, ``input_operands``, ``qubits_frontier``, ``next_frontier``, ``inverse_gate_entries``, ...):
 
                 - ``input_mode_labels`` :  A sequence of mode labels for initial states and gate tensors.
                 - ``input_operands`` :  A sequence of operands for initial states and gate tensors.
                 - ``qubits_frontier``: A dictionary mapping all qubits to their current mode labels.
                 - ``next_frontier``: The next mode label to use.
-                - ``inverse_gates``: A sequence of (operand, qubits) for the inverse circuit.
+                - ``inverse_gate_entries``: A list of :class:`GateEntry` for the inverse circuit.
         """
         parser = self.parser
         if lightcone:
             circuit = parser.get_lightcone_circuit(self.circuit, coned_qubits)
-            _, gates, gates_are_diagonal = parser.unfold_circuit(circuit, self.backend_name, self.dtype, decompose_gates=self.decompose_gates, check_diagonal=self.check_diagonal)
-            # in cirq, the lightcone circuit may only contain a subset of the original qubits
-            # It's imperative to use qubits=self.qubits to generate the input tensors
-            input_mode_labels, input_operands, qubits_frontier = circ_utils.parse_inputs(self.qubits, gates, gates_are_diagonal, self.dtype, self.backend_name)
+            _, gate_entries = parser.unfold_circuit(circuit, self.backend_name, self.dtype, decompose_gates=self.decompose_gates, check_diagonal=self.check_diagonal)
+            input_mode_labels, input_operands, qubits_frontier = circ_utils.parse_inputs(self.qubits, gate_entries, self.dtype, self.backend_name)
         else:
             circuit = self.circuit
             input_mode_labels, input_operands, qubits_frontier = self._get_inputs()
@@ -449,6 +608,6 @@ class CircuitToEinsum:
         
         next_frontier = max(qubits_frontier.values()) + 1
         # inverse circuit
-        inverse_circuit  = parser.get_inverse_circuit(circuit)
-        _, inverse_gates, inverse_gates_diagonals = parser.unfold_circuit(inverse_circuit, self.backend_name, self.dtype, decompose_gates=self.decompose_gates, check_diagonal=self.check_diagonal)
-        return input_mode_labels, input_operands, qubits_frontier, next_frontier, inverse_gates, inverse_gates_diagonals
+        inverse_circuit = parser.get_inverse_circuit(circuit)
+        _, inverse_gate_entries = parser.unfold_circuit(inverse_circuit, self.backend_name, self.dtype, decompose_gates=self.decompose_gates, check_diagonal=self.check_diagonal)
+        return input_mode_labels, input_operands, qubits_frontier, next_frontier, inverse_gate_entries

@@ -14,11 +14,10 @@ import warnings
 
 import cupy as cp
 
-from nvmath.internal.utils import infer_object_package, device_ctx, create_empty_tensor
+from nvmath.internal.utils import infer_object_package
 from nvmath.internal import package_wrapper
 from nvmath.internal.tensor_wrapper import maybe_register_package
 
-from . import tensor_wrapper
 from .package_ifc import StreamHolder
 
 

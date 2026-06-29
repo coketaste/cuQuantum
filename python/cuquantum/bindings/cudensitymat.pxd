@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated with version 26.03.1, generator version 0.3.1.dev1508+g784d12dd6.d20260402. Do not modify it directly.
+# This code was automatically generated with version 26.06.0, generator version 0.3.1.dev1663+gc4ecc6582.d20260605. Do not modify it directly.
 
 from libc.stdint cimport intptr_t
 
@@ -25,10 +25,15 @@ ctypedef cudensitymatExpectation_t Expectation
 ctypedef cudensitymatOperatorSpectrum_t OperatorSpectrum
 ctypedef cudensitymatWorkspaceDescriptor_t WorkspaceDescriptor
 ctypedef cudensitymatTimePropagation_t TimePropagation
+ctypedef cudensitymatEigenDecomposition_t EigenDecomposition
 ctypedef cudensitymatTimePropagationApproachKrylovConfig_t TimePropagationApproachKrylovConfig
+ctypedef cudensitymatEigenDecompositionApproachKrylovConfig_t EigenDecompositionApproachKrylovConfig
 ctypedef cudensitymatTimePropagationScopeSplitTDVPConfig_t TimePropagationScopeSplitTDVPConfig
+ctypedef cudensitymatEigenDecompositionScopeSplitDMRGConfig_t EigenDecompositionScopeSplitDMRGConfig
+ctypedef cudensitymatStateFittingScopeSplitALSConfig_t StateFittingScopeSplitALSConfig
+ctypedef cudensitymatStateFittingApproachLinSolveConfig_t StateFittingApproachLinSolveConfig
+ctypedef cudensitymatSVDConfig_t SVDConfig
 ctypedef cudensitymatDistributedRequest_t DistributedRequest
-ctypedef cudensitymatTimeRange_t TimeRange
 ctypedef cudensitymatDistributedCommunicator_t DistributedCommunicator
 ctypedef cudensitymatScalarCallback_t ScalarCallback
 ctypedef cudensitymatTensorCallback_t TensorCallback
@@ -82,11 +87,25 @@ ctypedef cudensitymatOperatorSpectrumKind_t _OperatorSpectrumKind
 ctypedef cudensitymatOperatorSpectrumConfig_t _OperatorSpectrumConfig
 ctypedef cudensitymatBoundaryCondition_t _BoundaryCondition
 ctypedef cudensitymatTimePropagationScopeKind_t _TimePropagationScopeKind
+ctypedef cudensitymatEigenDecompositionScopeKind_t _EigenDecompositionScopeKind
 ctypedef cudensitymatTimePropagationScopeSplitKind_t _TimePropagationScopeSplitKind
+ctypedef cudensitymatEigenDecompositionScopeSplitKind_t _EigenDecompositionScopeSplitKind
 ctypedef cudensitymatTimePropagationApproachKind_t _TimePropagationApproachKind
+ctypedef cudensitymatEigenDecompositionApproachKind_t _EigenDecompositionApproachKind
 ctypedef cudensitymatTimePropagationAttribute_t _TimePropagationAttribute
+ctypedef cudensitymatEigenDecompositionAttribute_t _EigenDecompositionAttribute
 ctypedef cudensitymatTimePropagationApproachKrylovConfigAttribute_t _TimePropagationApproachKrylovConfigAttribute
+ctypedef cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t _EigenDecompositionApproachKrylovConfigAttribute
 ctypedef cudensitymatTimePropagationScopeSplitTDVPConfigAttribute_t _TimePropagationScopeSplitTDVPConfigAttribute
+ctypedef cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t _EigenDecompositionScopeSplitDMRGConfigAttribute
+ctypedef cudensitymatStateFittingScopeKind_t _StateFittingScopeKind
+ctypedef cudensitymatStateFittingScopeSplitKind_t _StateFittingScopeSplitKind
+ctypedef cudensitymatStateFittingApproachKind_t _StateFittingApproachKind
+ctypedef cudensitymatStateFittingAttribute_t _StateFittingAttribute
+ctypedef cudensitymatStateFittingScopeSplitALSConfigAttribute_t _StateFittingScopeSplitALSConfigAttribute
+ctypedef cudensitymatStateFittingApproachLinSolveConfigAttribute_t _StateFittingApproachLinSolveConfigAttribute
+ctypedef cudensitymatSVDConfigAttribute_t _SVDConfigAttribute
+ctypedef cudensitymatEigenDecompositionSpectrumKind_t _EigenDecompositionSpectrumKind
 ctypedef cudensitymatMemspace_t _Memspace
 ctypedef cudensitymatWorkspaceKind_t _WorkspaceKind
 
@@ -104,6 +123,8 @@ cpdef int32_t get_proc_rank(intptr_t handle) except? -1
 cpdef reset_random_seed(intptr_t handle, int32_t random_seed)
 cpdef intptr_t create_state(intptr_t handle, int purity, int32_t num_space_modes, space_mode_extents, int64_t batch_size, int data_type) except? 0
 cpdef intptr_t create_state_mps(intptr_t handle, int purity, int32_t num_space_modes, space_mode_extents, int boundary_condition, bond_extents, int data_type, int64_t batch_size) except? 0
+cpdef state_mps_set_current_bond_extents(intptr_t handle, intptr_t state, bond_extents)
+cpdef state_mps_get_current_bond_extents(intptr_t handle, intptr_t state, intptr_t bond_extents)
 cpdef destroy_state(intptr_t state)
 cpdef int32_t state_get_num_components(intptr_t handle, intptr_t state) except? -1
 cpdef state_attach_component_storage(intptr_t handle, intptr_t state, int32_t num_state_components, component_buffer, component_buffer_size)
@@ -135,13 +156,24 @@ cpdef destroy_operator(intptr_t superoperator)
 cpdef operator_append_term(intptr_t handle, intptr_t superoperator, intptr_t operator_term, int32_t duality, complex coefficient, coefficient_callback, coefficient_gradient_callback)
 cpdef operator_append_term_batch(intptr_t handle, intptr_t superoperator, intptr_t operator_term, int32_t duality, int64_t batch_size, intptr_t static_coefficients, intptr_t total_coefficients, coefficient_callback, coefficient_gradient_callback)
 cpdef attach_batched_coefficients(intptr_t handle, intptr_t superoperator, int32_t num_operator_term_batched_coeffs, operator_term_batched_coeffs_tmp, operator_term_batched_coeffs, int32_t num_operator_product_batched_coeffs, operator_product_batched_coeffs_tmp, operator_product_batched_coeffs)
-cpdef operator_configure_action(intptr_t handle, intptr_t superoperator, intptr_t state_in, intptr_t state_out, intptr_t attribute_value, size_t attribute_size)
+cpdef intptr_t create_state_fitting_scope_split_als_config(intptr_t handle) except? 0
+cpdef destroy_state_fitting_scope_split_als_config(intptr_t config)
+cpdef get_state_fitting_scope_split_als_config_attribute_dtype(int attr)
+cpdef state_fitting_scope_split_als_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
+cpdef state_fitting_scope_split_als_config_get_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
+cpdef intptr_t create_state_fitting_approach_lin_solve_config(intptr_t handle) except? 0
+cpdef destroy_state_fitting_approach_lin_solve_config(intptr_t config)
+cpdef get_state_fitting_approach_lin_solve_config_attribute_dtype(int attr)
+cpdef state_fitting_approach_lin_solve_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
+cpdef state_fitting_approach_lin_solve_config_get_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
 cpdef operator_prepare_action(intptr_t handle, intptr_t superoperator, intptr_t state_in, intptr_t state_out, int compute_type, size_t workspace_size_limit, intptr_t workspace, intptr_t stream)
 cpdef operator_compute_action(intptr_t handle, intptr_t superoperator, double time, int64_t batch_size, int32_t num_params, intptr_t params, intptr_t state_in, intptr_t state_out, intptr_t workspace, intptr_t stream)
 cpdef operator_prepare_action_backward_diff(intptr_t handle, intptr_t superoperator, intptr_t state_in, intptr_t state_out_adj, int compute_type, size_t workspace_size_limit, intptr_t workspace, intptr_t stream)
 cpdef operator_compute_action_backward_diff(intptr_t handle, intptr_t superoperator, double time, int64_t batch_size, int32_t num_params, intptr_t params, intptr_t state_in, intptr_t state_out_adj, intptr_t state_in_adj, intptr_t params_grad, intptr_t workspace, intptr_t stream)
-cpdef intptr_t create_operator_action(intptr_t handle, int32_t num_operators, operators) except? 0
+cpdef intptr_t create_operator_action(intptr_t handle, int32_t num_operators, operators, int scope_kind, int approach_kind) except? 0
 cpdef destroy_operator_action(intptr_t operator_action)
+cpdef get_state_fitting_attribute_dtype(int attr)
+cpdef operator_action_configure(intptr_t handle, intptr_t operator_action, int attribute, intptr_t attribute_value, size_t attribute_size)
 cpdef operator_action_prepare(intptr_t handle, intptr_t operator_action, state_in, intptr_t state_out, int compute_type, size_t workspace_size_limit, intptr_t workspace, intptr_t stream)
 cpdef operator_action_compute(intptr_t handle, intptr_t operator_action, double time, int64_t batch_size, int32_t num_params, intptr_t params, state_in, intptr_t state_out, intptr_t workspace, intptr_t stream)
 cpdef intptr_t create_expectation(intptr_t handle, intptr_t superoperator) except? 0
@@ -170,6 +202,27 @@ cpdef get_time_propagation_attribute_dtype(int attr)
 cpdef time_propagation_configure(intptr_t handle, intptr_t time_propagation, int attribute, intptr_t attribute_value, size_t attribute_size)
 cpdef time_propagation_prepare(intptr_t handle, intptr_t time_propagation, intptr_t state_in, intptr_t state_out, int compute_type, size_t workspace_size_limit, intptr_t workspace, intptr_t stream)
 cpdef time_propagation_compute(intptr_t handle, intptr_t time_propagation, double time_step_real, double time_step_imag, double time, int64_t batch_size, int32_t num_params, intptr_t params, intptr_t state_in, intptr_t state_out, intptr_t workspace, intptr_t stream)
+cpdef intptr_t create_svd_config(intptr_t handle) except? 0
+cpdef destroy_svd_config(intptr_t config)
+cpdef get_svd_config_attribute_dtype(int attr)
+cpdef svd_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
+cpdef svd_config_get_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
+cpdef intptr_t create_eigen_decomposition_scope_split_dmrg_config(intptr_t handle) except? 0
+cpdef destroy_eigen_decomposition_scope_split_dmrg_config(intptr_t config)
+cpdef get_eigen_decomposition_scope_split_dmrg_config_attribute_dtype(int attr)
+cpdef eigen_decomposition_scope_split_dmrg_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
+cpdef eigen_decomposition_scope_split_dmrg_config_get_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
+cpdef intptr_t create_eigen_decomposition_approach_krylov_config(intptr_t handle) except? 0
+cpdef destroy_eigen_decomposition_approach_krylov_config(intptr_t config)
+cpdef get_eigen_decomposition_approach_krylov_config_attribute_dtype(int attr)
+cpdef eigen_decomposition_approach_krylov_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
+cpdef eigen_decomposition_approach_krylov_config_get_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
+cpdef intptr_t create_eigen_decomposition(intptr_t handle, intptr_t superoperator, int32_t is_hermitian, int spectrum_kind, int scope_kind, int approach_kind) except? 0
+cpdef destroy_eigen_decomposition(intptr_t eigen_decomposition)
+cpdef get_eigen_decomposition_attribute_dtype(int attr)
+cpdef eigen_decomposition_configure(intptr_t handle, intptr_t eigen_decomposition, int attribute, intptr_t attribute_value, size_t attribute_size)
+cpdef eigen_decomposition_prepare(intptr_t handle, intptr_t eigen_decomposition, int32_t max_eigen_states, intptr_t state, int compute_type, size_t workspace_size_limit, intptr_t workspace, intptr_t stream)
+cpdef eigen_decomposition_compute(intptr_t handle, intptr_t eigen_decomposition, double time, int64_t batch_size, int32_t num_params, intptr_t params, int32_t num_eigen_states, eigenstates, intptr_t eigenvalues, intptr_t tolerances, intptr_t workspace, intptr_t stream)
 cpdef intptr_t create_workspace(intptr_t handle) except? 0
 cpdef destroy_workspace(intptr_t workspace_descr)
 cpdef size_t workspace_get_memory_size(intptr_t handle, intptr_t workspace_descr, int mem_space, int workspace_kind) except? -1

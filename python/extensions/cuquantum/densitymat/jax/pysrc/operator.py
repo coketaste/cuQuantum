@@ -18,6 +18,8 @@ from cuquantum.bindings import cudensitymat as cudm
 
 from .operator_term import OperatorTerm
 from ..utils import (
+    get_batch_size,
+    get_original_shape,
     get_scalar_assignment_callback,
     get_empty_scalar_callback,
     get_scalar_gradient_attachment_callback,
@@ -51,7 +53,8 @@ class Operator:
         self.coeffs: list[jax.Array] = []
 
         # Attributes inferred from multiple append calls.
-        self.batch_sizes: list[int] = []  # keep track of batch sizes of all operator terms
+        self._op_term_batch_sizes: list[int] = []  # keep track of batch sizes of all operator terms
+        self._update_op_term_batch_sizes: list[bool] = []  # True for Case 3: vmap-traced size-1 coeffs
         self.batch_size: int = 1
         self.dtype: jnp.dtype | None = None
 
@@ -82,7 +85,8 @@ class Operator:
             self.dims,
             self.duals,
             self.batch_size,
-            self.batch_sizes,
+            self._op_term_batch_sizes,
+            self._update_op_term_batch_sizes,
             self.dtype,
             self._ptr,
             self._coeff_ptrs,
@@ -109,7 +113,8 @@ class Operator:
             inst.dims,
             inst.duals,
             inst.batch_size,
-            inst.batch_sizes,
+            inst._op_term_batch_sizes,
+            inst._update_op_term_batch_sizes,
             inst.dtype,
             inst._ptr,
             inst._coeff_ptrs,
@@ -132,11 +137,11 @@ class Operator:
         """
         in_axes_op_terms = [op_term.in_axes for op_term in self.op_terms]
         in_axes_coeffs = []
-        for coeff in self.coeffs:
-            if is_vmap_traced(coeff) or len(coeff) > 1:
-                in_axes_coeffs.append(0)
+        for i in range(len(self.coeffs)):
+            if len(self.coeffs[i]) > 1:
+                in_axes_coeffs.append(0) # XXX
             else:
-                in_axes_coeffs.append(None)
+                in_axes_coeffs.append(None) # XXX
 
         _, aux_data = self.tree_flatten()
         return type(self).tree_unflatten(aux_data, (in_axes_op_terms, in_axes_coeffs))
@@ -153,7 +158,8 @@ class Operator:
         op.dims = self.dims
         op.duals = self.duals.copy()
         op.batch_size = self.batch_size
-        op.batch_sizes = self.batch_sizes.copy()
+        op._op_term_batch_sizes = self._op_term_batch_sizes.copy()
+        op._update_op_term_batch_sizes = self._update_op_term_batch_sizes.copy()
         op.dtype = self.dtype
         op._ptr = self._ptr
         op._coeff_ptrs = self._coeff_ptrs.copy()
@@ -231,7 +237,11 @@ class Operator:
         self.coeffs.append(coeff)
 
         # Set batch size and dtype.
-        self.batch_sizes.append(len(coeff))
+        self._op_term_batch_sizes.append(len(coeff))
+        if is_vmap_traced(coeff):
+            self._update_op_term_batch_sizes.append(True)
+        else:
+            self._update_op_term_batch_sizes.append(False)
         self._check_and_set_batch_size(op_term, coeff)  # setting batch size of the operator
         self._check_and_set_dtype(op_term)
 
@@ -254,7 +264,7 @@ class Operator:
         """
         return self.op_terms[index]
 
-    def _create(self, handle):
+    def _create(self, handle, batch_size: int = 1):
         """
         Create opaque handle to the operator.
         """
@@ -268,7 +278,7 @@ class Operator:
 
         # Only create the opaque handles to the unique operator terms.
         for i in id_to_first_index.values():
-            self.op_terms[i]._create(handle)
+            self.op_terms[i]._create(handle, batch_size)
 
         # Create the current operator.
         if self._ptr is None:
@@ -281,23 +291,25 @@ class Operator:
                 # Detect if the coefficient requires gradient and assign callback, gradient callback,
                 # temporary coefficient pointer and object.
                 self._coeff_requires_grads[i] = detect_ad_traced_object(self.coeffs[i])
-                if not is_vmap_traced(self.coeffs[i]) and len(self.coeffs[i]) == 1:
+                coeff_shape = get_original_shape(self.coeffs[i])
+                coeff_dtype = self.coeffs[i].dtype
+
+                if self._update_op_term_batch_sizes[i]:
+                    self._op_term_batch_sizes[i] = batch_size
+
+                if self._op_term_batch_sizes[i] == 1:
                     # Traced scalars need to be passed through an intermediate memory slot.
-                    self._coeff_callbacks[i] = get_scalar_assignment_callback(self.coeffs[i])
+                    self._coeff_callbacks[i] = get_scalar_assignment_callback(coeff_dtype)
                     self._coeff_ptrs[i] = self._coeff_callbacks[i].callback.coeff.data.ptr
 
                     # If gradient is computed on the coefficient, assign gradient callback and pointer.
+                    # The gradient buffer is sized to batch_size so cudensitymat can write one value
+                    # per batch element regardless of whether the coefficient itself is batched.
                     if self._coeff_requires_grads[i]:
-                        self._coeff_grad_callbacks[i] = get_scalar_gradient_attachment_callback(self.coeffs[i])
+                        self._coeff_grad_callbacks[i] = get_scalar_gradient_attachment_callback((batch_size,), coeff_dtype)
                         self._coeff_grad_ptrs[i] = self._coeff_grad_callbacks[i].callback.scalar_grad.data.ptr
 
                 else:
-                    if is_vmap_traced(self.coeffs[i]):
-                        coeff_shape = self.coeffs[i].val.shape
-                        coeff_dtype = self.coeffs[i].val.dtype
-                    else:
-                        coeff_shape = self.coeffs[i].shape
-                        coeff_dtype = self.coeffs[i].dtype
                     static_coeff_buf = cp.ones(coeff_shape, dtype=coeff_dtype)
                     self._coeff_ptrs[i] = static_coeff_buf.data.ptr
                     self._coeff_ptr_objs[i] = static_coeff_buf
@@ -307,10 +319,10 @@ class Operator:
                     self._total_coeffs_ptrs[i], self._total_coeffs_ptr_objs[i] = get_random_odd_pointer_and_object()
 
                     if self._coeff_requires_grads[i]:
-                        self._coeff_grad_callbacks[i] = get_scalar_gradient_attachment_callback(self.coeffs[i])
+                        self._coeff_grad_callbacks[i] = get_scalar_gradient_attachment_callback((batch_size,), coeff_dtype)
                         self._coeff_grad_ptrs[i] = self._coeff_grad_callbacks[i].callback.scalar_grad.data.ptr
 
-                if self.batch_sizes[i] == 1:
+                if self._op_term_batch_sizes[i] == 1:
                     cudm.operator_append_term(
                         handle,
                         self._ptr,
@@ -321,14 +333,14 @@ class Operator:
                         self._coeff_grad_callbacks[i],
                     )
                 else:
-                    # This is only needed when is_vmap_traced(self.coeffs[i]) or len(self.coeffs[i]) > 1,
+                    # This is only needed when _op_term_batch_sizes[i] != 1
                     # and when _self._coeff_requires_grads[i] is True.
                     cudm.operator_append_term_batch(
                         handle,
                         self._ptr,
                         self.op_terms[id_to_first_index[self._op_term_ids[i]]]._ptr,
                         self.duals[i],
-                        self.batch_sizes[i],
+                        self._op_term_batch_sizes[i],
                         self._coeff_ptrs[i],
                         self._total_coeffs_ptrs[i],
                         self._coeff_callbacks[i],

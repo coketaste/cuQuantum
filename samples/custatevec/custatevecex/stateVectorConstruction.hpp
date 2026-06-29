@@ -25,12 +25,10 @@
  *
  * @param argc Pointer to argument count from main()
  * @param argv Pointer to argument vector from main()
- * @return bool True if multi-process environment is available, false for single-process
  *
  * @details Initializes MPI communicator infrastructure if running in multi-process mode.
  * Handles MPI_Init and custatevecExCommunicatorInitialize automatically.
- * Returns true if MPI environment is detected and initialized successfully.
- * Returns false for single-process execution. Call this before configureStateVector().
+ * Call this before configureStateVector().
  */
 void bootstrapMultiProcessEnvironment(int* argc, char*** argv);
 
@@ -52,9 +50,8 @@ void finalizeMultiProcessEnvironment();
  * @return custatevecExDictionaryDescriptor_t Configuration dictionary from cuStateVec Ex API
  *
  * @details Parses command line arguments and creates appropriate state vector configuration.
- * The command line arguments, together with the detected environment, inform whether the
- * state vector configuration is single-device, single-device with host-memory, multi-device,
- * or multi-process.
+ * The command line arguments inform whether the state vector configuration is single-device,
+ * single-device with host-memory, multi-device, multi-process or multi-process with host-memory.
  *
  * See the accompanying README.md for a list of the recognised arguments, or alternatively
  * use argument -h to show the help message and exit.
@@ -87,6 +84,17 @@ custatevecExCommunicatorDescriptor_t getMultiProcessCommunicator();
  * @return int The process rank, an integer between 0 and the number of processes (exclusive)
  */
 int getMultiProcessRank();
+
+/**
+ * @brief Returns whether the user requested quiet mode (-q)
+ *
+ * @return bool True if the -q option was supplied on the command line.
+ *
+ * @details Recorded during command-line parsing (within bootstrapMultiProcessEnvironment()
+ * and/or configureStateVector()). Useful for examples that control output on a per-rank basis
+ * but must still honour a user's request to suppress all output.
+ */
+bool isQuietModeEnabled();
 
 /**
  * @brief Get the configured state vector data type

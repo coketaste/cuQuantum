@@ -73,11 +73,11 @@ echo "Detected CUDA_VERSION=${CUDA_VERSION_RAW} (major=${CUDA_MAJOR}) from ${CUD
 # -------------------------------------------------------------------
 case "${CUDA_MAJOR}" in
     12)
-        JAX_VERSION_SPEC=">=0.5,<0.7"
+        JAX_VERSION_SPEC=">=0.8"
         CUDA_CLASSIFIER="Environment :: GPU :: NVIDIA CUDA :: 12"
         ;;
     13)
-        JAX_VERSION_SPEC=">=0.8,<0.9"
+        JAX_VERSION_SPEC=">=0.8"
         CUDA_CLASSIFIER="Environment :: GPU :: NVIDIA CUDA :: 13"
         ;;
     *)

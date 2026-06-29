@@ -29,7 +29,7 @@ from cuquantum.densitymat import (
     WorkStream,
     TimePropagation,
     TDVPConfig,
-    KrylovConfig,
+    TimePropagationApproachKrylovConfig,
     mpo_product,
 )
 
@@ -171,7 +171,7 @@ def main():
 
     # --- 5. Create TDVP time propagation object ---
     tdvp_config = TDVPConfig(order=2)
-    krylov_config = KrylovConfig(tolerance=1e-8, max_dim=10)
+    krylov_config = TimePropagationApproachKrylovConfig(tolerance=1e-8, max_dim=10)
 
     propagator = TimePropagation(
         hamiltonian,
