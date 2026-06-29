@@ -71,6 +71,10 @@ class BaseCircuitToEinsumTester(_BaseTester):
             expected_probability = result.reshape(2**len(where), 2**len(where)).diagonal().reshape((2,) * len(where))
             TensorBackend.verify_close(probability.imag, 0, **self._get_tolerance(circuit, dtype))
             TensorBackend.verify_close(probability, expected_probability, **self._get_tolerance(circuit, dtype))
+            # reduced_density_matrix(..., diagonal=True) must match marginal_probability exactly
+            diagonal_rdm = self._compute_property(converter, 'reduced_density_matrix', where, fixed=fixed, lightcone=lightcone, diagonal=True)
+            assert diagonal_rdm.shape == probability.shape
+            TensorBackend.verify_close(diagonal_rdm, probability, **self._get_tolerance(circuit, dtype))
             where = [qubits.index(q) for q in where]
             fixed = {qubits.index(q): i for q, i in fixed.items()}
             QuantumStateTestHelper.verify_reduced_density_matrix(state_vector, where, result, fixed=fixed, **self._get_tolerance(circuit, dtype))

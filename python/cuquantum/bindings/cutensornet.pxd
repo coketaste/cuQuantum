@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.03.1, generator version 0.3.1.dev1471+gd13834924.d20260402. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1668+gb1eb0b259. Do not modify it directly.
 
 from libc.stdint cimport intptr_t
 
@@ -88,6 +88,8 @@ ctypedef cutensornetStateMPSGaugeOption_t _StateMPSGaugeOption
 ctypedef cutensornetStateProjectionMPSOrthoOption_t _StateProjectionMPSOrthoOption
 ctypedef cutensornetStateProjectionMPSAttributes_t _StateProjectionMPSAttribute
 ctypedef cutensornetNetworkAutotunePreferenceAttributes_t _NetworkAutotunePreferenceAttribute
+ctypedef cutensornetMarginalKind_t _MarginalKind
+ctypedef cutensornetStateProjectionMPSMaxExtentPreparePolicy_t _StateProjectionMPSMaxExtentPreparePolicy
 
 
 ###############################################################################
@@ -247,3 +249,4 @@ cpdef state_update_tensor_operator_gradient(intptr_t handle, intptr_t tensor_net
 cpdef expectation_compute_with_gradients_backward(intptr_t handle, intptr_t tensor_network_expectation, int32_t accumulate_gradients, intptr_t expectation_value_adjoint, intptr_t state_norm_adjoint, intptr_t work_desc, intptr_t expectation_value, intptr_t state_norm, intptr_t cuda_stream)
 cpdef state_projection_mps_update_coefficients(intptr_t handle, intptr_t tensor_network_projection, int32_t num_coeffs, intptr_t coeffs)
 cpdef state_projection_mps_update_dual_tensors(intptr_t handle, intptr_t tensor_network_projection, max_extents, valid_extents, strides, dual_tensors_data, intptr_t ortho_spec, intptr_t cuda_stream)
+cpdef intptr_t create_marginal_diagonal(intptr_t handle, intptr_t tensor_network_state, int32_t num_marginal_modes, marginal_modes, int32_t num_projected_modes, projected_modes, marginal_diagonal_tensor_strides) except? 0

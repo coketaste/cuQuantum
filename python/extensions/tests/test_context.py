@@ -52,18 +52,18 @@ class TestCudensitymatContext:
         # After creating the context, the attributes should be set.
         assert CudensitymatContext._handle is not None
         assert CudensitymatContext._workspace_desc is not None
-        assert op._ptr in CudensitymatContext._operator_contexts
-        op_ctx = CudensitymatContext._operator_contexts[op._ptr]
+        assert (op._ptr, 1) in CudensitymatContext._operator_contexts
+        op_ctx = CudensitymatContext._operator_contexts[(op._ptr, 1)]
 
         # Creating the context on the same operator again has no effect.
         CudensitymatContext.maybe_create_operator_context(op)
-        assert CudensitymatContext._operator_contexts[op._ptr] is op_ctx
+        assert CudensitymatContext._operator_contexts[(op._ptr, 1)] is op_ctx
 
         # Creating the context on a different operator creates a new context.
         op_ = generate_operator((3, 4, 5), jnp.float64)
         CudensitymatContext.maybe_create_operator_context(op_)
-        assert op_._ptr in CudensitymatContext._operator_contexts
-        assert CudensitymatContext._operator_contexts[op_._ptr] is not op_ctx
+        assert (op_._ptr, 1) in CudensitymatContext._operator_contexts
+        assert CudensitymatContext._operator_contexts[(op_._ptr, 1)] is not op_ctx
 
     def test_maybe_create_state_context(self):
         """
@@ -97,10 +97,10 @@ class TestCudensitymatContext:
         op = generate_operator((3, 4, 5), jnp.float32)
         CudensitymatContext.maybe_create_operator_context(op)
 
-        CudensitymatContext.get_operator_context(op._ptr)
+        CudensitymatContext.get_operator_context(op._ptr, 1)
 
         with pytest.raises(RuntimeError):
-            CudensitymatContext.get_operator_context(-1)
+            CudensitymatContext.get_operator_context(-1, 1)
 
     def test_get_state_context(self):
         """

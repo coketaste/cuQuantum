@@ -18,22 +18,24 @@ from nvmath.internal.tensor_wrapper import wrap_operand
 from cuquantum.bindings import cudensitymat as cudm
 from .operators import Operator, _handle_callback_params
 from .state import State
+from .svd import SVDConfig, _build_svd_config_handle
 from .work_stream import WorkStream
 from ._internal import utils
-from ._internal.utils import InvalidObjectState, check_and_get_batchsize
+from ._internal.utils import (
+    InvalidObjectState,
+    check_and_get_batchsize,
+    resolve_enum as _resolve_enum,
+    set_config_attribute as _set_config_attribute,
+)
 from ._internal.typemaps import CUDENSITYMAT_COMPUTE_TYPE_MAP
 
 
 __all__ = [
-    "KrylovConfig",
+    "TimePropagationApproachKrylovConfig",
     "TDVPConfig",
     "TimePropagation",
 ]
 
-
-# ---------------------------------------------------------------------------
-# String-to-enum maps
-# ---------------------------------------------------------------------------
 
 SCOPE_KIND_MAP = {
     "split": cudm.TimePropagationScopeKind.PROPAGATION_SCOPE_SPLIT,
@@ -44,45 +46,24 @@ APPROACH_KIND_MAP = {
 }
 
 
-def _resolve_enum(value, mapping, name):
-    """Resolve a string to an enum value, or pass through if already an enum/int."""
-    if isinstance(value, str):
-        key = value.lower()
-        if key not in mapping:
-            raise ValueError(
-                f"Unknown {name}: {value!r}. Supported values: {list(mapping.keys())}"
-            )
-        return mapping[key]
-    return value
-
-
-# ---------------------------------------------------------------------------
-# Helper for setting attributes on C config objects
-# ---------------------------------------------------------------------------
-
-def _set_config_attribute(set_fn, get_dtype_fn, handle, config_ptr, enum_val, value):
-    """Set a single attribute on a C config object."""
-    dtype = get_dtype_fn(enum_val)
-    val_arr = np.array([value], dtype=dtype)
-    set_fn(handle, config_ptr, enum_val, val_arr.ctypes.data, val_arr.dtype.itemsize)
-
-
 # ---------------------------------------------------------------------------
 # Configuration dataclasses
 # ---------------------------------------------------------------------------
 
 @dataclass
-class KrylovConfig:
+class TimePropagationApproachKrylovConfig:
     """Configuration for the Krylov subspace time propagation approach.
 
     Args:
-        tolerance: Convergence tolerance. Defaults to 0 when ``None``, resolved to
-            machine epsilon of the compute precision.
-        max_dim: Maximum Krylov subspace dimension. Defaults to 30 when ``None``.
-        min_beta: Minimum beta to proceed with expansion. Defaults to 0 when ``None``,
+        tolerance: Convergence tolerance. Defaults to ``0`` when ``None``,
             resolved to machine epsilon of the compute precision.
-        adaptive_step_size: Enable adaptive step size control (0=disabled, 1=enabled).
-            Defaults to 1 (enabled) when ``None``.
+        max_dim: Maximum Krylov subspace dimension. Defaults to ``30`` when ``None``.
+        min_beta: Minimum beta to proceed with expansion. Defaults to ``0``
+            when ``None``, resolved to machine epsilon of the compute
+            precision.
+        adaptive_step_size: Enable adaptive step size control (``0`` =
+            disabled, ``1`` = enabled). Defaults to ``1`` (enabled) when
+            ``None``.
     """
     tolerance: Optional[float] = None
     max_dim: Optional[int] = None
@@ -95,9 +76,16 @@ class TDVPConfig:
     """Configuration for TDVP (Time-Dependent Variational Principle) split propagation.
 
     Args:
-        order: Order of TDVP sweeps (2 or 4). Defaults to 2 when ``None``.
+        order: Order of TDVP sweeps (``2`` or ``4``). Defaults to ``2`` when
+            ``None``.
+        num_sites: Number of sites swept per local update. ``1`` for 1-site
+            TDVP, ``2`` for 2-site TDVP. Defaults to ``1`` when ``None``.
+        svd_config: SVD truncation policy for the 2-site sweep
+            (:class:`SVDConfig`).
     """
     order: Optional[int] = None
+    num_sites: Optional[int] = None
+    svd_config: Optional[SVDConfig] = None
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +111,7 @@ class TimePropagation:
         scope_config: Optional scope-specific configuration
             (:class:`TDVPConfig`).
         approach_config: Optional approach-specific configuration
-            (:class:`KrylovConfig`).
+            (:class:`TimePropagationApproachKrylovConfig`).
     """
 
     def __init__(
@@ -133,7 +121,7 @@ class TimePropagation:
         scope: Union[str, "cudm.TimePropagationScopeKind"] = "split",
         approach: Union[str, "cudm.TimePropagationApproachKind"] = "krylov",
         scope_config: Union[TDVPConfig, None] = None,
-        approach_config: Union[KrylovConfig, None] = None,
+        approach_config: Union[TimePropagationApproachKrylovConfig, None] = None,
     ) -> None:
         self._finalizer = weakref.finalize(self, lambda: None)
         self._finalizer.detach()
@@ -150,7 +138,7 @@ class TimePropagation:
         self._ptr = None
         self._last_compute_event: Optional[cp.cuda.Event] = None
         self._upstream_finalizers = collections.OrderedDict()
-        self._requires_configuration = False
+        self._requires_configuration = scope_config is not None or approach_config is not None
         self._current_compute_type = None
 
     # ------------------------------------------------------------------
@@ -188,23 +176,27 @@ class TimePropagation:
     def configure(
         self,
         scope_config: Union[TDVPConfig, None] = None,
-        approach_config: Union[KrylovConfig, None] = None,
+        approach_config: Union[TimePropagationApproachKrylovConfig, None] = None,
     ) -> None:
         """
         Update the propagation configuration.
 
-        If the propagation has already been instantiated, the new configuration
-        will be applied on the next :meth:`prepare` or :meth:`compute` call.
+        :meth:`prepare` must be invoked before the next :meth:`compute` call.
 
         Args:
             scope_config: Scope-specific configuration (:class:`TDVPConfig`).
-            approach_config: Approach-specific configuration (:class:`KrylovConfig`).
+            approach_config: Approach-specific configuration
+                (:class:`TimePropagationApproachKrylovConfig`).
         """
         if scope_config is not None:
             self._scope_config = scope_config
         if approach_config is not None:
             self._approach_config = approach_config
+        if scope_config is None and approach_config is None:
+            return
         if self._valid_state:
+            self._apply_configs()
+        else:
             self._requires_configuration = True
 
     # ------------------------------------------------------------------
@@ -224,50 +216,80 @@ class TimePropagation:
         """Create temporary C config objects, apply them to the time propagation, and destroy them."""
         handle = self._ctx._handle._validated_ptr
 
-        # --- Scope config ---
+        # --- Scope (TDVP) config ---
         if self._scope_config is not None:
-            if isinstance(self._scope_config, TDVPConfig):
-                ptr = cudm.create_time_propagation_scope_split_tdvp_config(handle)
-                try:
-                    if self._scope_config.order is not None:
+            if not isinstance(self._scope_config, TDVPConfig):
+                raise TypeError(
+                    f"scope_config must be a TDVPConfig instance, got "
+                    f"{type(self._scope_config).__name__}."
+                )
+            tdvp_ptr = cudm.create_time_propagation_scope_split_tdvp_config(handle)
+            try:
+                _TDVP_SCALAR_FIELDS = {
+                    "order": cudm.TimePropagationScopeSplitTDVPConfigAttribute.PROPAGATION_SPLIT_SCOPE_TDVP_ORDER,
+                    "num_sites": cudm.TimePropagationScopeSplitTDVPConfigAttribute.PROPAGATION_SPLIT_SCOPE_TDVP_NUM_SITES,
+                }
+                for field_name, enum_val in _TDVP_SCALAR_FIELDS.items():
+                    value = getattr(self._scope_config, field_name)
+                    if value is not None:
                         _set_config_attribute(
                             cudm.time_propagation_scope_split_tdvp_config_set_attribute,
                             cudm.get_time_propagation_scope_split_tdvp_config_attribute_dtype,
-                            handle, ptr,
-                            cudm.TimePropagationScopeSplitTDVPConfigAttribute.PROPAGATION_SPLIT_SCOPE_TDVP_ORDER,
-                            self._scope_config.order,
+                            handle, tdvp_ptr, enum_val, value,
                         )
+                # SVDConfig nested attach 
+                if self._scope_config.svd_config is not None:
+                    if not isinstance(self._scope_config.svd_config, SVDConfig):
+                        raise TypeError(
+                            f"TDVPConfig.svd_config must be an SVDConfig instance, got "
+                            f"{type(self._scope_config.svd_config).__name__}."
+                        )
+                    svd_ptr = _build_svd_config_handle(handle, self._scope_config.svd_config)
+                    try:
+                        _set_config_attribute(
+                            cudm.time_propagation_scope_split_tdvp_config_set_attribute,
+                            cudm.get_time_propagation_scope_split_tdvp_config_attribute_dtype,
+                            handle, tdvp_ptr,
+                            cudm.TimePropagationScopeSplitTDVPConfigAttribute.PROPAGATION_SPLIT_SCOPE_TDVP_SVD_CONFIG,
+                            svd_ptr,
+                        )
+                    finally:
+                        cudm.destroy_svd_config(svd_ptr)
 
-                    self._configure_tp_attribute(
-                        cudm.TimePropagationAttribute.PROPAGATION_SPLIT_SCOPE_TDVP_CONFIG, ptr,
-                    )
-                finally:
-                    cudm.destroy_time_propagation_scope_split_tdvp_config(ptr)
+                self._configure_tp_attribute(
+                    cudm.TimePropagationAttribute.PROPAGATION_SPLIT_SCOPE_TDVP_CONFIG, tdvp_ptr,
+                )
+            finally:
+                cudm.destroy_time_propagation_scope_split_tdvp_config(tdvp_ptr)
 
-        # --- Approach config ---
+        # --- Approach (Krylov) config ---
         if self._approach_config is not None:
-            if isinstance(self._approach_config, KrylovConfig):
-                ptr = cudm.create_time_propagation_approach_krylov_config(handle)
-                try:
-                    _KRYLOV_FIELDS = {
-                        "tolerance": cudm.TimePropagationApproachKrylovConfigAttribute.PROPAGATION_APPROACH_KRYLOV_TOLERANCE,
-                        "max_dim": cudm.TimePropagationApproachKrylovConfigAttribute.PROPAGATION_APPROACH_KRYLOV_MAX_DIM,
-                        "min_beta": cudm.TimePropagationApproachKrylovConfigAttribute.PROPAGATION_APPROACH_KRYLOV_MIN_BETA,
-                        "adaptive_step_size": cudm.TimePropagationApproachKrylovConfigAttribute.PROPAGATION_APPROACH_KRYLOV_ADAPTIVE_STEP_SIZE,
-                    }
-                    for field_name, enum_val in _KRYLOV_FIELDS.items():
-                        value = getattr(self._approach_config, field_name)
-                        if value is not None:
-                            _set_config_attribute(
-                                cudm.time_propagation_approach_krylov_config_set_attribute,
-                                cudm.get_time_propagation_approach_krylov_config_attribute_dtype,
-                                handle, ptr, enum_val, value,
-                            )
-                    self._configure_tp_attribute(
-                        cudm.TimePropagationAttribute.PROPAGATION_APPROACH_KRYLOV_CONFIG, ptr,
-                    )
-                finally:
-                    cudm.destroy_time_propagation_approach_krylov_config(ptr)
+            if not isinstance(self._approach_config, TimePropagationApproachKrylovConfig):
+                raise TypeError(
+                    f"approach_config must be a TimePropagationApproachKrylovConfig "
+                    f"instance, got {type(self._approach_config).__name__}."
+                )
+            krylov_ptr = cudm.create_time_propagation_approach_krylov_config(handle)
+            try:
+                _KRYLOV_FIELDS = {
+                    "tolerance": cudm.TimePropagationApproachKrylovConfigAttribute.PROPAGATION_APPROACH_KRYLOV_TOLERANCE,
+                    "max_dim": cudm.TimePropagationApproachKrylovConfigAttribute.PROPAGATION_APPROACH_KRYLOV_MAX_DIM,
+                    "min_beta": cudm.TimePropagationApproachKrylovConfigAttribute.PROPAGATION_APPROACH_KRYLOV_MIN_BETA,
+                    "adaptive_step_size": cudm.TimePropagationApproachKrylovConfigAttribute.PROPAGATION_APPROACH_KRYLOV_ADAPTIVE_STEP_SIZE,
+                }
+                for field_name, enum_val in _KRYLOV_FIELDS.items():
+                    value = getattr(self._approach_config, field_name)
+                    if value is not None:
+                        _set_config_attribute(
+                            cudm.time_propagation_approach_krylov_config_set_attribute,
+                            cudm.get_time_propagation_approach_krylov_config_attribute_dtype,
+                            handle, krylov_ptr, enum_val, value,
+                        )
+                self._configure_tp_attribute(
+                    cudm.TimePropagationAttribute.PROPAGATION_APPROACH_KRYLOV_CONFIG, krylov_ptr,
+                )
+            finally:
+                cudm.destroy_time_propagation_approach_krylov_config(krylov_ptr)
 
         self._requires_configuration = False
 
@@ -327,6 +349,8 @@ class TimePropagation:
             state_in: Representative input quantum state.
             state_out: Representative output quantum state.
             compute_type: CUDA compute type string (e.g. ``"complex128"``).
+                Defaults to ``ctx.compute_type`` when set, otherwise to the
+                operator's dtype.
         """
         if not self._valid_state:
             self._maybe_instantiate(ctx)

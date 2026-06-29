@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, NVIDIA CORPORATION & AFFILIATES.
+ * Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -16,8 +16,8 @@ int main(void) {
 
     const cudaDataType_t svDataType = CUDA_C_64F;
 
-    const int nLocalIndexBits = 3;
-    const int64_t subSvSize = int64_t(1) << nLocalIndexBits;
+    const int nSliceLocalIndexBits = 3;
+    const int64_t subSvSize = int64_t(1) << nSliceLocalIndexBits;
 
     // allocate host memory
     const int nSubSvs = 2;
@@ -33,10 +33,10 @@ int main(void) {
     }
 
     // allocate device memory
-    const int nDeviceSlots = 1;
-    cuDoubleComplex* deviceSlots;
-    const size_t deviceSlotSizeInBytes = nDeviceSlots * subSvSize * sizeof(cuDoubleComplex);
-    HANDLE_CUDA_ERROR( cudaMalloc(&deviceSlots, deviceSlotSizeInBytes) );
+    const int nDeviceSlices = 1;
+    cuDoubleComplex* deviceSlices;
+    const size_t deviceSlicesSizeInBytes = nDeviceSlices * subSvSize * sizeof(cuDoubleComplex);
+    HANDLE_CUDA_ERROR( cudaMalloc(&deviceSlices, deviceSlicesSizeInBytes) );
 
     //----------------------------------------------------------------------------------------------
 
@@ -46,20 +46,20 @@ int main(void) {
 
     // create migrator
     custatevecSubSVMigratorDescriptor_t migrator;
-    HANDLE_ERROR( custatevecSubSVMigratorCreate(handle, &migrator, deviceSlots, svDataType,
-                                                nDeviceSlots, nLocalIndexBits) );
+    HANDLE_ERROR( custatevecSubSVMigratorCreate(handle, &migrator, deviceSlices, svDataType,
+                                                nDeviceSlices, nSliceLocalIndexBits) );
 
-    int deviceSlotIndex = 0;
-    cuDoubleComplex* srcSubSv = subSvs[0];
-    cuDoubleComplex* dstSubSv = subSvs[1];
+    int deviceSliceIndex = 0;
+    cuDoubleComplex* srcSubSvSlice = subSvs[0];
+    cuDoubleComplex* dstSubSvSlice = subSvs[1];
 
-    // migrate subSvs[0] into d_subSvSlots
-    HANDLE_ERROR( custatevecSubSVMigratorMigrate(handle, migrator, deviceSlotIndex, srcSubSv,
+    // migrate subSvs[0] into deviceSlices
+    HANDLE_ERROR( custatevecSubSVMigratorMigrate(handle, migrator, deviceSliceIndex, srcSubSvSlice,
                                                  nullptr, 0, subSvSize) );
 
-    // migrate d_subSvSlots into subSvs[1]
-    HANDLE_ERROR( custatevecSubSVMigratorMigrate(handle, migrator, deviceSlotIndex, nullptr,
-                                                 dstSubSv, 0, subSvSize) );
+    // migrate deviceSlices into subSvs[1]
+    HANDLE_ERROR( custatevecSubSVMigratorMigrate(handle, migrator, deviceSliceIndex, nullptr,
+                                                 dstSubSvSlice, 0, subSvSize) );
 
     // destroy migrator
     HANDLE_ERROR( custatevecSubSVMigratorDestroy(handle, migrator));
@@ -85,7 +85,7 @@ int main(void) {
     }
 
     // free device memory
-    HANDLE_CUDA_ERROR( cudaFree(deviceSlots) );
+    HANDLE_CUDA_ERROR( cudaFree(deviceSlices) );
 
     if (correct) {
         printf("subsv_migration example PASSED\n");

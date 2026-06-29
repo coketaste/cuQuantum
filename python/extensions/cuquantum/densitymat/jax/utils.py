@@ -44,19 +44,45 @@ class BufferMetadata:
         return len(self.indices)
 
 
-def is_vmap_traced(buf):
+def is_vmap_traced(x: jax.Array | jax.core.Tracer) -> bool:
     """
     Check if a buffer is traced by jax.vmap.
     """
-    return isinstance(buf, jax.core.Tracer) and type(buf).__name__ == "BatchTracer"
+    return get_vmap_depth(x) > 0
 
 
-def get_vmap_depth(obj) -> int:
+def get_original_shape(x: jax.Array | jax.core.Tracer) -> tuple:
+    """
+    Return the shape of x, unwrapping the vmap trace layer if present.
+    """
+    shape = x.shape
+    if isinstance(x, jax.core.Tracer):
+        trace = jax.core.find_top_trace(x)
+        while hasattr(trace, "parent_trace"):
+            if type(trace).__name__ == "BatchTrace":
+                # NOTE: This assumes the batch dimensions are always the most major axes,
+                # which is not the general case.
+                shape = (trace.axis_data.size, *shape)
+            trace = trace.parent_trace
+    return shape
+
+
+def get_batch_size(x: jax.Array | jax.core.Tracer) -> int:
+    """
+    Return the vmap batch size of x: the leading batch dimension inserted by jax.vmap,
+    or 1 if x is not vmap-traced (including concrete arrays and non-vmap tracers like JVP).
+    """
+    if is_vmap_traced(x):
+        return get_original_shape(x)[0]
+    return 1
+
+
+def get_vmap_depth(x: jax.Array | jax.core.Tracer) -> int:
     """
     Return the number of nested vmap transformations active on a traced object.
     """
     depth = 0
-    trace = jax.core.find_top_trace(obj)
+    trace = jax.core.find_top_trace(x)
     while hasattr(trace, "parent_trace"):
         if type(trace).__name__ == "BatchTrace":
             depth += 1
@@ -64,12 +90,12 @@ def get_vmap_depth(obj) -> int:
     return depth
 
 
-def is_grad_inside_vmap(obj) -> bool:
+def is_grad_inside_vmap(x: jax.Array | jax.core.Tracer) -> bool:
     """
     Check if an AD transformation is active inside (inner to) a vmap transformation.
     """
     found_ad = False
-    trace = jax.core.find_top_trace(obj)
+    trace = jax.core.find_top_trace(x)
     while hasattr(trace, "parent_trace"):
         if type(trace).__name__ in ["LinearizeTrace", "JVPTrace"]:
             found_ad = True
@@ -81,25 +107,26 @@ def is_grad_inside_vmap(obj) -> bool:
 
 def maybe_expand_dim(bufs, ndim):
     """
-    Expand to a leading batch dimension when jax.vmap is applied or when the state is non-batched.
+    Expand to a leading batch=1 dimension when the state has no batch dim.
+
+    Returns (bufs, did_expand). Only expands for non-vmap-traced states whose shape
+    is exactly [ndim] or [2*ndim] (i.e. no leading batch dimension present).
+    The caller must pass did_expand to maybe_squeeze_dim so the squeeze only
+    happens when this function actually added the dimension.
     """
-    # TODO: This function expands dimension assuming the operand_layout in lowering has the batch
-    # dimension as the most major axis. In multi-vmap situation this is not true in general.
     if not is_vmap_traced(bufs[0]) and len(bufs[0].shape) in [ndim, 2 * ndim]:
-        bufs = tuple([buf.reshape((1, *buf.shape)) for buf in bufs])
-    return bufs
+        return tuple([buf.reshape((1, *buf.shape)) for buf in bufs]), True
+    return bufs, False
 
 
-def maybe_squeeze_dim(bufs, ndim):
+def maybe_squeeze_dim(bufs, ndim, did_expand):
     """
-    Squeeze the leading batch dimension when jax.vmap is applied or when the state is non-batched.
+    Remove the leading batch=1 dimension that maybe_expand_dim added.
+
+    Only squeezes when did_expand=True (i.e. maybe_expand_dim actually added the dim).
     """
-    # TODO: This function squeezes dimension assuming the operand_layout in lowering has the batch
-    # dimension as the most major axis. In multi-vmap situation this is not true in general.
-    if not is_vmap_traced(bufs[0]) and (
-        len(bufs[0].shape) in [ndim + 1, 2 * ndim + 1] and bufs[0].shape[0] == 1
-    ):
-        bufs = tuple([buf.reshape(*buf.shape[1:]) for buf in bufs])
+    if did_expand:
+        return tuple([buf.reshape(buf.shape[1:]) for buf in bufs])
     return bufs
 
 
@@ -148,26 +175,28 @@ def check_and_return_final_batch_size(state_in_bufs, state_batch_size, op_batch_
     return max(state_batch_size, op_batch_size)
 
 
-def check_and_return_op_device(op: "Operator") -> jax.Device | None:
+def check_and_return_device(op: "Operator",
+                            state_in_bufs: tuple[jax.Array | jax.core.Tracer, ...],
+                            ) -> jax.Device | None:
     """
-    Check if all coefficients and base operators are on the same device and return the device.
+    Check if all operator and state objects are on the same GPU device and return the device.
     """
     device = None
 
-    def _check_device(obj):
-        nonlocal device  # tell Python to use the outer scope's device variable
-        if not isinstance(obj, jax.core.Tracer):  # only check object device if it is not traced
+    def _check_device(x):
+        nonlocal device
+        if not isinstance(x, jax.core.Tracer):  # only check object device if it is not traced
             # Check if the object device is a GPU.
-            if obj.device.platform != 'gpu':
+            if x.device.platform != 'gpu':
                 raise ValueError("cuQuantum Python JAX only supports GPU devices.")
 
             # If device is already set, check it against the current object's device.
             # Otherwise, set it to the current object's device.
             if device is not None:
-                if obj.device != device:
+                if x.device != device:
                     raise ValueError("All objects must be on the same device.")
             else:
-                device = obj.device
+                device = x.device
 
     for op_term, op_term_coeff in zip(op.op_terms, op.coeffs):
         _check_device(op_term_coeff)
@@ -178,43 +207,19 @@ def check_and_return_op_device(op: "Operator") -> jax.Device | None:
             for base_op in op_prod:
                 _check_device(base_op.data)
 
-    return device
-
-
-def check_and_return_state_device(state_in_bufs: tuple[jax.Array, ...]) -> jax.Device | None:
-    """
-    Check if all state buffers are on the same device and return the device.
-    """
-    device = None
-
-    def _check_device(obj):
-        nonlocal device  # tell Python to use the outer scope's device variable
-        if not isinstance(obj, jax.core.Tracer):  # only check object device if it is not traced
-            # Check if the object device is a GPU.
-            if obj.device.platform != 'gpu':
-                raise ValueError("cuQuantum Python JAX only supports GPU devices.")
-
-            # If device is already set, check it against the current object's device.
-            # Otherwise, set it to the current object's device.
-            if device is not None:
-                if obj.device != device:
-                    raise ValueError("All objects must be on the same device.")
-            else:
-                device = obj.device
-
     for buf in state_in_bufs:
         _check_device(buf)
 
     return device
 
 
-def detect_ad_traced_object(obj) -> bool:
+def detect_ad_traced_object(x: jax.Array | jax.core.Tracer) -> bool:
     """
     Detect if an object has been AD-traced.
     """
-    if isinstance(obj, jax.core.Tracer):
-        # trace = jax.core.find_top_trace(obj)  # innermost trace
-        trace = obj._trace  # XXX
+    if isinstance(x, jax.core.Tracer):
+        # trace = jax.core.find_top_trace(x)  # innermost trace
+        trace = x._trace  # XXX
         while hasattr(trace, "parent_trace"):
             if type(trace).__name__ in ["LinearizeTrace", "JVPTrace"]:
                 return True
@@ -222,7 +227,7 @@ def detect_ad_traced_object(obj) -> bool:
     return False
 
 
-def get_empty_scalar_callback():
+def get_empty_scalar_callback() -> cudm.WrappedScalarCallback:
     """
     Return an empty scalar callback for gradient attachment.
     """
@@ -231,17 +236,17 @@ def get_empty_scalar_callback():
     return cudm.WrappedScalarCallback(f, cudm.CallbackDevice.GPU)
 
 
-def get_scalar_assignment_callback(coeff):
+def get_scalar_assignment_callback(dtype: jnp.dtype) -> cudm.WrappedScalarCallback:
     """
     Return a scalar assignment callback.
     """
     def f(t, args, storage):
         storage[:] = f.coeff[0]
-    f.coeff = cp.zeros((1,), dtype=coeff.dtype)
+    f.coeff = cp.zeros((1,), dtype=dtype)
     return cudm.WrappedScalarCallback(f, cudm.CallbackDevice.GPU)
 
 
-def get_empty_tensor_callback():
+def get_empty_tensor_callback() -> cudm.WrappedTensorCallback:
     """
     Return an empty tensor callback for gradient attachment.
     """
@@ -250,43 +255,41 @@ def get_empty_tensor_callback():
     return cudm.WrappedTensorCallback(f, cudm.CallbackDevice.GPU)
 
 
-def get_scalar_gradient_attachment_callback(data):
+def get_scalar_gradient_attachment_callback(shape: tuple[int, ...],
+                                            dtype: jnp.dtype,
+                                            ) -> cudm.WrappedScalarGradientCallback:
     """
     Return a scalar gradient attachment callback.
     """
     def f(t, args, scalar_grad, params_grad):
-        f.scalar_grad += scalar_grad
+        f.scalar_grad += scalar_grad.reshape(f.scalar_grad.shape)
 
     # f.scalar_grad is created as a CuPy array to escape JAX tracing.
-    if is_vmap_traced(data):
-        f.scalar_grad = cp.zeros(data.val.shape, dtype=data.val.dtype)
-    else:
-        f.scalar_grad = cp.zeros(data.shape, dtype=data.dtype)
+    f.scalar_grad = cp.zeros(shape, dtype=dtype)
 
     grad_callback = cudm.WrappedScalarGradientCallback(f, cudm.CallbackDevice.GPU)
     return grad_callback
 
 
-def get_tensor_gradient_attachment_callback(data):
+def get_tensor_gradient_attachment_callback(shape: tuple[int, ...],
+                                            dtype: jnp.dtype,
+                                            ) -> cudm.WrappedTensorGradientCallback:
     """
     Return a tensor gradient attachment callback.
     """
     def f(t, args, tensor_grad, params_grad):
         # Transpose tensor_grad so that the batch dimension is the first dimension.
         transpose_inds = (tensor_grad.ndim - 1, *range(tensor_grad.ndim - 1))
-        f.tensor_grad += tensor_grad.transpose(transpose_inds)
+        f.tensor_grad += tensor_grad.transpose(transpose_inds).reshape(f.tensor_grad.shape)
 
     # f.tensor_grad is created as a CuPy array to escape JAX tracing.
-    if is_vmap_traced(data):
-        f.tensor_grad = cp.zeros(data.val.shape, dtype=data.val.dtype)
-    else:
-        f.tensor_grad = cp.zeros(data.shape, dtype=data.dtype)
+    f.tensor_grad = cp.zeros(shape, dtype=dtype)
 
     grad_callback = cudm.WrappedTensorGradientCallback(f, cudm.CallbackDevice.GPU)
     return grad_callback
 
 
-def get_random_odd_pointer_and_object():
+def get_random_odd_pointer_and_object() -> tuple[int, ctypes.c_short]:
     """
     Return a random odd pointer and its ctypes object.
 

@@ -13,6 +13,9 @@
 // 3. Sample all qubits with 1024 shots to demonstrate execution
 // 4. Show execution times across different circuit sizes for educational purposes
 //
+// This example supports all statevector deployment modes; single-process,
+// multi-process, multi-device, host-memory, and multi-process with host-memory.
+//
 
 #include <custatevecEx.h>              // custatevecEx API
 #include <cuda_runtime.h>              // CUDA runtime
@@ -218,7 +221,7 @@ float runQuantumVolumeCircuit(int numWires, int depth, cudaDataType_t svDataType
 
 int main(int argc, char* argv[])
 {
-    // Initialize multi-process environment
+    // Initialize multi-process environment (silences non-root nodes)
     bootstrapMultiProcessEnvironment(&argc, &argv);
 
     output("cuStateVec Ex Example: Quantum Volume Circuits\n");

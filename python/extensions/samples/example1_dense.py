@@ -44,9 +44,23 @@ def print_device_info():
     if err != cudart.cudaError_t.cudaSuccess:
         raise RuntimeError(f"cudaGetDeviceProperties failed with error code {err}")
 
+    err, clock_rate = cudart.cudaDeviceGetAttribute(
+        cudart.cudaDeviceAttr.cudaDevAttrClockRate, dev_id
+    )
+    if err != cudart.cudaError_t.cudaSuccess:
+        raise RuntimeError(f"cudaDeviceGetAttribute failed with error code {err}")
+
+    err, mem_clock_rate = cudart.cudaDeviceGetAttribute(
+        cudart.cudaDeviceAttr.cudaDevAttrMemoryClockRate, dev_id
+    )
+    if err != cudart.cudaError_t.cudaSuccess:
+        raise RuntimeError(f"cudaDeviceGetAttribute failed with error code {err}")
+
     print("===== device info ======")
     print("GPU-local-id:", dev_id)
     print("GPU-name:", props.name.decode())
+    print("GPU-clockRate (MHz):", clock_rate / 1000)
+    print("GPU-memoryClockRate (MHz):", mem_clock_rate / 1000)
     print("GPU-nSM:", props.multiProcessorCount)
     print("GPU-major:", props.major)
     print("GPU-minor:", props.minor)

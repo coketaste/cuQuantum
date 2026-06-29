@@ -1,6 +1,6 @@
 # cuQuantum Python JAX
 
-cuQuantum Python JAX provides a JAX extension for cuQuantum Python. It exposes selected functionality of cuQuantum SDK in a JAX-compatible way that enables JAX frameworks to directly interface with the exposed cuQuantum API. In the current release, cuQuantum JAX exposes a JAX interface to the Operator Action API from the cuDensityMat library.
+cuQuantum Python JAX provides a JAX extension for cuQuantum Python. It exposes selected functionalities of cuQuantum SDK in a JAX-compatible way that enables JAX frameworks to directly interface with the exposed cuQuantum API. In the current release, cuQuantum JAX exposes JAX interfaces to the Operator Action API from the cuDensityMat library and the GF(2) sparse-dense matrix multiplication from the cuStabilizer library.
 
 ## Documentation
 
@@ -12,14 +12,17 @@ Please visit the [NVIDIA cuQuantum Python documentation](https://docs.nvidia.com
 
 The build-time dependencies of the cuQuantum Python JAX package include:
 
-* jax[cuda12-local]>=0.5,<0.7 for CUDA 12 or jax[cuda13-local]>=0.8,<0.9 for CUDA 13
+* Python 3.11+
+* CUDA Toolkit 12.x or 13.x
+* cmake>=3.22
+* jax[cuda12-local]>=0.8 for CUDA 12 or jax[cuda13-local]>=0.8 for CUDA 13
 * pybind11
 * wheel
 * setuptools>=77.0.3
 
 Note:
-- cuQuantum Python JAX is only supported with CUDA 12 and CUDA 13.
-- cuQuantum Python JAX wheels are CUDA-versioned: `cuquantum-python-jax-cu12` for CUDA 12 and `cuquantum-python-jax-cu13` for CUDA 13.
+- cuQuantum Python JAX is only supported with CUDA 12 and CUDA 13 and the distributions are CUDA-versioned: `cuquantum-python-jax-cu12` for CUDA 12 and `cuquantum-python-jax-cu13` for CUDA 13.
+- **Build isolation note:** When installing with build isolation (`pip`'s default mode), the JAX version used at build time is determined by the build dependency specification in `pyproject.toml` and may differ from the JAX version pre-installed in the environment. Mismatched build-time and runtime JAX versions can lead to errors when importing cuQuantum's JAX extension. We recommend passing `--no-build-isolation` to `pip install` and pre-installing all build dependencies manually.
 
 #### Installation using `jax[cudaXX-local]`
 
@@ -73,9 +76,11 @@ The CUDA version is detected automatically from `$CUDA_PATH` and the wheel will 
 
 Runtime dependencies of the cuQuantum Python JAX package include:
 
+* Python 3.11+
 * An NVIDIA GPU with compute capability 7.5+
-* cuquantum-python-cu12~=26.3.0 for CUDA 12 or cuquantum-python-cu13~=26.3.0 for CUDA 13
-* jax[cuda12-local]>=0.5,<0.7 for CUDA 12 or jax[cuda13-local]>=0.8,<0.9 for CUDA 13
+* CUDA Toolkit 12.x or 13.x
+* cuquantum-python-cu12~=26.6.0 for CUDA 12 or cuquantum-python-cu13~=26.6.0 for CUDA 13
+* jax[cuda12-local]>=0.8 for CUDA 12 or jax[cuda13-local]>=0.8 for CUDA 13
 
 ## Developer Notes
 

@@ -36,8 +36,11 @@ except ImportError:
 from cuquantum.bindings import cutensornet as cutn
 from cuquantum.tensornet import OptimizerOptions, contract
 from cuquantum.tensornet import tensor
-from cuquantum.tensornet.experimental import NetworkOperator
-from cuquantum.tensornet.experimental._internal.network_state_utils import _get_asarray_function
+from cuquantum.tensornet.experimental import NetworkOperator, NetworkState, TNConfig
+from cuquantum.tensornet.experimental._internal.network_state_utils import (
+    _get_asarray_function,
+    check_expectation_with_gradients_norm_args,
+)
 from cuquantum.tensornet._internal.circuit_converter_utils import EINSUM_SYMBOLS_BASE
 from cuquantum.tensornet._internal.decomposition_utils import DECOMPOSITION_DTYPE_NAMES
 from cuquantum.tensornet._internal.einsum_parser import infer_output_mode_labels
@@ -62,10 +65,19 @@ atol_mapper = dict(zip(
     [10 * m_eps for m_eps in machine_epsilon_values]
 ))
 
+
 def get_contraction_tolerance(dtype):
     tolerance = {'atol': atol_mapper[dtype],
                  'rtol': rtol_mapper[dtype]}
     return tolerance
+
+
+def get_expectation_gradient_tolerance(dtype, *, return_norm=False):
+    tolerance = get_contraction_tolerance(dtype).copy()
+    if return_norm and dtype in ("float32", "complex64"):
+        tolerance["atol"] = max(tolerance["atol"], 100 * np.finfo(np.float32).eps)
+    return tolerance
+
 
 def set_path_to_optimizer_options(optimizer_opts, path):
     if optimizer_opts is None:
@@ -629,11 +641,12 @@ class TensorBackend:
     
     @staticmethod
     def verify_close(a, b, **kwargs):
-        package = infer_object_package(a)
-        if package == infer_object_package(b) and package in {'numpy', 'cupy', 'torch'}:
-            module = importlib.import_module(package)
+        """``allclose`` for arrays and 0-D backend scalars (numpy/cupy/torch)."""
+        package_a = infer_object_package(a)
+        package_b = infer_object_package(b)
+        if package_a == package_b and package_a in {'numpy', 'cupy', 'torch'}:
+            module = importlib.import_module(package_a)
         else:
-            # scalar also included in this branch
             a = TensorBackend.to_numpy(a)
             b = TensorBackend.to_numpy(b)
             module = np
@@ -655,66 +668,9 @@ def cleanup_between_tests(request):
                     torch.cuda.empty_cache()
 
 
-def _contract_mpo_to_operator(mpo_tensors_torch, mpo_modes, state_dims):
-    """Contract MPO chain to full operator O with shape (K, K), K = prod(state_dims[m] for m in mpo_modes).
-    O is in (ket, bra) layout so O[i,j] = ⟨i|O|j⟩.
-    """
-    n = len(state_dims)
-    mode_frontier = n
-    current_modes = list(range(n))
-    tensors = []
-    label_lists = []
-    ket_labels_in_order = []
-    bra_labels_in_order = []
-    prev_mode = None
-    for i, m in enumerate(mpo_modes):
-        ket_mode = current_modes[m]
-        current_modes[m] = bra_mode = mode_frontier
-        ket_labels_in_order.append(ket_mode)
-        bra_labels_in_order.append(bra_mode)
-        mode_frontier += 1
-        next_mode = mode_frontier
-        mode_frontier += 1
-        if i == 0:
-            tensors.append(mpo_tensors_torch[i])
-            label_lists.append([ket_mode, next_mode, bra_mode])
-        elif i == len(mpo_modes) - 1:
-            tensors.append(mpo_tensors_torch[i])
-            label_lists.append([prev_mode, ket_mode, bra_mode])
-        else:
-            tensors.append(mpo_tensors_torch[i])
-            label_lists.append([prev_mode, ket_mode, next_mode, bra_mode])
-        prev_mode = next_mode
-    all_labels = sorted(set().union(*[set(ll) for ll in label_lists]))
-    label_to_char = {}
-    for idx, lab in enumerate(all_labels):
-        label_to_char[lab] = chr(ord("a") + idx) if idx < 26 else chr(ord("A") + idx - 26)
-    out_labels = [label_to_char[lab] for lab in ket_labels_in_order] + [label_to_char[lab] for lab in bra_labels_in_order]
-    subscripts = ",".join("".join(label_to_char[lab] for lab in ll) for ll in label_lists) + "->" + "".join(out_labels)
-    out = torch.einsum(subscripts, *tensors)
-    dims = [state_dims[m] for m in mpo_modes]
-    K = int(np.prod(dims))
-    out = out.reshape(K, K)
-    return out
-
-
-def _check_mpo_hermitian(mpo_tensors_torch, mpo_modes, state_dims, atol=1e-6, rtol=1e-5):
-    """Contract MPO to full operator and check op_matrix == op_matrix†. Print result and return is_hermitian."""
-    op_matrix = _contract_mpo_to_operator(mpo_tensors_torch, mpo_modes, state_dims)
-    op_matrix_dag = op_matrix.conj().T
-    diff = op_matrix - op_matrix_dag
-    max_abs_diff = torch.max(torch.abs(diff)).item()
-    nrm_operator = torch.linalg.norm(op_matrix).item()
-    is_hermitian = torch.allclose(op_matrix, op_matrix_dag, atol=atol, rtol=rtol)
-    print(f"[_check_mpo_hermitian] mpo_modes={mpo_modes} state_dims={tuple(state_dims)}")
-    print(f"  op_matrix shape={tuple(op_matrix.shape)} norm={nrm_operator:.6g} max|O - O†|={max_abs_diff:.6g} is_hermitian={is_hermitian}")
-    return is_hermitian
-
-
 def _mpo_expectation_torch(state, mpo_tensors_torch, mpo_modes):
     """Compute ⟨ψ|O_mpo|ψ⟩ with torch state and MPO tensors (differentiable). """
     state_dims = tuple(state.shape)
-    _check_mpo_hermitian(mpo_tensors_torch, mpo_modes, state_dims)
     n = state.ndim
     mode_frontier = n
     modes = list(range(n))
@@ -738,7 +694,7 @@ def _mpo_expectation_torch(state, mpo_tensors_torch, mpo_modes):
     return contract(*operands)
 
 
-class TorchRef:
+class TorchRefExplicitAdjoints:
     """PyTorch-based reference for expectation value and gradients (⟨ψ|H|ψ⟩ and ∂E/∂θ).
     Used to compare against NetworkState.compute_expectation_with_gradients.
     """
@@ -857,7 +813,149 @@ class TorchRef:
             )
         return terms
 
-    def compute_expectation_with_gradients(
+    @staticmethod
+    def _torch_dtype(dtype):
+        _dtype_map = {
+            "complex128": torch.complex128,
+            "complex64": torch.complex64,
+            "float64": torch.float64,
+            "float32": torch.float32,
+        }
+        if isinstance(dtype, str):
+            return _dtype_map.get(dtype, torch.complex64)
+        return dtype
+
+    @staticmethod
+    def _as_param_gate_tensors(gate_sequence, *, torch_dtype, device):
+        """Return (gate_tensors, param_gates).
+
+        gate_tensors: list[(modes, gate_tensor)]
+        param_gates: list[(modes, gate_tensor)] subset with requires_grad=True
+        """
+        gate_tensors = []
+        param_gates = []
+        for item in gate_sequence:
+            modes, gate, requires_grad = item[0], item[1], item[2]
+            g = torch.as_tensor(gate, dtype=torch_dtype, device=device).clone()
+            if requires_grad:
+                g = g.requires_grad_(True)
+                param_gates.append((modes, g))
+            gate_tensors.append((modes, g))
+        return gate_tensors, param_gates
+
+    @staticmethod
+    def _has_any_non_unitary(gate_sequence):
+        return any((len(g) > 3 and not g[3]) for g in gate_sequence)
+
+    @staticmethod
+    def _operator_modes_for_term(term):
+        """Return set of modes that have an operator tensor in this term.
+
+        collapseIsometries checks network structure, not tensor values, so even an
+        identity-valued operator tensor blocks U U† collapse.
+        """
+        tag = term[0]
+        if tag == "product":
+            _, _, gate_list = term
+            modes_set = set()
+            for (_gate_t, qs) in gate_list:
+                modes_set.update(qs)
+            return modes_set
+        if tag == "mpo":
+            return set(term[3])
+        return set()
+
+    @staticmethod
+    def _prune_gates_for_term(gate_sequence, gate_tensors, operator_modes):
+        """Per-term unitary cancellation (lightcone simplification)."""
+        touched = set(operator_modes)
+        active = [True] * len(gate_tensors)
+        for i in range(len(gate_tensors) - 1, -1, -1):
+            item = gate_sequence[i]
+            gate_modes = item[0]
+            is_unitary = item[3] if len(item) > 3 else True
+            if not is_unitary:
+                touched.update(gate_modes)
+                continue
+            if any(m in touched for m in gate_modes):
+                touched.update(gate_modes)
+            else:
+                active[i] = False
+        kept_indices = [i for i, ok in enumerate(active) if ok]
+        active_gates = [gate_tensors[i] for i in kept_indices]
+        return active_gates, kept_indices
+
+    @staticmethod
+    def _build_state_from_gates(state_dims, gates, *, torch_dtype, device):
+        """Apply `gates` to |0...0> and return the full state tensor."""
+        n = len(state_dims)
+        s = torch.zeros(tuple(state_dims), dtype=torch_dtype, device=device)
+        s[(0,) * n] = 1.0
+        for modes, gate in gates:
+            if len(modes) == 1:
+                (q,) = modes
+                s = s.moveaxis(q, -1)
+                s = s @ gate.T
+                s = s.moveaxis(-1, q)
+            else:
+                other = [i for i in range(n) if i not in modes]
+                perm = other + list(modes)
+                s = s.permute(perm)
+                shape_in = int(np.prod([state_dims[m] for m in modes]))
+                s = s.reshape(-1, shape_in) @ gate.reshape(shape_in, shape_in).T
+                s = s.reshape(tuple(state_dims[m] for m in other) + tuple(state_dims[m] for m in modes))
+                inv_perm = [0] * len(perm)
+                for i, p in enumerate(perm):
+                    inv_perm[p] = i
+                s = s.permute(inv_perm)
+        return s
+
+    @staticmethod
+    def _apply_product_operator_to_ket(state, gate_list, *, device):
+        psi_ket = state.clone()
+        for (gate, qs) in gate_list:
+            q = qs[0]
+            g = gate.to(device=device) if gate.device != device else gate
+            psi_ket = psi_ket.moveaxis(q, -1)
+            psi_ket = psi_ket @ g
+            psi_ket = psi_ket.moveaxis(-1, q)
+        return psi_ket
+
+    @staticmethod
+    def _expectation_for_term(state_dims, gate_sequence, gate_tensors, term, *,
+                              torch_dtype, device, torch_asarray):
+        op_modes = TorchRefExplicitAdjoints._operator_modes_for_term(term)
+        active_gates, _ = TorchRefExplicitAdjoints._prune_gates_for_term(gate_sequence, gate_tensors, op_modes)
+        state = TorchRefExplicitAdjoints._build_state_from_gates(state_dims, active_gates, torch_dtype=torch_dtype, device=device)
+
+        tag = term[0]
+        if tag == "product":
+            _, coeff, gate_list = term
+            psi_ket = TorchRefExplicitAdjoints._apply_product_operator_to_ket(state, gate_list, device=device)
+            return coeff * torch.vdot(state.reshape(-1), psi_ket.reshape(-1))
+
+        assert tag == "mpo", term
+        _, coeff, mpo_tensors_np, mpo_modes = term
+        mpo_tensors_torch = [torch_asarray(t).to(device=device, dtype=torch_dtype).detach()
+                             for t in mpo_tensors_np]
+        return coeff * _mpo_expectation_torch(state, mpo_tensors_torch, mpo_modes)
+
+    @staticmethod
+    def _norm_scalar_for_circuit(state_dims, gate_sequence, gate_tensors, *, torch_dtype, device,
+                                 any_non_unitary):
+        if any_non_unitary:
+            # No operator in <psi|psi>, so allow cancellation from the end until a non-unitary gate anchors touched.
+            active_gates, _ = TorchRefExplicitAdjoints._prune_gates_for_term(gate_sequence, gate_tensors, operator_modes=set())
+        else:
+            active_gates = gate_tensors
+        psi = TorchRefExplicitAdjoints._build_state_from_gates(state_dims, active_gates, torch_dtype=torch_dtype, device=device)
+        if torch.is_complex(psi):
+            # Real scalar ||psi||^2 so autograd.grad does not hit complex-output restrictions.
+            return (psi.abs() ** 2).sum()
+        p = psi.reshape(-1)
+        return torch.dot(p, p)
+
+    def compute_expectation_with_gradients0(
         self,
         state_dims,
         gate_sequence,
@@ -865,16 +963,22 @@ class TorchRef:
         *,
         dtype="complex128",
         expectation_value_adjoint=1.0,
+        return_norm=False,
+        state_norm_adjoint=None,
     ):
         """
         Build state from |0…0⟩ by applying gate_sequence, compute E = ⟨ψ|H|ψ⟩,
-        and gradients of E w.r.t. each gate with requires_grad=True.
+        and gradients w.r.t. each gate with requires_grad=True.
+
+        When ``return_norm`` is True and ``state_norm_adjoint`` is set, also backpropagate through the
+        norm path and **accumulate** those gradients onto the same gate buffers, matching
+        :meth:`cuquantum.tensornet.experimental.NetworkState.compute_expectation_with_gradients`.
 
         Parameters
         ----------
         state_dims : tuple of int
             Local dimensions per mode, e.g. (2, 2, 2, 2).
-        gate_sequence : list of (modes, gate_tensor, requires_grad)
+        gate_sequence : list of (modes, gate_tensor, requires_grad, [is_unitary])
             modes: tuple of mode indices; gate_tensor: array (e.g. 2×2 for 1-qubit).
         hamiltonian : dict or NetworkOperator
             Pauli string -> coefficient, e.g. {"ZZII": 2.0, "IZII": 3.0}, or a NetworkOperator
@@ -883,29 +987,27 @@ class TorchRef:
             Data type for state and gates, e.g. "complex128", "complex64"; default "complex128".
         expectation_value_adjoint : scalar, optional
             Adjoint scaling for the expectation value (gradients are scaled by this); default 1.0.
+        return_norm : bool, optional
+            If True, also return the squared 2-norm :math:`\\langle\\psi|\\psi\\rangle` (real scalar).
+            Must agree with ``state_norm_adjoint`` (see :meth:`NetworkState.compute_expectation_with_gradients`).
+        state_norm_adjoint : scalar or None, optional
+            If not None, accumulate norm-network adjoint gradients scaled by this scalar.
+            Must be non-``None`` exactly when ``return_norm`` is True.
 
         Returns
         -------
-        expectation_value : float
-            Real part of ⟨ψ|H|ψ⟩.
+        expectation_value : scalar
+            :math:`\\langle\\psi|H|\\psi\\rangle` as a host scalar (numpy scalar, dtype matches ``dtype``).
+        norm_value : float or None
+            Squared 2-norm if ``return_norm`` is True; otherwise None.
         gradients_list : list of arrays
-            Gradient of E w.r.t. each parameterized gate, in application order (scaled by expectation_value_adjoint).
+            Gradient w.r.t. each parameterized gate, in application order.
         """
         if torch is None:
-            raise RuntimeError("PyTorch is required for TorchRef")
-        _dtype_map = {
-            "complex128": torch.complex128,
-            "complex64": torch.complex64,
-            "float64": torch.float64,
-            "float32": torch.float32,
-        }
-        if isinstance(dtype, str):
-            torch_dtype = _dtype_map.get(dtype, torch.complex64)
-        else:
-            torch_dtype = dtype
-        n = len(state_dims)
+            raise RuntimeError("PyTorch is required for TorchRefExplicitAdjoints")
+        check_expectation_with_gradients_norm_args(return_norm, state_norm_adjoint)
         device = torch.device("cpu")
-        torch.manual_seed(42)
+        torch_dtype = self._torch_dtype(dtype)
         torch_asarray = _get_backend_asarray_func(torch)
         hamiltonian_terms = self.create_hamiltonian_terms(
             state_dims,
@@ -916,121 +1018,563 @@ class TorchRef:
             torch_asarray=torch_asarray,
         )
 
-        # Shared gate tensors: autograd accumulates gradients across per-term backward calls.
-        gate_tensors = []
-        param_gates = []
-        for modes, gate, requires_grad in gate_sequence:
-            gate = torch.as_tensor(gate, dtype=torch_dtype, device=device).clone()
-            if requires_grad:
-                gate = gate.requires_grad_(True)
-                param_gates.append((modes, gate))
-            gate_tensors.append((modes, gate))
+        gate_tensors, param_gates = self._as_param_gate_tensors(
+            gate_sequence, torch_dtype=torch_dtype, device=device
+        )
+        any_non_unitary = self._has_any_non_unitary(gate_sequence)
 
-        def _get_operator_modes(term):
-            """Return set of modes that have an operator tensor in this term.
-
-            collapseIsometries checks network structure, not tensor values,
-            so even an identity-valued operator tensor blocks U U† collapse.
-            """
-            tag = term[0]
-            if tag == "product":
-                _, _, gate_list = term
-                modes_set = set()
-                for (_gate_t, qs) in gate_list:
-                    modes_set.update(qs)
-                return modes_set
-            elif tag == "mpo":
-                return set(term[3])
-            return set()
-
-        def _prune_gates(operator_modes):
-            """Per-term gate cancellation (lightcone simplification).
-
-            Iterate gates in reverse: a gate cancels iff none of its wires
-            have been touched by the operator or by any subsequent active gate.
-            Returns only the active gates.
-            """
-            touched = set(operator_modes)
-            active = [True] * len(gate_tensors)
-            for i in range(len(gate_tensors) - 1, -1, -1):
-                gate_modes = gate_sequence[i][0]
-                if any(m in touched for m in gate_modes):
-                    touched.update(gate_modes)
-                else:
-                    active[i] = False
-            return [gate_tensors[i] for i in range(len(gate_tensors)) if active[i]]
-
-        def _build_state(gates):
-            s = torch.zeros(tuple(state_dims), dtype=torch_dtype, device=device)
-            s[(0,) * n] = 1.0
-            for modes, gate in gates:
-                if len(modes) == 1:
-                    (q,) = modes
-                    s = s.moveaxis(q, -1)
-                    s = s @ gate.T
-                    s = s.moveaxis(-1, q)
-                else:
-                    other = [i for i in range(n) if i not in modes]
-                    perm = other + list(modes)
-                    s = s.permute(perm)
-                    shape_in = int(np.prod([state_dims[m] for m in modes]))
-                    s = s.reshape(-1, shape_in) @ gate.reshape(shape_in, shape_in).T
-                    s = s.reshape(
-                        tuple(state_dims[m] for m in other)
-                        + tuple(state_dims[m] for m in modes),
-                    )
-                    inv_perm = [0] * len(perm)
-                    for i, p in enumerate(perm):
-                        inv_perm[p] = i
-                    s = s.permute(inv_perm)
-            return s
-
-        def _single_term_expectation(term):
-            tag = term[0]
-            active_gates = _prune_gates(_get_operator_modes(term))
-            state = _build_state(active_gates)
-            if tag == "product":
-                _, coeff, gate_list = term
-                psi_ket = state.clone()
-                for (gate, qs) in gate_list:
-                    q = qs[0]
-                    g = gate.to(device=device) if gate.device != device else gate
-                    psi_ket = psi_ket.moveaxis(q, -1)
-                    psi_ket = psi_ket @ g
-                    psi_ket = psi_ket.moveaxis(-1, q)
-                return coeff * torch.vdot(state.reshape(-1), psi_ket.reshape(-1))
-            else:
-                assert tag == "mpo", term
-                _, coeff, mpo_tensors_np, mpo_modes = term
-                mpo_tensors_torch = [
-                    torch_asarray(t).to(device=device, dtype=torch_dtype).detach()
-                    for t in mpo_tensors_np
-                ]
-                return coeff * _mpo_expectation_torch(state, mpo_tensors_torch, mpo_modes)
-
-        # Accumulate expectation value and gradients across terms.
-        total_expectation = 0.0
+        param_tensors = [g for _, g in param_gates]
+        expectation_grad = [torch.zeros_like(t) for t in param_tensors]
+        adjoint_e = torch.as_tensor(expectation_value_adjoint, dtype=torch_dtype, device=device)
+        exp_value_parts = []
         for term in hamiltonian_terms:
-            term_val = _single_term_expectation(term)
-            total_expectation += term_val.real.item()
-            term_val.real.backward()
+            term_val = self._expectation_for_term(
+                state_dims,
+                gate_sequence,
+                gate_tensors,
+                term,
+                torch_dtype=torch_dtype,
+                device=device,
+                torch_asarray=torch_asarray,
+            )
+            exp_value_parts.append(term_val.detach())
+            # cuQuantum treats expectation_value_adjoint as the upstream adjoint multiplier.
+            # To align with cuQuantum's convention for expectation_value_adjoint, we
+            # pass the adjoint as `grad_outputs` directly and do not re-scale the
+            # returned gradients again. Because it has its own convention for complex values.
+            go = adjoint_e.to(dtype=term_val.dtype, device=term_val.device)
+            exp_grads = torch.autograd.grad(
+                term_val,
+                param_tensors,
+                grad_outputs=go,
+                retain_graph=False,
+                allow_unused=True,
+            )
+            for i, gi in enumerate(exp_grads):
+                if gi is not None:
+                    expectation_grad[i] = expectation_grad[i] + gi 
 
-        adjoint = torch.as_tensor(expectation_value_adjoint, dtype=torch_dtype, device=device)
-        scale = getattr(hamiltonian, "_expectation_gradient_scale", 1.0) * adjoint
+        if not exp_value_parts:
+            raise ValueError("TorchRef.compute_expectation_with_gradients0: empty Hamiltonian term list")
+        exp_scalar_torch = torch.stack(exp_value_parts).sum()
+
+        norm_scalar_torch = None
+        if return_norm:
+            norm_scalar_torch = self._norm_scalar_for_circuit(
+                state_dims,
+                gate_sequence,
+                gate_tensors,
+                torch_dtype=torch_dtype,
+                device=device,
+                any_non_unitary=any_non_unitary,
+            )
+
+        # ``state_norm_adjoint`` * ∂||ψ||²/∂G — separate from expectation adjoint / op scale.
+        norm_grad = [torch.zeros_like(t) for t in param_tensors]
+        if return_norm:
+            adjoint_n = torch.as_tensor(state_norm_adjoint, dtype=torch_dtype, device=device)
+            go = adjoint_n.to(dtype=norm_scalar_torch.dtype, device=norm_scalar_torch.device)
+            norm_grads = torch.autograd.grad(
+                norm_scalar_torch,
+                param_tensors,
+                grad_outputs=go,
+                retain_graph=False,
+                allow_unused=True,
+            )
+            for i, gi in enumerate(norm_grads):
+                if gi is not None:
+                    norm_grad[i] = norm_grad[i] + gi
+
         gradients_list = []
-        for modes, gate_tensor in param_gates:
-            if gate_tensor.grad is None:
-                g = torch.zeros_like(gate_tensor)
-            else:
-                g = gate_tensor.grad.detach() * scale
+        for i, (modes, _) in enumerate(param_gates):
+            g = (expectation_grad[i] + norm_grad[i]).detach()
             if len(modes) == 1:
                 g = g.T
             else:
                 g = g.permute(*torch.arange(g.ndim - 1, -1, -1))
             gradients_list.append(g)
 
-        return total_expectation, gradients_list
+        exp_np_dtype = np.dtype("float32") if torch_dtype == torch.float32 else np.dtype("float64")
+        if torch_dtype in (torch.complex64, torch.complex128):
+            exp_np_dtype = np.dtype("complex64") if torch_dtype == torch.complex64 else np.dtype("complex128")
 
+        expectation_value = np.asarray(exp_scalar_torch.detach().cpu().item(), dtype=exp_np_dtype)
+        norm_out = None
+        if return_norm and norm_scalar_torch is not None:
+            norm_out = float(torch.real(norm_scalar_torch.detach().cpu()).item())
+
+        return expectation_value, norm_out, gradients_list
+
+    compute_expectation_with_gradients = compute_expectation_with_gradients0
+
+
+class TorchRef:
+    """PyTorch reference for expectation value and gradient with a single real ``loss_fn(E, N)`` + ``loss.backward()``.
+
+    ``E`` and optional ``N`` come from :meth:`expectation_scalar` and :meth:`state_norm_squared``.
+    Callers must supply ``loss_fn(E, N)`` returning a real scalar; ``N`` is ``None`` when
+    ``return_norm=False``.
+    Expectation-gradient tests also use ``loss_fn`` examples from
+    :func:`~cuquantum_tests.tensornet.experimental._internal.state_matrix.expectation_gradient_loss_factory`.
+    For NumPy CUTN scalar adjoints passed into ``NetworkState.compute_expectation_with_gradients``, use
+    :meth:`adjoints_from_expectation_and_norm` with ``return_cutn_adjoint_numpy=True``.
+    """
+
+    def create_hamiltonian_terms(
+        self,
+        state_dims,
+        hamiltonian,
+        *,
+        dtype="complex128",
+        device=None,
+        torch_dtype=None,
+        np_dtype=None,
+        torch_asarray=None,
+    ):
+        """
+        Build the list of Hamiltonian terms (product and/or MPO) for use in the ref.
+        Can be called outside compute_expectation_with_gradients.
+
+        """
+        if torch is None:
+            raise RuntimeError("PyTorch is required")
+        _str_to_torch = {
+            "complex128": torch.complex128, "complex64": torch.complex64,
+            "float64": torch.float64, "float32": torch.float32,
+        }
+        _torch_to_np = {
+            torch.complex128: np.complex128, torch.complex64: np.complex64,
+            torch.float64: np.float64, torch.float32: np.float32,
+        }
+        if isinstance(dtype, str):
+            _torch_dtype = _str_to_torch.get(dtype, torch.complex64)
+        else:
+            _torch_dtype = dtype
+        _np_dtype = _torch_to_np.get(_torch_dtype, np.complex64)
+        device = device if device is not None else torch.device("cpu")
+        torch_dtype = torch_dtype if torch_dtype is not None else _torch_dtype
+        np_dtype = np_dtype if np_dtype is not None else _np_dtype
+        torch_asarray = torch_asarray if torch_asarray is not None else _get_backend_asarray_func(torch)
+
+        terms = []
+
+        if isinstance(hamiltonian, NetworkOperator):
+            # Tensor product terms: (tensors_per_mode, modes, coeff). Operands are (in, out).
+            for tensors, modes, coeff in hamiltonian.tensor_products:
+                mode_list = [m[0] if isinstance(m, (list, tuple)) else m for m in modes]
+                gate_list_torch = []
+                for i, q in enumerate(mode_list):
+                    raw = getattr(tensors[i], "tensor", tensors[i])
+                    if getattr(raw, "is_contiguous", None) is not None and not raw.is_contiguous():
+                        raw = raw.contiguous()
+                    arr = TensorBackend.to_numpy(raw)
+                    try:
+                        arr_np = np.asarray(arr, dtype=np_dtype)
+                    except TypeError:
+                        stream_holder = get_or_create_stream(getattr(raw, "device_id", 0), None, "cuda")
+                        arr_np = np.asarray(ndbuffer_to_numpy(arr, stream_holder), dtype=np_dtype)
+                    gate_list_torch.append(
+                        (torch_asarray(arr_np).to(device=device, dtype=torch_dtype).detach(), (q,))
+                    )
+                coeff = complex(coeff) if np.iscomplexobj(coeff) else float(coeff)
+                terms.append(("product", coeff, gate_list_torch))
+            # MPO terms
+            for mpo_tensors, mpo_modes, coeff in hamiltonian.mpos:
+                mpo_tensors_np = []
+                for t in mpo_tensors:
+                    raw = getattr(t, "tensor", t)
+                    if getattr(raw, "is_contiguous", None) is not None and not raw.is_contiguous():
+                        raw = raw.contiguous()
+                    arr = TensorBackend.to_numpy(raw)
+                    try:
+                        mpo_tensors_np.append(np.asarray(arr, dtype=np_dtype))
+                    except TypeError:
+                        stream_holder = get_or_create_stream(getattr(raw, "device_id", 0), None, "cuda")
+                        mpo_tensors_np.append(np.asarray(ndbuffer_to_numpy(arr, stream_holder), dtype=np_dtype))
+                coeff = complex(coeff) if np.iscomplexobj(coeff) else float(coeff)
+                terms.append(("mpo", coeff, mpo_tensors_np, list(mpo_modes)))
+        elif isinstance(hamiltonian, dict):
+            # Convert via from_pauli_strings to match exactly what NetworkState passes to C++
+            # (including identity removal behavior).
+            from cuquantum.tensornet.experimental import NetworkOperator as _NO
+            op = _NO.from_pauli_strings(hamiltonian, dtype=dtype, backend="numpy")
+            return self.create_hamiltonian_terms(
+                state_dims, op, dtype=dtype, device=device,
+                torch_dtype=torch_dtype, np_dtype=np_dtype, torch_asarray=torch_asarray,
+            )
+        else:
+            raise TypeError(
+                "hamiltonian must be a Pauli string dict or a NetworkOperator, "
+                f"got {type(hamiltonian).__name__}"
+            )
+        return terms
+
+    @staticmethod
+    def _torch_dtype(dtype):
+        _dtype_map = {
+            "complex128": torch.complex128,
+            "complex64": torch.complex64,
+            "float64": torch.float64,
+            "float32": torch.float32,
+        }
+        if isinstance(dtype, str):
+            return _dtype_map.get(dtype, torch.complex64)
+        return dtype
+
+    @staticmethod
+    def _as_param_gate_tensors(gate_sequence, *, torch_dtype, device):
+        """Return (gate_tensors, param_gates).
+
+        gate_tensors: list[(modes, gate_tensor)]
+        param_gates: list[(modes, gate_tensor)] subset with requires_grad=True
+        """
+        gate_tensors = []
+        param_gates = []
+        for item in gate_sequence:
+            modes, gate, requires_grad = item[0], item[1], item[2]
+            g = torch.as_tensor(gate, dtype=torch_dtype, device=device).clone()
+            if requires_grad:
+                g = g.requires_grad_(True)
+                param_gates.append((modes, g))
+            gate_tensors.append((modes, g))
+        return gate_tensors, param_gates
+
+    @staticmethod
+    def _has_any_non_unitary(gate_sequence):
+        return any((len(g) > 3 and not g[3]) for g in gate_sequence)
+
+    @staticmethod
+    def _operator_modes_for_term(term):
+        """Return set of modes that have an operator tensor in this term.
+
+        collapseIsometries checks network structure, not tensor values, so even an
+        identity-valued operator tensor blocks U U† collapse.
+        """
+        tag = term[0]
+        if tag == "product":
+            _, _, gate_list = term
+            modes_set = set()
+            for (_gate_t, qs) in gate_list:
+                modes_set.update(qs)
+            return modes_set
+        if tag == "mpo":
+            return set(term[3])
+        return set()
+
+    @staticmethod
+    def _prune_gates_for_term(gate_sequence, gate_tensors, operator_modes):
+        """Per-term unitary cancellation (lightcone simplification)."""
+        touched = set(operator_modes)
+        active = [True] * len(gate_tensors)
+        for i in range(len(gate_tensors) - 1, -1, -1):
+            item = gate_sequence[i]
+            gate_modes = item[0]
+            is_unitary = item[3] if len(item) > 3 else True
+            if not is_unitary:
+                touched.update(gate_modes)
+                continue
+            if any(m in touched for m in gate_modes):
+                touched.update(gate_modes)
+            else:
+                active[i] = False
+        kept_indices = [i for i, ok in enumerate(active) if ok]
+        active_gates = [gate_tensors[i] for i in kept_indices]
+        return active_gates, kept_indices
+
+    @staticmethod
+    def _build_state_from_gates(state_dims, gates, *, torch_dtype, device):
+        """Apply `gates` to |0...0> and return the full state tensor."""
+        n = len(state_dims)
+        s = torch.zeros(tuple(state_dims), dtype=torch_dtype, device=device)
+        s[(0,) * n] = 1.0
+        for modes, gate in gates:
+            if len(modes) == 1:
+                (q,) = modes
+                s = s.moveaxis(q, -1)
+                s = s @ gate.T
+                s = s.moveaxis(-1, q)
+            else:
+                other = [i for i in range(n) if i not in modes]
+                perm = other + list(modes)
+                s = s.permute(perm)
+                shape_in = int(np.prod([state_dims[m] for m in modes]))
+                s = s.reshape(-1, shape_in) @ gate.reshape(shape_in, shape_in).T
+                s = s.reshape(tuple(state_dims[m] for m in other) + tuple(state_dims[m] for m in modes))
+                inv_perm = [0] * len(perm)
+                for i, p in enumerate(perm):
+                    inv_perm[p] = i
+                s = s.permute(inv_perm)
+        return s
+
+    @staticmethod
+    def _apply_product_operator_to_ket(state, gate_list, *, device):
+        psi_ket = state.clone()
+        for (gate, qs) in gate_list:
+            q = qs[0]
+            g = gate.to(device=device) if gate.device != device else gate
+            psi_ket = psi_ket.moveaxis(q, -1)
+            psi_ket = psi_ket @ g
+            psi_ket = psi_ket.moveaxis(-1, q)
+        return psi_ket
+
+    @staticmethod
+    def _expectation_for_term(state_dims, gate_sequence, gate_tensors, term, *,
+                              torch_dtype, device, torch_asarray):
+        op_modes = TorchRef._operator_modes_for_term(term)
+        active_gates, _ = TorchRef._prune_gates_for_term(gate_sequence, gate_tensors, op_modes)
+        state = TorchRef._build_state_from_gates(state_dims, active_gates, torch_dtype=torch_dtype, device=device)
+
+        tag = term[0]
+        if tag == "product":
+            _, coeff, gate_list = term
+            psi_ket = TorchRef._apply_product_operator_to_ket(state, gate_list, device=device)
+            return coeff * torch.vdot(state.reshape(-1), psi_ket.reshape(-1))
+
+        assert tag == "mpo", term
+        _, coeff, mpo_tensors_np, mpo_modes = term
+        mpo_tensors_torch = [torch_asarray(t).to(device=device, dtype=torch_dtype).detach()
+                             for t in mpo_tensors_np]
+        return coeff * _mpo_expectation_torch(state, mpo_tensors_torch, mpo_modes)
+
+    @staticmethod
+    def _norm_scalar_for_circuit(state_dims, gate_sequence, gate_tensors, *, torch_dtype, device,
+                                 any_non_unitary):
+        if any_non_unitary:
+            # No operator in <psi|psi>, so allow cancellation from the end until a non-unitary gate anchors touched.
+            active_gates, _ = TorchRef._prune_gates_for_term(gate_sequence, gate_tensors, operator_modes=set())
+        else:
+            active_gates = gate_tensors
+        psi = TorchRef._build_state_from_gates(state_dims, active_gates, torch_dtype=torch_dtype, device=device)
+        if torch.is_complex(psi):
+            # Real scalar ||psi||^2 so autograd.grad does not hit complex-output restrictions.
+            return (psi.abs() ** 2).sum()
+        p = psi.reshape(-1)
+        return torch.dot(p, p)
+
+    def expectation_scalar(
+        self,
+        state_dims,
+        gate_sequence,
+        gate_tensors,
+        hamiltonian_terms,
+        *,
+        torch_dtype,
+        device,
+        torch_asarray,
+    ):
+        """Return ``E = sum_term ⟨ψ|H_term|ψ⟩`` as a complex scalar tensor (autograd-connected to gates)."""
+        parts = []
+        for term in hamiltonian_terms:
+            parts.append(
+                self._expectation_for_term(
+                    state_dims,
+                    gate_sequence,
+                    gate_tensors,
+                    term,
+                    torch_dtype=torch_dtype,
+                    device=device,
+                    torch_asarray=torch_asarray,
+                )
+            )
+        if not parts:
+            raise ValueError("TorchRef.expectation_scalar: empty Hamiltonian term list")
+        return torch.stack(parts).sum()
+
+    def state_norm_squared(
+        self,
+        state_dims,
+        gate_sequence,
+        gate_tensors,
+        *,
+        torch_dtype,
+        device,
+        any_non_unitary,
+    ):
+        """Return ``N = ||ψ||²`` as a real scalar tensor (same pruning / build as ``_norm_scalar_for_circuit``)."""
+        return self._norm_scalar_for_circuit(
+            state_dims,
+            gate_sequence,
+            gate_tensors,
+            torch_dtype=torch_dtype,
+            device=device,
+            any_non_unitary=any_non_unitary,
+        )
+
+    @staticmethod
+    def adjoint_torch_tensors_from_loss_fn(loss_fn, E, N):
+        """Gradients (∂loss/∂E, ∂loss/∂N) at primal `(E, N)` for CUTN pullback multipliers.
+        """
+        E_leaf = E.detach().clone().contiguous().requires_grad_(True)
+        if N is None:
+            loss = loss_fn(E_leaf, None)
+            if loss.ndim != 0:
+                raise ValueError("loss_fn must return a scalar tensor")
+            loss.backward()
+            gE = E_leaf.grad
+            if gE is None:
+                raise ValueError(
+                    "loss_fn does not depend on E; CUTN expectation adjoint is undefined")
+            return gE.clone(), None
+        N_leaf = N.detach().clone().contiguous().requires_grad_(True)
+        loss = loss_fn(E_leaf, N_leaf)
+        if loss.ndim != 0:
+            raise ValueError("loss_fn must return a scalar tensor")
+        loss.backward()
+        if E_leaf.grad is None:
+            raise ValueError(
+                "loss_fn does not depend on E; CUTN expectation adjoint is undefined")
+        if N_leaf.grad is None:
+            raise ValueError(
+                "loss_fn does not depend on N but return_norm is True; state_norm_adjoint undefined")
+        return E_leaf.grad.clone(), N_leaf.grad.clone()
+
+    @staticmethod
+    def scalar_adjoint_torch_to_numpy(t, cutn_dtype):
+        """Wrap a scalar torch tensor as a numpy 0-D array compatible with CUTN."""
+        np_dtype = np.dtype(cutn_dtype)
+        v = np.asarray(t.detach().cpu().item(), dtype=np_dtype)
+        return np.array(v)
+
+    def primal_E_N(
+        self,
+        state_dims,
+        gate_sequence,
+        gate_tensors,
+        hamiltonian_terms,
+        *,
+        torch_dtype,
+        device,
+        torch_asarray,
+        return_norm,
+        any_non_unitary,
+    ):
+        """Compute expectation scalar ``E`` and optional squared norm ``N`` with graph through ``gate_tensors``."""
+        E = self.expectation_scalar(
+            state_dims,
+            gate_sequence,
+            gate_tensors,
+            hamiltonian_terms,
+            torch_dtype=torch_dtype,
+            device=device,
+            torch_asarray=torch_asarray,
+        )
+        if not return_norm:
+            return E, None
+        N = self.state_norm_squared(
+            state_dims,
+            gate_sequence,
+            gate_tensors,
+            torch_dtype=torch_dtype,
+            device=device,
+            any_non_unitary=any_non_unitary,
+        )
+        return E, N
+
+    def adjoints_from_expectation_and_norm(
+        self,
+        E,
+        N,
+        *,
+        loss_fn,
+        return_cutn_adjoint_numpy=False,
+        cutn_dtype=None,
+    ):
+        """Evaluate ``loss_fn(E, N)``; optionally return CUTN-compatible scalar adjoints ∂loss/∂E, ∂loss/∂N.
+
+        When ``return_cutn_adjoint_numpy`` is ``False``, returns only the scalar ``loss`` tensor connected
+        to ``(E, N)``.
+
+        Parameters
+        ----------
+        return_cutn_adjoint_numpy : bool
+            If ``True``, also return NumPy scalar adjoints (∂loss/∂E, ∂loss/∂N) for passing to CUTN's
+            ``compute_expectation_with_gradients``.
+        cutn_dtype : str, optional
+            ``NetworkState`` dtype string when ``return_cutn_adjoint_numpy`` is ``True``.
+        """
+        loss = loss_fn(E, N)
+        if not return_cutn_adjoint_numpy:
+            return loss
+        if cutn_dtype is None:
+            raise ValueError("cutn_dtype is required when return_cutn_adjoint_numpy=True")
+        gE_th, gN_th = self.adjoint_torch_tensors_from_loss_fn(loss_fn, E, N)
+        adj_e_np = self.scalar_adjoint_torch_to_numpy(gE_th, cutn_dtype)
+        adj_n_np = None if gN_th is None else self.scalar_adjoint_torch_to_numpy(gN_th, cutn_dtype)
+        return loss, adj_e_np, adj_n_np
+
+    def compute_expectation_with_gradients(
+        self,
+        state_dims,
+        gate_sequence,
+        hamiltonian,
+        *,
+        loss_fn,
+        dtype="complex128",
+        return_norm=False,
+    ):
+        if torch is None:
+            raise RuntimeError("PyTorch is required for TorchRef")
+        device = torch.device("cpu")
+        torch_dtype = self._torch_dtype(dtype)
+        torch_asarray = _get_backend_asarray_func(torch)
+        hamiltonian_terms = self.create_hamiltonian_terms(
+            state_dims,
+            hamiltonian,
+            dtype=dtype,
+            device=device,
+            torch_dtype=torch_dtype,
+            torch_asarray=torch_asarray,
+        )
+
+        gate_tensors, param_gates = self._as_param_gate_tensors(
+            gate_sequence, torch_dtype=torch_dtype, device=device
+        )
+        any_non_unitary = self._has_any_non_unitary(gate_sequence)
+        param_tensors = [g for _, g in param_gates]
+
+        E, N = self.primal_E_N(
+            state_dims,
+            gate_sequence,
+            gate_tensors,
+            hamiltonian_terms,
+            torch_dtype=torch_dtype,
+            device=device,
+            torch_asarray=torch_asarray,
+            return_norm=return_norm,
+            any_non_unitary=any_non_unitary,
+        )
+
+        loss = loss_fn(E, N)
+
+        for p in param_tensors:
+            if p.grad is not None:
+                p.grad.zero_()
+
+        loss.backward()
+
+        gradients_list = []
+        for i, (modes, _) in enumerate(param_gates):
+            g = param_tensors[i].grad
+            if g is None:
+                g = torch.zeros_like(param_tensors[i])
+            else:
+                g = g.detach()
+            if len(modes) == 1:
+                g = g.T
+            else:
+                g = g.permute(*torch.arange(g.ndim - 1, -1, -1))
+            gradients_list.append(g)
+
+        exp_np_dtype = np.dtype("float32") if torch_dtype == torch.float32 else np.dtype("float64")
+        if torch_dtype in (torch.complex64, torch.complex128):
+            exp_np_dtype = np.dtype("complex64") if torch_dtype == torch.complex64 else np.dtype("complex128")
+
+        expectation_value = np.asarray(E.detach().cpu().item(), dtype=exp_np_dtype)
+        norm_out = None
+        if return_norm and N is not None:
+            norm_out = float(torch.real(N.detach().cpu()).item())
+
+        return expectation_value, norm_out, gradients_list
 
 def ndbuffer_to_numpy(arr, stream_holder):
     """Convert nvmath NDBuffer to numpy (used when gradient .to('cpu').tensor is NDBuffer for cupy/torch)."""
@@ -1055,9 +1599,13 @@ def _needs_ndbuffer_convert(arr):
 
 def extract_gradient_array(grad):
     """Extract numpy array from cuQuantum gradient (wrapper or raw array). Preserve shape from holder if conversion loses it."""
+    if torch is not None and isinstance(grad, torch.Tensor):
+        out = np.asarray(TensorBackend.to_numpy(grad))
+        return out
+
     stream_holder = get_or_create_stream(getattr(grad, "device_id", 0), None, "cuda")
     raw = grad.tensor if hasattr(grad, "tensor") else grad
-    if hasattr(grad, "to") and callable(getattr(grad, "to")):
+    if getattr(grad, "device_id", None) is not None and hasattr(grad, "to"):
         raw = grad.to("cpu", stream_holder)
         raw = raw.tensor if hasattr(raw, "tensor") else raw
 
@@ -1078,11 +1626,21 @@ def extract_gradient_array(grad):
     return out
 
 
+def scalar_to_numpy(value):
+    """Convert a Python scalar, 0-D array, or backend tensor to a numpy scalar."""
+    return np.asarray(TensorBackend.to_numpy(value)).reshape(-1)[0]
+
+
 def expectation_as_real(exp, dtype):
     """Cast expectation value to real and to the config's real dtype for comparison."""
     real_dtype = np.float64 if ("128" in str(dtype) or dtype == "float64") else np.float32
-    scalar = np.asarray(exp).reshape(-1)[0]
-    return np.asarray(np.real(scalar), dtype=real_dtype)
+    return np.asarray(np.real(scalar_to_numpy(exp)), dtype=real_dtype)
+
+
+def norm_as_real(norm, dtype):
+    """Cast squared state norm ``‖ψ‖²`` to real and to the config's real dtype for comparison."""
+    real_dtype = np.float64 if ("128" in str(dtype) or dtype == "float64") else np.float32
+    return np.asarray(np.real(scalar_to_numpy(norm)), dtype=real_dtype)
 
 def assert_gradients_match(gate_sequence, gradients_cutn, gradients_ref_list, tol, *, gradient_tensor_ids=None):
     """Assert that cuQuantum gradients match the reference list (same count and values).
@@ -1110,4 +1668,158 @@ def assert_gradients_match(gate_sequence, gradients_cutn, gradients_ref_list, to
             f"gradient {i} mismatch",
             g_cutn_np,
             g_ref,
+        )
+
+
+def prepare_expectation_gradient_hamiltonian(config):
+    """Resolve expectation-gradient test ``config['hamiltonian']`` for :class:`NetworkState` APIs."""
+    hamiltonian = config.get("hamiltonian")
+    dtype = config["dtype"]
+    remove_identity = config.get("remove_identity", None)
+    if hamiltonian is None:
+        return None
+    # Local import avoids helpers <-> state_factory import cycle at module load.
+    from ..experimental._internal.state_factory import NetworkOperatorFactory
+
+    if isinstance(hamiltonian, NetworkOperatorFactory):
+        hamiltonian = hamiltonian.build()
+    if remove_identity is not None and isinstance(hamiltonian, dict):
+        hamiltonian = NetworkOperator.from_pauli_strings(
+            hamiltonian, dtype=dtype, backend="numpy", remove_identity=remove_identity,
+        )
+    return hamiltonian
+
+
+def _apply_torch_gates_to_network_state(state_dims, dtype, gate_sequence, gate_specs):
+    """Apply pre-built gate specs to a new :class:`NetworkState`.
+
+    gate_specs: list of ``(modes, gate_tensor, register_gradient, is_unitary)``.
+    Trainable gates (``register_gradient``) get ``requires_grad_(True)`` and
+    ``apply_tensor_operator(..., gradient=True)``.
+    """
+    state = NetworkState(state_dims, dtype=dtype, config=TNConfig())
+    gradient_tensor_ids = []
+    trainable_gates = []
+    for modes, gate, register_gradient, is_unitary in gate_specs:
+        if register_gradient:
+            gate = gate.requires_grad_(True)
+            # gradient=True registers the gate for CUTN; requires_grad connects PyTorch autograd.
+            use_gradient = True
+        else:
+            use_gradient = False
+        tensor_id = state.apply_tensor_operator(
+            modes, gate, unitary=is_unitary, gradient=use_gradient
+        )
+        if register_gradient:
+            gradient_tensor_ids.append(tensor_id)
+            trainable_gates.append((tensor_id, gate, modes))
+    return state, gradient_tensor_ids, trainable_gates
+
+
+def _torch_gate_specs_for_exp_grad(config, device):
+    factory = config["factory"]
+    gate_sequence = factory.get_gate_sequence_for_reference()
+    hamiltonian = prepare_expectation_gradient_hamiltonian(config)
+    torch_dtype = TorchRef()._torch_dtype(config["dtype"])
+    specs = []
+    for item in gate_sequence:
+        modes, gate_np, register_gradient = item[0], item[1], item[2]
+        is_unitary = item[3] if len(item) > 3 else True
+        gate = torch.as_tensor(gate_np, dtype=torch_dtype, device=device).clone()
+        specs.append((modes, gate, register_gradient, is_unitary))
+    return factory.state_dims, config["dtype"], gate_sequence, hamiltonian, specs
+
+
+def build_torch_network_state_for_exp_grad(config, device):
+    """Build a torch-backend :class:`NetworkState` with PyTorch gate tensors on ``device``.
+
+    Returns ``(state, hamiltonian, gate_sequence, gradient_tensor_ids, trainable_gates, dtype)``.
+    ``trainable_gates`` is a list of ``(tensor_id, gate_tensor, modes)`` in application order.
+    """
+    if torch is None:
+        raise RuntimeError("build_torch_network_state_for_exp_grad requires PyTorch")
+
+    state_dims, dtype, gate_sequence, hamiltonian, specs = _torch_gate_specs_for_exp_grad(
+        config, device
+    )
+    state, gradient_tensor_ids, trainable_gates = _apply_torch_gates_to_network_state(
+        state_dims, dtype, gate_sequence, specs
+    )
+    return state, hamiltonian, gate_sequence, gradient_tensor_ids, trainable_gates, dtype
+
+
+def build_torch_network_state_pair_for_exp_grad(config, device):
+    """Build two identical circuits on separate states for autograd vs explicit CUTN comparison.
+
+    ``compute_expectation`` + ``loss.backward()`` and ``compute_expectation_with_gradients``
+    must use different :class:`NetworkState` objects so backward/prepare state does not
+    interfere between the two APIs.
+
+    Returns ``(state_autograd, state_cutn, hamiltonian, gate_sequence, gradient_tensor_ids,
+    trainable_gates, dtype)``. ``trainable_gates`` refers to tensors on ``state_autograd``
+    (where ``.grad`` is filled by PyTorch).
+    """
+    if torch is None:
+        raise RuntimeError("build_torch_network_state_pair_for_exp_grad requires PyTorch")
+
+    state_dims, dtype, gate_sequence, hamiltonian, specs = _torch_gate_specs_for_exp_grad(
+        config, device
+    )
+    # Fresh tensor clones per state (same numeric values, independent autograd history).
+    specs_autograd = [
+        (modes, gate.clone(), register_gradient, is_unitary)
+        for modes, gate, register_gradient, is_unitary in specs
+    ]
+    specs_cutn = [
+        (modes, gate.clone(), register_gradient, is_unitary)
+        for modes, gate, register_gradient, is_unitary in specs
+    ]
+    state_autograd, gradient_tensor_ids, trainable_gates = _apply_torch_gates_to_network_state(
+        state_dims, dtype, gate_sequence, specs_autograd
+    )
+    state_cutn, _, _ = _apply_torch_gates_to_network_state(
+        state_dims, dtype, gate_sequence, specs_cutn
+    )
+    return (
+        state_autograd,
+        state_cutn,
+        hamiltonian,
+        gate_sequence,
+        gradient_tensor_ids,
+        trainable_gates,
+        dtype,
+    )
+
+
+def align_cutn_gradient_to_torch_gate_layout(grad, modes):
+    """Re-layout a CUTN gradient buffer to match the applied PyTorch gate (see TorchRef)."""
+    if torch is not None and isinstance(grad, torch.Tensor):
+        g = grad
+    else:
+        g = torch.as_tensor(extract_gradient_array(grad))
+    if len(modes) == 1:
+        g = g.T
+    else:
+        g = g.permute(*torch.arange(g.ndim - 1, -1, -1))
+    return g
+
+
+def assert_torch_gate_grads_match_cutn(trainable_gates, gradients_cutn, tol):
+    """Assert PyTorch ``.grad`` on applied gates matches CUTN ``compute_expectation_with_gradients`` dict.
+
+    trainable_gates: iterable of ``(tensor_id, gate_tensor, modes)`` in application order.
+    """
+    assert len(trainable_gates) == len(gradients_cutn), (
+        f"expected {len(trainable_gates)} CUTN gradients, got {len(gradients_cutn)}"
+    )
+    for tensor_id, gate, modes in trainable_gates:
+        assert gate.grad is not None, f"missing torch grad for tensor_id={tensor_id}"
+        g_torch_np = TensorBackend.to_numpy(gate.grad)
+        g_cutn_np = TensorBackend.to_numpy(
+            align_cutn_gradient_to_torch_gate_layout(gradients_cutn[tensor_id], modes)
+        )
+        assert TensorBackend.verify_close(g_torch_np, g_cutn_np, **tol), (
+            f"tensor_id {tensor_id}: torch autograd vs CUTN gradient mismatch",
+            g_torch_np,
+            g_cutn_np,
         )

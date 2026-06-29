@@ -14,7 +14,7 @@ from jax.interpreters import mlir
 
 from cuquantum.bindings import cudensitymat as cudm
 
-from ..utils import fuse_batched_inputs, unfuse_batched_outputs
+from ..utils import fuse_batched_inputs, unfuse_batched_outputs, is_vmap_traced
 from .base import BasePrimitive, register_primitive
 from .context import CudensitymatContext
 from .operator import Operator
@@ -43,9 +43,7 @@ class OperatorActionPrimitive(BasePrimitive):
                  num_state_components: int,
                  other_in_types: tuple[int, ...],
                  other_in_ptrs: tuple[int, ...],
-                 other_out_shape_dtypes: tuple[jax.ShapeDtypeStruct, ...],
-                 other_out_types: tuple[int, ...],
-                 other_out_ptrs: tuple[int, ...],
+                 other_in_has_batch: tuple[bool, ...],
                  op_ptr: int,
                  state_shape: tuple[int, ...],
                  purity: cudm.StatePurity,
@@ -56,18 +54,13 @@ class OperatorActionPrimitive(BasePrimitive):
         OperatorActionPrimitive.logger.info("Calling abstract evaluation of the inner primitive")
 
         dtype = in_buf_avals[0].dtype
-        op_ctx = CudensitymatContext.get_operator_context(op_ptr)
+        op_ctx = CudensitymatContext.get_operator_context(op_ptr, batch_size)
         state_ctx = CudensitymatContext.get_state_context(purity, state_shape, batch_size, dtype)
 
         # Create abstract arrays for the output state buffers.
         state_out_buf_avals = [
             jax.core.ShapedArray(in_buf_avals[i].shape, in_buf_avals[i].dtype)
             for i in range(num_state_components)
-        ]
-
-        other_out_buf_avals = [
-            jax.core.ShapedArray(other_out_shape_dtypes[i].shape, other_out_shape_dtypes[i].dtype)
-            for i in range(len(other_out_shape_dtypes))
         ]
 
         # Obtain workspace limit and stream from the device.
@@ -96,7 +89,7 @@ class OperatorActionPrimitive(BasePrimitive):
         # NOTE: Memory buffers from cudaMalloc is automatically 256-aligned, which is not 
         # the case for JAX. 255 is added to the buffer size to ensure workspace is 256-aligned.
         workspace_aval = jax.core.ShapedArray((required_buffer_size + 255,), jnp.uint8)
-        return workspace_aval, *state_out_buf_avals, *other_out_buf_avals
+        return workspace_aval, *state_out_buf_avals
 
     @staticmethod
     def outer_abstract(*args, **kwargs):
@@ -115,9 +108,7 @@ class OperatorActionPrimitive(BasePrimitive):
                  num_state_components: int,
                  other_in_types: tuple[int, ...],
                  other_in_ptrs: tuple[int, ...],
-                 other_out_shape_dtypes: tuple[jax.ShapeDtypeStruct, ...],
-                 other_out_types: tuple[int, ...],
-                 other_out_ptrs: tuple[int, ...],
+                 other_in_has_batch: tuple[bool, ...],
                  op_ptr: int,
                  state_shape: tuple[int, ...],
                  purity: cudm.StatePurity,
@@ -130,20 +121,31 @@ class OperatorActionPrimitive(BasePrimitive):
         dtype = ctx.avals_in[0].dtype
         state_ctx = CudensitymatContext.get_state_context(purity, state_shape, batch_size, dtype)
 
-        # Revert indices in input and output states. Note the layout is specified as
-        # minor-to-major axis order. For 0-d tensors use () (StableHLO requires empty layout).
-        def _layout_for_ndim(ndim):
-            return () if ndim == 0 else tuple(range(1, ndim)) + (0,)
+        # Layout is minor-to-major axis order. For 0-d tensors use () (StableHLO requires empty layout).
+        # Buffers with a batch dim at position 0: batch is most major → (1, 2, ..., ndim-1, 0).
+        # Buffers without a batch dim (non-batched op data, 1D coeffs): Fortran → (0, 1, ..., ndim-1).
+        # State buffers always have a batch dim (added by maybe_expand_dim for non-batched states).
+        # other_in_has_batch[m] records whether other_in_bufs[m] has a leading batch dim, computed
+        # from is_vmap_traced / base_op.batch_size in operator_action_prim before the bind call.
+        def _layout_for_ndim(ndim, has_batch_dim):
+            if ndim == 0:
+                return ()
+            if has_batch_dim:
+                return tuple(range(1, ndim)) + (0,)  # dim 0 (batch) most major
+            return tuple(range(ndim))  # Fortran order, no batch dim
 
         operand_layouts = [None] * len(ctx.avals_in)
         for i in range(len(ctx.avals_in)):
-            # 0 (the batch dimension) is the most major axis in input buffers and also when passed
-            # to the cuQuantum library. Other dimensions (Hilbert space modes) need to be reversed.
-            operand_layouts[i] = _layout_for_ndim(ctx.avals_in[i].ndim)
+            ndim = ctx.avals_in[i].ndim
+            if i < num_state_components:
+                has_batch = True  # states always have a leading batch dim
+            else:
+                has_batch = other_in_has_batch[i - num_state_components]
+            operand_layouts[i] = _layout_for_ndim(ndim, has_batch)
 
         result_layouts = [None] * len(ctx.avals_out)
         for i in range(len(ctx.avals_out)):
-            result_layouts[i] = _layout_for_ndim(ctx.avals_out[i].ndim)
+            result_layouts[i] = _layout_for_ndim(ctx.avals_out[i].ndim, True)  # all outputs are states
 
         # Lower to the XLA FFI handler.
         outputs = jax.ffi.ffi_lowering(
@@ -157,8 +159,6 @@ class OperatorActionPrimitive(BasePrimitive):
             other_in_ptrs=mlir.dense_int_elements(other_in_ptrs),
             batch_size=batch_size,
             num_state_components=num_state_components,
-            other_out_types=mlir.dense_int_elements(other_out_types),
-            other_out_ptrs=mlir.dense_int_elements(other_out_ptrs),
             handle=CudensitymatContext._handle,
             operator=op_ptr,
             state_in=state_ctx._state_in,
@@ -194,10 +194,10 @@ class OperatorActionPrimitive(BasePrimitive):
             num_state_components,
         )
 
-        # State context key uses fused state shape and batch size.
-        kwargs = dict(kwargs)
-        kwargs['state_shape'] = tuple(fused_inputs[0].shape)
-        kwargs['batch_size'] = int(fused_inputs[0].shape[0])
+        # TODO: These kwargs will need to be updated when we support nested vmaps.
+        # kwargs = dict(kwargs)
+        # kwargs['state_shape'] = tuple(fused_inputs[0].shape)
+        # kwargs['batch_size'] = int(fused_inputs[0].shape[0])
 
         # Invoke outer primitive.
         outputs = OperatorActionPrimitive.outer_primitive.bind(*fused_inputs, **kwargs)
@@ -222,12 +222,10 @@ def operator_action_prim(op: Operator,
                          purity: cudm.StatePurity,
                          other_in_types: tuple[int, ...],
                          other_in_ptrs: tuple[int, ...],
-                         other_out_shape_dtypes: tuple[jax.ShapeDtypeStruct, ...],
-                         other_out_types: tuple[int, ...],
-                         other_out_ptrs: tuple[int, ...],
                          op_term_coeffs_indices: tuple[int, ...],
                          op_prod_coeffs_indices: tuple[tuple[int, int], ...],
                          base_op_indices: tuple[tuple[int, int, int], ...],
+                         state_shape: tuple[int, ...],
                          ) -> tuple[jax.Array, ...]:
     """
     Function wrapper around OperatorActionPrimitive.
@@ -235,18 +233,27 @@ def operator_action_prim(op: Operator,
     logger.info("Calling operator_action_prim")
 
     other_in_bufs = []
+    other_in_has_batch = []
 
     # Extract buffers using the same index structure as operator_action.
     for i in op_term_coeffs_indices:
-        other_in_bufs.append(op.coeffs[i])
+        buf = op.coeffs[i]
+        other_in_bufs.append(buf)
+        other_in_has_batch.append(op._op_term_batch_sizes[i] > 1)  # 1D coeff; False unless vmap-traced
 
     for i, j in op_prod_coeffs_indices:
-        other_in_bufs.append(op[i].coeffs[j])
+        buf = op[i].coeffs[j]
+        other_in_bufs.append(buf)
+        other_in_has_batch.append(op[i]._op_prod_batch_sizes[j] > 1)
 
     for i, j, k in base_op_indices:
-        other_in_bufs.append(op[i][j][k].data)
+        base_op = op[i][j][k]
+        buf = base_op.data
+        other_in_bufs.append(buf)
+        # Has a leading batch dim if currently vmap-traced (batch fused in by batcher)
+        # or if the operator itself carries an explicit batch dimension.
+        other_in_has_batch.append(base_op.batch_size > 1)
 
-    state_shape = tuple(state_in_bufs[0].shape)
     out = OperatorActionPrimitive.outer_primitive.bind(
         *state_in_bufs,
         *other_in_bufs,
@@ -255,9 +262,7 @@ def operator_action_prim(op: Operator,
         num_state_components=num_state_components,
         other_in_types=tuple(other_in_types),
         other_in_ptrs=tuple(other_in_ptrs),
-        other_out_shape_dtypes=other_out_shape_dtypes,
-        other_out_types=other_out_types,
-        other_out_ptrs=other_out_ptrs,
+        other_in_has_batch=tuple(other_in_has_batch),
         op_ptr=op._ptr,
         state_shape=state_shape,
         purity=purity,
@@ -287,8 +292,8 @@ class OperatorActionBackwardDiffPrimitive(BasePrimitive):
                  num_state_components: int,
                  other_in_types: tuple[int, ...],
                  other_in_ptrs: tuple[int, ...],
+                 other_in_has_batch: tuple[bool, ...],
                  other_out_shape_dtypes: tuple[jax.ShapeDtypeStruct, ...],
-                 other_out_types: tuple[int, ...],
                  other_out_ptrs: tuple[int, ...],
                  op_ptr: int,
                  state_shape: tuple[int, ...],
@@ -300,7 +305,7 @@ class OperatorActionBackwardDiffPrimitive(BasePrimitive):
         OperatorActionBackwardDiffPrimitive.logger.info("Calling abstract evaluation of the inner primitive")
 
         dtype = in_buf_avals[0].dtype
-        op_ctx = CudensitymatContext.get_operator_context(op_ptr)
+        op_ctx = CudensitymatContext.get_operator_context(op_ptr, batch_size)
         state_ctx = CudensitymatContext.get_state_context(purity, state_shape, batch_size, dtype)
 
         # Extract state input adjoint buffer shapes from state input buffers.
@@ -359,8 +364,8 @@ class OperatorActionBackwardDiffPrimitive(BasePrimitive):
                  num_state_components: int,
                  other_in_types: tuple[int, ...],
                  other_in_ptrs: tuple[int, ...],
+                 other_in_has_batch: tuple[bool, ...],
                  other_out_shape_dtypes: tuple[jax.ShapeDtypeStruct, ...],
-                 other_out_types: tuple[int, ...],
                  other_out_ptrs: tuple[int, ...],
                  op_ptr: int,
                  state_shape: tuple[int, ...],
@@ -374,21 +379,26 @@ class OperatorActionBackwardDiffPrimitive(BasePrimitive):
         dtype = ctx.avals_in[0].dtype
         state_ctx = CudensitymatContext.get_state_context(purity, state_shape, batch_size, dtype)
 
-        # Revert indices in input and output states. Note the layout is specified as
-        # minor-to-major axis order. For 0-d tensors use () (StableHLO requires empty layout).
-        def _layout_for_ndim(ndim):
-            return () if ndim == 0 else tuple(range(1, ndim)) + (0,)
+        # Same layout rules as the forward primitive (see OperatorActionPrimitive.lowering).
+        def _layout_for_ndim(ndim, has_batch_dim):
+            if ndim == 0:
+                return ()
+            if has_batch_dim:
+                return tuple(range(1, ndim)) + (0,)  # dim 0 (batch) most major
+            return tuple(range(ndim))  # Fortran order, no batch dim
 
         operand_layouts = [None] * len(ctx.avals_in)
         for i in range(len(ctx.avals_in)):
-            # 0 (the batch dimension) is the most major axis in input buffers and also when passed
-            # to the cuQuantum library. Other dimensions (Hilbert space modes) need to be reversed.
-            operand_layouts[i] = _layout_for_ndim(ctx.avals_in[i].ndim)
+            ndim = ctx.avals_in[i].ndim
+            if i < 2 * num_state_components:
+                has_batch = True  # state_in and state_out_adj both have a leading batch dim
+            else:
+                has_batch = other_in_has_batch[i - 2 * num_state_components]
+            operand_layouts[i] = _layout_for_ndim(ndim, has_batch)
 
         result_layouts = [None] * len(ctx.avals_out)
-        # for i in range(len(ctx.avals_out)):
-        for i in range(num_state_components):  # XXX
-            result_layouts[i] = _layout_for_ndim(ctx.avals_out[i].ndim)
+        for i in range(1, num_state_components + 1):  # skip workspace at index 0
+            result_layouts[i] = _layout_for_ndim(ctx.avals_out[i].ndim, True)  # state_in_adj has batch dim
 
         # Lower to the XLA FFI handler.
         outputs = jax.ffi.ffi_lowering(
@@ -402,7 +412,6 @@ class OperatorActionBackwardDiffPrimitive(BasePrimitive):
             other_in_ptrs=mlir.dense_int_elements(other_in_ptrs),
             batch_size=batch_size,
             num_state_components=num_state_components,
-            other_out_types=mlir.dense_int_elements(other_out_types),
             other_out_ptrs=mlir.dense_int_elements(other_out_ptrs),
             handle=CudensitymatContext._handle,
             operator=op_ptr,
@@ -440,9 +449,10 @@ class OperatorActionBackwardDiffPrimitive(BasePrimitive):
             num_state_components,
         )
 
-        kwargs = dict(kwargs)
-        kwargs['state_shape'] = tuple(fused_inputs[0].shape)
-        kwargs['batch_size'] = int(fused_inputs[0].shape[0])
+        # TODO: These kwargs will need to be updated when we support nested vmaps.
+        # kwargs = dict(kwargs)
+        # kwargs['state_shape'] = tuple(fused_inputs[0].shape)
+        # kwargs['batch_size'] = int(fused_inputs[0].shape[0])
 
         # Invoke outer primitive.
         outputs = OperatorActionBackwardDiffPrimitive.outer_primitive.bind(
@@ -471,7 +481,6 @@ def operator_action_backward_diff_prim(op: Operator,
                                        other_in_types: tuple[int, ...],
                                        other_in_ptrs: tuple[int, ...],
                                        other_out_shape_dtypes: tuple[jax.ShapeDtypeStruct, ...],
-                                       other_out_types: tuple[int, ...],
                                        other_out_ptrs: tuple[int, ...],
                                        op_term_coeffs_indices: tuple[int, ...],
                                        op_prod_coeffs_indices: tuple[tuple[int, int], ...],
@@ -486,16 +495,24 @@ def operator_action_backward_diff_prim(op: Operator,
     logger.info("Calling operator_action_backward_diff_prim")
 
     other_in_bufs = []
+    other_in_has_batch = []
 
     # Extract buffers using the same index structure as operator_action.
     for i in op_term_coeffs_indices:
-        other_in_bufs.append(op.coeffs[i])
+        buf = op.coeffs[i]
+        other_in_bufs.append(buf)
+        other_in_has_batch.append(is_vmap_traced(buf))
 
     for i, j in op_prod_coeffs_indices:
-        other_in_bufs.append(op[i].coeffs[j])
+        buf = op[i].coeffs[j]
+        other_in_bufs.append(buf)
+        other_in_has_batch.append(is_vmap_traced(buf))
 
     for i, j, k in base_op_indices:
-        other_in_bufs.append(op[i][j][k].data)
+        base_op = op[i][j][k]
+        buf = base_op.data
+        other_in_bufs.append(buf)
+        other_in_has_batch.append(is_vmap_traced(buf) or base_op.batch_size > 1)
 
     out = OperatorActionBackwardDiffPrimitive.outer_primitive.bind(
         *state_in_bufs,
@@ -508,8 +525,8 @@ def operator_action_backward_diff_prim(op: Operator,
         purity=purity,
         other_in_types=other_in_types,
         other_in_ptrs=other_in_ptrs,
+        other_in_has_batch=tuple(other_in_has_batch),
         other_out_shape_dtypes=other_out_shape_dtypes,
-        other_out_types=other_out_types,
         other_out_ptrs=other_out_ptrs,
         op_ptr=op._ptr,
     )
@@ -535,15 +552,15 @@ def operator_action_backward_diff_prim(op: Operator,
                     op_grad[i][j][k].data = jnp.zeros_like(op_grad[i][j][k].data)
 
     for i in op_term_coeff_grad_indices:
-        op_grad.coeffs[i] = grad_bufs[grad_idx]
+        op_grad.coeffs[i] = grad_bufs[grad_idx].reshape(op.coeffs[i].shape)
         grad_idx += 1
 
     for i, j in op_prod_coeff_grad_indices:
-        op_grad[i].coeffs[j] = grad_bufs[grad_idx]
+        op_grad[i].coeffs[j] = grad_bufs[grad_idx].reshape(op[i].coeffs[j].shape)
         grad_idx += 1
 
     for i, j, k in base_op_grad_indices:
-        op_grad[i][j][k].data = grad_bufs[grad_idx]
+        op_grad[i][j][k].data = grad_bufs[grad_idx].reshape(op[i][j][k].data.shape)
         grad_idx += 1
 
     return op_grad, state_in_adj_bufs

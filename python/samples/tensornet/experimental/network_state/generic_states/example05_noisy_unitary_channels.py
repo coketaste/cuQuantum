@@ -74,7 +74,7 @@ network_operator = NetworkOperator.from_pauli_strings(pauli_string, dtype=dtype)
 expec_counter = dict()
 for i in range(n_trajectories):
     expec, norm = state.compute_expectation(network_operator, return_norm=True)
-    expec = expec.real / norm
+    expec = (expec.real / norm).item()
     if expec not in expec_counter:
         expec_counter[expec] = 0
     expec_counter[expec] += 1

@@ -30,7 +30,7 @@ class CudensitymatContext:
 
     _handle = None
     _workspace_desc = None
-    _operator_contexts = {}  # key: operator opaque pointer
+    _operator_contexts = {}  # key: (operator opaque pointer, batch_size)
     _state_contexts = {}  # key: (purity, tuple(state_shape), batch_size, dtype_name)
 
     logger = logging.getLogger("cudensitymat-jax.CudensitymatContext")
@@ -55,31 +55,34 @@ class CudensitymatContext:
                 raise RuntimeError("Workspace descriptor and handle should be created at the same time")
 
     @classmethod
-    def maybe_create_operator_context(cls, op: Operator) -> None:
+    def maybe_create_operator_context(cls, op: Operator, batch_size: int = 1) -> None:
         """
         Create the OperatorContext for the operator if it does not already exist.
 
         Args:
             op: The operator.
+            batch_size: The batch size of the operator action (state batch size).
         """
         cls._maybe_create_handle_and_workspace()
 
-        if op._ptr is None or op._ptr not in cls._operator_contexts:
-            op_ctx = OperatorContext(op)
-            cls._operator_contexts[op._ptr] = op_ctx
-            cls.logger.info(f"Created OperatorContext for operator {hex(id(op))}")
+        if op._ptr is None or (op._ptr, batch_size) not in cls._operator_contexts:
+            op_ctx = OperatorContext(op, batch_size)
+            # op._ptr is now set (op._create was called inside OperatorContext.__init__)
+            cls._operator_contexts[(op._ptr, batch_size)] = op_ctx
+            cls.logger.info(f"Created OperatorContext for operator {hex(id(op))} batch_size={batch_size}")
 
     @classmethod
-    def get_operator_context(cls, op_ptr: int) -> "OperatorContext":
+    def get_operator_context(cls, op_ptr: int, batch_size: int) -> "OperatorContext":
         """
-        Get the OperatorContext for a given operator pointer.
+        Get the OperatorContext for a given operator pointer and batch size.
         """
-        if op_ptr not in cls._operator_contexts:
+        op_key = (op_ptr, batch_size)
+        if op_key not in cls._operator_contexts:
             raise RuntimeError(
-                f"No OperatorContext found for operator pointer {hex(op_ptr)}. "
+                f"No OperatorContext found for operator pointer {hex(op_ptr)} batch_size={batch_size}. "
                 "Ensure maybe_create_operator_context() was called before get_operator_context()."
             )
-        return cls._operator_contexts[op_ptr]
+        return cls._operator_contexts[op_key]
 
     @classmethod
     def maybe_create_state_context(
@@ -94,7 +97,7 @@ class CudensitymatContext:
         """
         dtype_name = jnp.dtype(dtype).name
         state_key = (purity, tuple(state_shape), batch_size, dtype_name)
-        # State shape is with the batch dimension, so need - 1.
+        # state_shape always has a leading batch dimension (added by maybe_expand_dim when needed).
         if purity == cudm.StatePurity.MIXED:
             num_modes = (len(state_shape) - 1) // 2
         else:
@@ -137,23 +140,40 @@ class CudensitymatContext:
         collector when they're no longer referenced. Here we only clean up the state
         handles and workspace that are managed by contexts.
         """
+        # During interpreter shutdown Python sets module globals to None before (or
+        # concurrently with) running atexit handlers. Capture a local ref once; if it is
+        # already None the C extension is being torn down and calling into it would segfault.
+        _cudm = cudm
+        if _cudm is None:
+            return
+
         cls.logger.info("Freeing CudensitymatContext")
 
         # Free all state handles from state contexts
         for state_ctx in cls._state_contexts.values():
             state_ctx.free()
 
-        # Release gradient callback function references from operator contexts
+        # Release gradient callback function references from operator contexts.
+        # Multiple OperatorContext entries can share the same underlying C operator handle
+        # (e.g., original and JAX-traced copies of the same op used with different vmap
+        # batch sizes both carry the same _ptr integer). Track destroyed handles to avoid
+        # calling cudm.destroy_operator on the same pointer twice.
+        destroyed_op_ptrs = set()
         for op_ctx in cls._operator_contexts.values():
-            op_ctx.free()
+            if op_ctx._operator not in destroyed_op_ptrs:
+                destroyed_op_ptrs.add(op_ctx._operator)
+                op_ctx.free()
+            else:
+                op_ctx._op = None
+                op_ctx._callback_fns.clear()
 
         # Free workspace and library handle
         if cls._workspace_desc is not None:
-            cudm.destroy_workspace(cls._workspace_desc)
+            _cudm.destroy_workspace(cls._workspace_desc)
             cls._workspace_desc = None
 
         if cls._handle is not None:
-            cudm.destroy(cls._handle)
+            _cudm.destroy(cls._handle)
             cls._handle = None
 
         # Clear tracking dictionaries
@@ -173,12 +193,13 @@ class OperatorContext:
 
     logger = logging.getLogger("cudensitymat-jax.OperatorContext")
 
-    def __init__(self, op: Operator) -> None:
+    def __init__(self, op: Operator, batch_size: int = 1) -> None:
         """
         Initialize OperatorContext.
 
         Args:
             op: The operator object for operator action.
+            batch_size: The batch size of the operator action (state batch size).
         """
         self.logger.info("Initializing OperatorContext")
 
@@ -188,7 +209,7 @@ class OperatorContext:
         self._compute_type = typemaps.NAME_TO_COMPUTE_TYPE[op.dtype.name]
 
         # Create opaque handle to the operator.
-        op._create(CudensitymatContext._handle)
+        op._create(CudensitymatContext._handle, batch_size)
         self._operator = op._ptr
         self._op = op
 

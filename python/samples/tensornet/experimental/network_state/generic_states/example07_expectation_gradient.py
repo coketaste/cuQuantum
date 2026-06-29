@@ -84,8 +84,8 @@ with NetworkState(state_mode_extents, dtype=dtype) as state:
     ex = expectation_value.real if hasattr(expectation_value, "real") else expectation_value
     loss = ex * ex
 
-    expectation_value_adjoint = 2.0 * ex  # dL/dE
-    _, _, gradients = state.compute_expectation_with_gradients(
+    expectation_value_adjoint = 2.0 * ex.item()
+    _, gradients = state.compute_expectation_with_gradients(
         hamiltonian,
         expectation_value_adjoint=expectation_value_adjoint,
     )

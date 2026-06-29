@@ -1,4 +1,4 @@
-# Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.
+# Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
@@ -21,6 +21,7 @@ all: check-env
 	${CXX} index_bit_permutation.cpp common.cpp  -o index_bit_permutation  ${CXX_FLAGS}
 	${CXX} interoperability_dot.cpp stateVectorConstruction.cpp common.cpp -o interoperability_dot ${CXX_FLAGS}
 	${CXX} quantum_volume.cpp stateVectorConstruction.cpp common.cpp -o quantum_volume ${CXX_FLAGS}
+	${CXX} substatevector_indices.cpp stateVectorConstruction.cpp common.cpp -o substatevector_indices ${CXX_FLAGS}
 
 # Individual targets
 estimate_pi: check-env
@@ -44,6 +45,9 @@ interoperability_dot: check-env
 quantum_volume: check-env
 	${CXX} quantum_volume.cpp stateVectorConstruction.cpp common.cpp -o quantum_volume ${CXX_FLAGS}
 
+substatevector_indices: check-env
+	${CXX} substatevector_indices.cpp stateVectorConstruction.cpp common.cpp -o substatevector_indices ${CXX_FLAGS}
+
 check-env:
 	@ echo "" && \
 	echo "CUDA_TOOLKIT=${CUDA_TOOLKIT}"; \
@@ -57,4 +61,4 @@ check-env:
 	fi
 
 clean:
-	rm -f estimate_pi pauli_functions noise_channel quantum_state_initialization index_bit_permutation interoperability_dot quantum_volume
+	rm -f estimate_pi pauli_functions noise_channel quantum_state_initialization index_bit_permutation interoperability_dot quantum_volume substatevector_indices

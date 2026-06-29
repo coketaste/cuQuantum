@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.03.1, generator version 0.3.1.dev1503+gab711511a.d20260402. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1733+g9725189ff.d20260608. Do not modify it directly.
 
 cimport cython  # NOQA
 cimport cpython
@@ -1211,14 +1211,14 @@ cpdef tuple accessor_create(intptr_t handle, intptr_t sv, int sv_data_type, uint
 
     .. seealso:: `custatevecAccessorCreate`
     """
-    cdef AccessorDescriptor accessor
-    cdef size_t extra_workspace_size_in_bytes
     cdef nullable_unique_ptr[ vector[int32_t] ] _bit_ordering_
     get_resource_ptr[int32_t](_bit_ordering_, bit_ordering, <int32_t*>NULL)
     cdef nullable_unique_ptr[ vector[int32_t] ] _mask_bit_string_
     get_resource_ptr[int32_t](_mask_bit_string_, mask_bit_string, <int32_t*>NULL)
     cdef nullable_unique_ptr[ vector[int32_t] ] _mask_ordering_
     get_resource_ptr[int32_t](_mask_ordering_, mask_ordering, <int32_t*>NULL)
+    cdef AccessorDescriptor accessor
+    cdef size_t extra_workspace_size_in_bytes
     with nogil:
         __status__ = custatevecAccessorCreate(<Handle>handle, <void*>sv, <DataType>sv_data_type, <const uint32_t>n_index_bits, &accessor, <const int32_t*>(_bit_ordering_.data()), <const uint32_t>bit_ordering_len, <const int32_t*>(_mask_bit_string_.data()), <const int32_t*>(_mask_ordering_.data()), <const uint32_t>mask_len, &extra_workspace_size_in_bytes)
     check_status(__status__)
@@ -1259,14 +1259,14 @@ cpdef tuple accessor_create_view(intptr_t handle, intptr_t sv, int sv_data_type,
 
     .. seealso:: `custatevecAccessorCreateView`
     """
-    cdef AccessorDescriptor accessor
-    cdef size_t extra_workspace_size_in_bytes
     cdef nullable_unique_ptr[ vector[int32_t] ] _bit_ordering_
     get_resource_ptr[int32_t](_bit_ordering_, bit_ordering, <int32_t*>NULL)
     cdef nullable_unique_ptr[ vector[int32_t] ] _mask_bit_string_
     get_resource_ptr[int32_t](_mask_bit_string_, mask_bit_string, <int32_t*>NULL)
     cdef nullable_unique_ptr[ vector[int32_t] ] _mask_ordering_
     get_resource_ptr[int32_t](_mask_ordering_, mask_ordering, <int32_t*>NULL)
+    cdef AccessorDescriptor accessor
+    cdef size_t extra_workspace_size_in_bytes
     with nogil:
         __status__ = custatevecAccessorCreateView(<Handle>handle, <const void*>sv, <DataType>sv_data_type, <const uint32_t>n_index_bits, &accessor, <const int32_t*>(_bit_ordering_.data()), <const uint32_t>bit_ordering_len, <const int32_t*>(_mask_bit_string_.data()), <const int32_t*>(_mask_ordering_.data()), <const uint32_t>mask_len, &extra_workspace_size_in_bytes)
     check_status(__status__)
@@ -1460,14 +1460,14 @@ cpdef dist_index_bit_swap_scheduler_destroy(intptr_t handle, intptr_t scheduler)
     check_status(__status__)
 
 
-cpdef tuple sv_swap_worker_create(intptr_t handle, intptr_t communicator, intptr_t org_sub_sv, int32_t org_sub_sv_ind_ex, intptr_t org_event, int sv_data_type, intptr_t stream):
+cpdef tuple sv_swap_worker_create(intptr_t handle, intptr_t communicator, intptr_t org_sub_sv, int32_t org_sub_sv_index, intptr_t org_event, int sv_data_type, intptr_t stream):
     """Create state vector swap worker.
 
     Args:
         handle (intptr_t): the handle to cuStateVec library.
         communicator (intptr_t): a pointer to the MPI communicator.
         org_sub_sv (intptr_t): a pointer to a sub state vector.
-        org_sub_sv_ind_ex (int32_t): the index of the sub state vector specified by the org_sub_sv argument.
+        org_sub_sv_index (int32_t): the index of the sub state vector specified by the org_sub_sv argument.
         org_event (intptr_t): the event for synchronization with the peer worker.
         sv_data_type (int): data type used by the state vector representation.
         stream (intptr_t): a stream that is used to locally execute kernels during data transfers.
@@ -1485,7 +1485,7 @@ cpdef tuple sv_swap_worker_create(intptr_t handle, intptr_t communicator, intptr
     cdef size_t extra_workspace_size_in_bytes
     cdef size_t min_transfer_workspace_size_in_bytes
     with nogil:
-        __status__ = custatevecSVSwapWorkerCreate(<Handle>handle, &sv_swap_worker, <CommunicatorDescriptor>communicator, <void*>org_sub_sv, org_sub_sv_ind_ex, <Event>org_event, <DataType>sv_data_type, <Stream>stream, &extra_workspace_size_in_bytes, &min_transfer_workspace_size_in_bytes)
+        __status__ = custatevecSVSwapWorkerCreate(<Handle>handle, &sv_swap_worker, <CommunicatorDescriptor>communicator, <void*>org_sub_sv, org_sub_sv_index, <Event>org_event, <DataType>sv_data_type, <Stream>stream, &extra_workspace_size_in_bytes, &min_transfer_workspace_size_in_bytes)
     check_status(__status__)
     return (<intptr_t>sv_swap_worker, extra_workspace_size_in_bytes, min_transfer_workspace_size_in_bytes)
 
@@ -1853,15 +1853,15 @@ cpdef measure_batched(intptr_t handle, intptr_t batched_sv, int sv_data_type, ui
     check_status(__status__)
 
 
-cpdef intptr_t sub_sv_migrator_create(intptr_t handle, intptr_t device_slots, int sv_data_type, int n_device_slots, int n_local_index_bits) except? 0:
+cpdef intptr_t sub_sv_migrator_create(intptr_t handle, intptr_t device_slices, int sv_data_type, int n_device_slices, int n_slice_local_index_bits) except? 0:
     """Create sub state vector migrator descriptor.
 
     Args:
         handle (intptr_t): the handle to the cuStateVec library.
-        device_slots (intptr_t): pointer to sub state vectors on device.
+        device_slices (intptr_t): pointer to sub state vector slices on device.
         sv_data_type (int): data type of state vector.
-        n_device_slots (int): the number of sub state vectors in device_slots.
-        n_local_index_bits (int): the number of index bits of sub state vectors.
+        n_device_slices (int): the number of sub state vector slices in device_slices.
+        n_slice_local_index_bits (int): the number of index bits of sub state vector slices.
 
     Returns:
         intptr_t: pointer to a new migrator descriptor.
@@ -1870,7 +1870,7 @@ cpdef intptr_t sub_sv_migrator_create(intptr_t handle, intptr_t device_slots, in
     """
     cdef SubSVMigratorDescriptor migrator
     with nogil:
-        __status__ = custatevecSubSVMigratorCreate(<Handle>handle, &migrator, <void*>device_slots, <DataType>sv_data_type, n_device_slots, n_local_index_bits)
+        __status__ = custatevecSubSVMigratorCreate(<Handle>handle, &migrator, <void*>device_slices, <DataType>sv_data_type, n_device_slices, n_slice_local_index_bits)
     check_status(__status__)
     return <intptr_t>migrator
 
@@ -1889,22 +1889,22 @@ cpdef sub_sv_migrator_destroy(intptr_t handle, intptr_t migrator):
     check_status(__status__)
 
 
-cpdef sub_sv_migrator_migrate(intptr_t handle, intptr_t migrator, int device_slot_ind_ex, intptr_t src_sub_sv, intptr_t dst_sub_sv, int64_t begin, int64_t end):
+cpdef sub_sv_migrator_migrate(intptr_t handle, intptr_t migrator, int device_slice_index, intptr_t src_sub_sv_slice, intptr_t dst_sub_sv_slice, int64_t begin, int64_t end):
     """Sub state vector migration.
 
     Args:
         handle (intptr_t): the handle to the cuStateVec library.
         migrator (intptr_t): the migrator descriptor.
-        device_slot_ind_ex (int): the index to specify sub state vector to migrate.
-        src_sub_sv (intptr_t): a pointer to a sub state vector that is migrated to deviceSlots.
-        dst_sub_sv (intptr_t): a pointer to a sub state vector that is migrated from deviceSlots.
+        device_slice_index (int): the index to specify sub state vector slice to migrate.
+        src_sub_sv_slice (intptr_t): a pointer to a sub state vector slice that is migrated to deviceSlices.
+        dst_sub_sv_slice (intptr_t): a pointer to a sub state vector slice that is migrated from deviceSlices.
         begin (int64_t): the index to start migration.
         end (int64_t): the index to end migration.
 
     .. seealso:: `custatevecSubSVMigratorMigrate`
     """
     with nogil:
-        __status__ = custatevecSubSVMigratorMigrate(<Handle>handle, <SubSVMigratorDescriptor>migrator, device_slot_ind_ex, <const void*>src_sub_sv, <void*>dst_sub_sv, <custatevecIndex_t>begin, <custatevecIndex_t>end)
+        __status__ = custatevecSubSVMigratorMigrate(<Handle>handle, <SubSVMigratorDescriptor>migrator, device_slice_index, <const void*>src_sub_sv_slice, <void*>dst_sub_sv_slice, <custatevecIndex_t>begin, <custatevecIndex_t>end)
     check_status(__status__)
 
 

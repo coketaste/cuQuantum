@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.03.1, generator version 0.3.1.dev1471+gd13834924.d20260402. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1668+gb1eb0b259. Do not modify it directly.
 
 from libc.stdint cimport intptr_t
 
@@ -206,6 +206,7 @@ cdef void* __cutensornetStateUpdateTensorOperatorGradient = NULL
 cdef void* __cutensornetExpectationComputeWithGradientsBackward = NULL
 cdef void* __cutensornetStateProjectionMPSUpdateCoefficients = NULL
 cdef void* __cutensornetStateProjectionMPSUpdateDualTensors = NULL
+cdef void* __cutensornetCreateMarginalDiagonal = NULL
 
 
 cdef void* load_library() except* nogil:
@@ -1263,6 +1264,13 @@ cdef int _init_cutensornet() except -1 nogil:
             if handle == NULL:
                 handle = load_library()
             __cutensornetStateProjectionMPSUpdateDualTensors = dlsym(handle, 'cutensornetStateProjectionMPSUpdateDualTensors')
+
+        global __cutensornetCreateMarginalDiagonal
+        __cutensornetCreateMarginalDiagonal = dlsym(RTLD_DEFAULT, 'cutensornetCreateMarginalDiagonal')
+        if __cutensornetCreateMarginalDiagonal == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cutensornetCreateMarginalDiagonal = dlsym(handle, 'cutensornetCreateMarginalDiagonal')
         __py_cutensornet_init = True
         return 0
 
@@ -1721,6 +1729,9 @@ cpdef dict _inspect_function_pointers():
 
     global __cutensornetStateProjectionMPSUpdateDualTensors
     data["__cutensornetStateProjectionMPSUpdateDualTensors"] = <intptr_t>__cutensornetStateProjectionMPSUpdateDualTensors
+
+    global __cutensornetCreateMarginalDiagonal
+    data["__cutensornetCreateMarginalDiagonal"] = <intptr_t>__cutensornetCreateMarginalDiagonal
 
     return data
 
@@ -3207,3 +3218,13 @@ cdef cutensornetStatus_t _cutensornetStateProjectionMPSUpdateDualTensors(const c
             raise FunctionNotFoundError("function cutensornetStateProjectionMPSUpdateDualTensors is not found")
     return (<cutensornetStatus_t (*)(const cutensornetHandle_t, cutensornetStateProjectionMPS_t, const int64_t**, const int64_t**, const int64_t**, void**, const cutensornetMPSEnvBounds_t*, cudaStream_t) noexcept nogil>__cutensornetStateProjectionMPSUpdateDualTensors)(
         handle, tensorNetworkProjection, maxExtents, validExtents, strides, dualTensorsData, orthoSpec, cudaStream)
+
+
+cdef cutensornetStatus_t _cutensornetCreateMarginalDiagonal(const cutensornetHandle_t handle, cutensornetState_t tensorNetworkState, int32_t numMarginalModes, const int32_t* marginalModes, int32_t numProjectedModes, const int32_t* projectedModes, const int64_t* marginalDiagonalTensorStrides, cutensornetStateMarginal_t* tensorNetworkMarginal) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cutensornetCreateMarginalDiagonal
+    _check_or_init_cutensornet()
+    if __cutensornetCreateMarginalDiagonal == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cutensornetCreateMarginalDiagonal is not found")
+    return (<cutensornetStatus_t (*)(const cutensornetHandle_t, cutensornetState_t, int32_t, const int32_t*, int32_t, const int32_t*, const int64_t*, cutensornetStateMarginal_t*) noexcept nogil>__cutensornetCreateMarginalDiagonal)(
+        handle, tensorNetworkState, numMarginalModes, marginalModes, numProjectedModes, projectedModes, marginalDiagonalTensorStrides, tensorNetworkMarginal)

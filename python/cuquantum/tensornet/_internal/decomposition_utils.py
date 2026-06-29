@@ -322,7 +322,7 @@ def parse_decompose_operands_options(options, wrapped_operands, stream, *, allow
     else:
         compute_type = None
 
-    stream_holder = nvmath_utils.get_or_create_stream(options.device_id, stream, "cuda" if package == 'numpy' else package)
+    stream_holder = nvmath_utils.get_or_create_stream(device_id, stream, "cuda" if package == 'numpy' else package)
 
     logger = logging.getLogger() if options.logger is None else options.logger
     if operands_location == 'cpu' and copy_to_device:
@@ -423,7 +423,8 @@ def create_operands_and_descriptors(
         output_operands = []
         with nvmath_utils.device_ctx(device_id):
             for extent, tensor_modes in zip(output_extents, outputs):
-                operand = nvmath_utils.create_empty_tensor(output_class, extent, dtype_name, device_id, stream_holder, False)
+                operand = output_class.empty(
+                    extent, device_id=device_id, dtype=dtype_name, stream_holder=stream_holder)
                 output_operands.append(operand)
                 output_tensor_descriptors.append(create_tensor_descriptor(operand, handle, tensor_modes))
             
@@ -434,7 +435,8 @@ def create_operands_and_descriptors(
                     s_dtype_name = 'float64'
                 else:
                     raise ValueError(f"{dtype_name} data type not supported")
-                s = nvmath_utils.create_empty_tensor(output_class, (mid_extent, ), s_dtype_name, device_id, stream_holder, False)
+                s = output_class.empty(
+                    (mid_extent,), device_id=device_id, dtype=s_dtype_name, stream_holder=stream_holder)
                 s_ptr = s.data_ptr
         logger.debug("The output tensors and descriptors have been created.")
     except: 

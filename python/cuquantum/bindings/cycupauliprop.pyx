@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 25.11.0 to 26.03.1, generator version 0.3.1.dev1477+g125b4cb42. Do not modify it directly.
+# This code was automatically generated across versions from 25.11.0 to 26.06.0, generator version 0.3.1.dev1734+g2cfbd9662.d20260611. Do not modify it directly.
 
 from ._internal cimport cupauliprop as _cupauliprop
 
@@ -103,8 +103,8 @@ cdef cupaulipropStatus_t cupaulipropPauliExpansionViewGetTerm(const cupaulipropH
     return _cupauliprop._cupaulipropPauliExpansionViewGetTerm(handle, view, termIndex, term)
 
 
-cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareDeduplication(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropSortOrder_t sortOrder, int64_t maxWorkspaceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    return _cupauliprop._cupaulipropPauliExpansionViewPrepareDeduplication(handle, viewIn, sortOrder, maxWorkspaceSize, workspace)
+cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareDeduplication(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropSortOrder_t sortOrder, int64_t maxWorkspaceDeviceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cupauliprop._cupaulipropPauliExpansionViewPrepareDeduplication(handle, viewIn, sortOrder, maxWorkspaceDeviceSize, workspace)
 
 
 cdef cupaulipropStatus_t cupaulipropPauliExpansionViewExecuteDeduplication(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropPauliExpansion_t expansionOut, cupaulipropSortOrder_t sortOrder, cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -115,32 +115,32 @@ cdef cupaulipropStatus_t cupaulipropPauliExpansionPopulateFromView(const cupauli
     return _cupauliprop._cupaulipropPauliExpansionPopulateFromView(handle, viewIn, expansionOut, stream)
 
 
-cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareTraceWithExpansionView(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view1, const cupaulipropPauliExpansionView_t view2, int64_t maxWorkspaceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    return _cupauliprop._cupaulipropPauliExpansionViewPrepareTraceWithExpansionView(handle, view1, view2, maxWorkspaceSize, workspace)
+cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareTraceWithExpansionView(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view1, const cupaulipropPauliExpansionView_t view2, int64_t maxWorkspaceDeviceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cupauliprop._cupaulipropPauliExpansionViewPrepareTraceWithExpansionView(handle, view1, view2, maxWorkspaceDeviceSize, workspace)
 
 
 cdef cupaulipropStatus_t cupaulipropPauliExpansionViewComputeTraceWithExpansionView(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view1, const cupaulipropPauliExpansionView_t view2, int32_t takeAdjoint1, void* traceSignificand, double* traceExponent, cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     return _cupauliprop._cupaulipropPauliExpansionViewComputeTraceWithExpansionView(handle, view1, view2, takeAdjoint1, traceSignificand, traceExponent, workspace, stream)
 
 
-cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareTraceWithZeroState(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view, int64_t maxWorkspaceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    return _cupauliprop._cupaulipropPauliExpansionViewPrepareTraceWithZeroState(handle, view, maxWorkspaceSize, workspace)
+cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareTraceWithZeroState(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view, int64_t maxWorkspaceDeviceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cupauliprop._cupaulipropPauliExpansionViewPrepareTraceWithZeroState(handle, view, maxWorkspaceDeviceSize, workspace)
 
 
 cdef cupaulipropStatus_t cupaulipropPauliExpansionViewComputeTraceWithZeroState(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view, void* traceSignificand, double* traceExponent, cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     return _cupauliprop._cupaulipropPauliExpansionViewComputeTraceWithZeroState(handle, view, traceSignificand, traceExponent, workspace, stream)
 
 
-cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareOperatorApplication(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, const cupaulipropQuantumOperator_t quantumOperator, cupaulipropSortOrder_t sortOrder, int32_t keepDuplicates, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], int64_t maxWorkspaceSize, int64_t* requiredXZBitsBufferSize, int64_t* requiredCoefBufferSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    return _cupauliprop._cupaulipropPauliExpansionViewPrepareOperatorApplication(handle, viewIn, quantumOperator, sortOrder, keepDuplicates, numTruncationStrategies, truncationStrategies, maxWorkspaceSize, requiredXZBitsBufferSize, requiredCoefBufferSize, workspace)
+cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareOperatorApplication(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, const cupaulipropQuantumOperator_t quantumOperator, cupaulipropSortOrder_t sortOrder, int32_t keepDuplicates, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], int64_t maxWorkspaceDeviceSize, int64_t* requiredXZBitsBufferSize, int64_t* requiredCoefBufferSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cupauliprop._cupaulipropPauliExpansionViewPrepareOperatorApplication(handle, viewIn, quantumOperator, sortOrder, keepDuplicates, numTruncationStrategies, truncationStrategies, maxWorkspaceDeviceSize, requiredXZBitsBufferSize, requiredCoefBufferSize, workspace)
 
 
 cdef cupaulipropStatus_t cupaulipropPauliExpansionViewComputeOperatorApplication(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropPauliExpansion_t expansionOut, const cupaulipropQuantumOperator_t quantumOperator, int32_t adjoint, cupaulipropSortOrder_t sortOrder, int32_t keepDuplicates, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     return _cupauliprop._cupaulipropPauliExpansionViewComputeOperatorApplication(handle, viewIn, expansionOut, quantumOperator, adjoint, sortOrder, keepDuplicates, numTruncationStrategies, truncationStrategies, workspace, stream)
 
 
-cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareTruncation(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], int64_t maxWorkspaceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    return _cupauliprop._cupaulipropPauliExpansionViewPrepareTruncation(handle, viewIn, numTruncationStrategies, truncationStrategies, maxWorkspaceSize, workspace)
+cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareTruncation(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], int64_t maxWorkspaceDeviceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cupauliprop._cupaulipropPauliExpansionViewPrepareTruncation(handle, viewIn, numTruncationStrategies, truncationStrategies, maxWorkspaceDeviceSize, workspace)
 
 
 cdef cupaulipropStatus_t cupaulipropPauliExpansionViewExecuteTruncation(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropPauliExpansion_t expansionOut, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -167,8 +167,8 @@ cdef cupaulipropStatus_t cupaulipropPauliExpansionGetSortOrder(const cupauliprop
     return _cupauliprop._cupaulipropPauliExpansionGetSortOrder(handle, pauliExpansion, sortOrder)
 
 
-cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareSort(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropSortOrder_t sortOrder, int64_t maxWorkspaceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    return _cupauliprop._cupaulipropPauliExpansionViewPrepareSort(handle, viewIn, sortOrder, maxWorkspaceSize, workspace)
+cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareSort(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropSortOrder_t sortOrder, int64_t maxWorkspaceDeviceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cupauliprop._cupaulipropPauliExpansionViewPrepareSort(handle, viewIn, sortOrder, maxWorkspaceDeviceSize, workspace)
 
 
 cdef cupaulipropStatus_t cupaulipropPauliExpansionViewExecuteSort(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropPauliExpansion_t expansionOut, cupaulipropSortOrder_t sortOrder, cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -179,24 +179,24 @@ cdef cupaulipropStatus_t cupaulipropCreateAmplitudeDampingChannelOperator(const 
     return _cupauliprop._cupaulipropCreateAmplitudeDampingChannelOperator(handle, qubitIndex, dampingProb, exciteProb, oper)
 
 
-cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view1, const cupaulipropPauliExpansionView_t view2, int64_t maxWorkspaceSize, int64_t* requiredXZBitsBufferSize1, int64_t* requiredCoefBufferSize1, int64_t* requiredXZBitsBufferSize2, int64_t* requiredCoefBufferSize2, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    return _cupauliprop._cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff(handle, view1, view2, maxWorkspaceSize, requiredXZBitsBufferSize1, requiredCoefBufferSize1, requiredXZBitsBufferSize2, requiredCoefBufferSize2, workspace)
+cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view1, const cupaulipropPauliExpansionView_t view2, int64_t maxWorkspaceDeviceSize, int64_t* requiredXZBitsBufferSize1, int64_t* requiredCoefBufferSize1, int64_t* requiredXZBitsBufferSize2, int64_t* requiredCoefBufferSize2, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cupauliprop._cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff(handle, view1, view2, maxWorkspaceDeviceSize, requiredXZBitsBufferSize1, requiredCoefBufferSize1, requiredXZBitsBufferSize2, requiredCoefBufferSize2, workspace)
 
 
 cdef cupaulipropStatus_t cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view1, const cupaulipropPauliExpansionView_t view2, int32_t takeAdjoint1, const void* cotangentTraceSignificand, const double* cotangentTraceExponent, cupaulipropPauliExpansion_t cotangentExpansion1, cupaulipropPauliExpansion_t cotangentExpansion2, cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     return _cupauliprop._cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff(handle, view1, view2, takeAdjoint1, cotangentTraceSignificand, cotangentTraceExponent, cotangentExpansion1, cotangentExpansion2, workspace, stream)
 
 
-cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view, int64_t maxWorkspaceSize, int64_t* requiredXZBitsBufferSize, int64_t* requiredCoefBufferSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    return _cupauliprop._cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff(handle, view, maxWorkspaceSize, requiredXZBitsBufferSize, requiredCoefBufferSize, workspace)
+cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view, int64_t maxWorkspaceDeviceSize, int64_t* requiredXZBitsBufferSize, int64_t* requiredCoefBufferSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cupauliprop._cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff(handle, view, maxWorkspaceDeviceSize, requiredXZBitsBufferSize, requiredCoefBufferSize, workspace)
 
 
 cdef cupaulipropStatus_t cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view, const void* cotangentTraceSignificand, const double* cotangentTraceExponent, cupaulipropPauliExpansion_t cotangentExpansion, cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     return _cupauliprop._cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff(handle, view, cotangentTraceSignificand, cotangentTraceExponent, cotangentExpansion, workspace, stream)
 
 
-cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, const cupaulipropPauliExpansionView_t cotangentOut, const cupaulipropQuantumOperator_t quantumOperator, cupaulipropSortOrder_t sortOrder, int32_t keepDuplicates, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], int64_t maxWorkspaceSize, int64_t* requiredXZBitsBufferSize, int64_t* requiredCoefBufferSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    return _cupauliprop._cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff(handle, viewIn, cotangentOut, quantumOperator, sortOrder, keepDuplicates, numTruncationStrategies, truncationStrategies, maxWorkspaceSize, requiredXZBitsBufferSize, requiredCoefBufferSize, workspace)
+cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, const cupaulipropPauliExpansionView_t cotangentOut, const cupaulipropQuantumOperator_t quantumOperator, cupaulipropSortOrder_t sortOrder, int32_t keepDuplicates, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], int64_t maxWorkspaceDeviceSize, int64_t* requiredXZBitsBufferSize, int64_t* requiredCoefBufferSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cupauliprop._cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff(handle, viewIn, cotangentOut, quantumOperator, sortOrder, keepDuplicates, numTruncationStrategies, truncationStrategies, maxWorkspaceDeviceSize, requiredXZBitsBufferSize, requiredCoefBufferSize, workspace)
 
 
 cdef cupaulipropStatus_t cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, const cupaulipropPauliExpansionView_t cotangentOut, cupaulipropPauliExpansion_t cotangentIn, cupaulipropQuantumOperator_t quantumOperator, int32_t adjoint, cupaulipropSortOrder_t sortOrder, int32_t keepDuplicates, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -209,3 +209,11 @@ cdef cupaulipropStatus_t cupaulipropQuantumOperatorAttachCotangentBuffer(const c
 
 cdef cupaulipropStatus_t cupaulipropQuantumOperatorGetCotangentBuffer(const cupaulipropHandle_t handle, const cupaulipropQuantumOperator_t oper, void** cotangentBuffer, int64_t* cotangentBufferNumElements, cudaDataType_t* dataType, cupaulipropMemspace_t* location) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     return _cupauliprop._cupaulipropQuantumOperatorGetCotangentBuffer(handle, oper, cotangentBuffer, cotangentBufferNumElements, dataType, location)
+
+
+cdef cupaulipropStatus_t cupaulipropPauliExpansionViewPrepareOperatorFusedApplication(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, int32_t numQuantumOperators, const cupaulipropQuantumOperator_t quantumOperators[], const int32_t adjoints[], int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], int64_t maxWorkspaceDeviceSize, int64_t* minExpansionOutCapacity, cupaulipropWorkspaceDescriptor_t minWorkspace, int64_t* averageExpansionOutCapacity, cupaulipropWorkspaceDescriptor_t averageWorkspace, int64_t* maxExpansionOutCapacity, cupaulipropWorkspaceDescriptor_t maxWorkspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cupauliprop._cupaulipropPauliExpansionViewPrepareOperatorFusedApplication(handle, viewIn, numQuantumOperators, quantumOperators, adjoints, numTruncationStrategies, truncationStrategies, maxWorkspaceDeviceSize, minExpansionOutCapacity, minWorkspace, averageExpansionOutCapacity, averageWorkspace, maxExpansionOutCapacity, maxWorkspace)
+
+
+cdef cupaulipropStatus_t cupaulipropPauliExpansionViewComputeOperatorFusedApplication(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropPauliExpansion_t expansionOut, int32_t numQuantumOperators, const cupaulipropQuantumOperator_t quantumOperators[], const int32_t adjoints[], int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cupauliprop._cupaulipropPauliExpansionViewComputeOperatorFusedApplication(handle, viewIn, expansionOut, numQuantumOperators, quantumOperators, adjoints, numTruncationStrategies, truncationStrategies, workspace, stream)

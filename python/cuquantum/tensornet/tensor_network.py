@@ -975,7 +975,9 @@ class Network:
         # Check if we still hold an output tensor; if not, create a new one.
         if self.contraction is None:
             self.logger.debug("Beginning output (empty) tensor creation...")
-            self.contraction = nvmath_utils.create_empty_tensor(self.output_class, self.extents_out, self.data_type, self.device_id, stream_holder, False)
+            self.contraction = self.output_class.empty(
+                self.extents_out, device_id=self.device_id, dtype=self.data_type, stream_holder=stream_holder)
+            self.contraction_output_event = stream_holder.obj.record() if stream_holder is not None else None
             self.logger.debug("The output (empty) tensor has been created.")
             self._set_tensor_memory("output")
         elif self.contraction_output_event is not None:
@@ -1130,8 +1132,8 @@ class Network:
         # Check if we still hold an output tensor; if not, create a new one.
         if self.contraction is None:
             self.logger.debug("Beginning output (empty) tensor creation...")
-            self.contraction = nvmath_utils.create_empty_tensor(
-                self.output_class, self.extents_out, self.data_type, self.device_id, stream_holder, False)
+            self.contraction = self.output_class.empty(
+                self.extents_out, device_id=self.device_id, dtype=self.data_type, stream_holder=stream_holder)
             self.logger.debug("The output (empty) tensor has been created.")
             self._set_tensor_memory("output")
         elif self.contraction_output_event is not None:
@@ -1250,8 +1252,9 @@ class Network:
         if output_grad.strides != self.strides_out:
             # output_gradient could be a view, but we need a full buffer for now
             if any(s == 0 for s in output_grad.strides):
-                buf = nvmath_utils.create_empty_tensor(
-                    self.output_class, self.extents_out, self.data_type, self.device_id, stream_holder, False, strides=self.strides_out)
+                buf = self.output_class.empty(
+                    self.extents_out, device_id=self.device_id, dtype=self.data_type,
+                    stream_holder=stream_holder, strides=self.strides_out)
                 buf.copy_(output_grad, stream_holder=stream_holder)
                 output_grad = buf
             else:
@@ -1266,7 +1269,8 @@ class Network:
         # Allocate input gradient tensors, as needed
         if self.input_package == "numpy":
             input_grads = [
-                nvmath_utils.create_empty_tensor(tensor_wrapper._TENSOR_TYPES["numpy"], ext, self.data_type, "cpu", None, False, strides=strides)
+                tensor_wrapper._TENSOR_TYPES["numpy"].empty(
+                    ext, device_id="cpu", dtype=self.data_type, stream_holder=None, strides=strides)
                 if req_grad else None
                 for ext, strides, req_grad in zip(self.extents_in, self.strides_in, self.qualifiers_in['requires_gradient'])
             ]
@@ -1276,7 +1280,8 @@ class Network:
             self.input_grads = [o.to(self.device_id, stream_holder) if o is not None else None for o in input_grads]
         else:
             self.input_grads = [
-                nvmath_utils.create_empty_tensor(self.output_class, ext, self.data_type, self.device_id, stream_holder, False, strides=strides)
+                self.output_class.empty(
+                    ext, device_id=self.device_id, dtype=self.data_type, stream_holder=stream_holder, strides=strides)
                 if req_grad else None
                 for ext, strides, req_grad in zip(self.extents_in, self.strides_in, self.qualifiers_in['requires_gradient'])
             ]

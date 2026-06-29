@@ -34,30 +34,32 @@ cuStateVec Ex API for quantum circuit simulation.
 ### Multi-Device/Multi-Process/Host-Memory Samples
 
 The following samples run with all presently supported state vector configurations; single-device, single-device
-with host-memory, multi-device, and multi-process.
+with host-memory, multi-device, multi-process, and multi-process with host-memory.
 
-- Without specifying options, those samples run with multi-device configuration using all discoverable devices.
-- By specifying the number of devices to `-d` option, samples will run with the specified number of devices.
+- Without specifying options, those samples run with single-device configuration.
+- By specifying the number of devices to `-d` option, samples will run with the specified number of devices in
+  multi-device mode.
 - By specifying the number of migration wires to `-m` option, samples will additionally utilise host memory.
   A proportion of `1/2^m` of the statevector memory in each process will reside in the device, with the
   remaining majority in host memory.
-- If Open MPI is available, and the number of processes is a power of two, samples will run with multi-process configuration.
+- By specifying `-p`, and launching with a power of two number of Open MPI processes, samples will run with
+  a multi-process configuration. Failing to specify `-p` will result in every process running single-process mode independently.
 
 These multi-device/multi-process samples support the following command line options:
 
 ```text
 -h           Show help message
--q           Quiet mode (suppress output)
--d <num>     Number of devices for multi-device configuration
--m <num>     Number of migration wires, informing host-memory usage
+-q           Quiet mode (suppress output) (default: off)
+-p           Multi-process mode (default: off)
+-d <num>     Number of devices for multi-device configuration (default: 1)
+-m <num>     Number of migration wires, informing host-memory usage (default: 0)
 -t <type>    Data type: 'f'/'float' (default) or 'd'/'double'
--k <net>     Device network topology for multi-device: 1=SWITCH (default), 2=FULLMESH
-             Network structure for multi-process: 3=SuperPOD (default), 4=GB200NVL, 5=SwitchTree, 6=Communicator
+-k <net>     Device network topology for multi-device: 1=SWITCH (indicated by default =0), 2=FULLMESH
+             Network structure for multi-process: 3=SuperPOD (indicated by default =0), 4=GB200NVL, 5=SwitchTree, 6=Communicator
 ```
 
 6. **interoperability_dot.cpp**
    cuStateVec Ex API interoperability with cuBLAS for dot product computation.
-   Supports single-device, single-device with host memory, multi-device, and multi-process configurations.
    - Create two state vector instances with different wire orderings.
    - Modify using cuStateVec API.
    - Retrieve GPU memory pointers and CUDA streams from state vector to compute
@@ -67,17 +69,21 @@ These multi-device/multi-process samples support the following command line opti
 
 7. **quantum_volume.cpp**
    Quick performance check using quantum volume circuits.
-   Supports single-device, single-device with host memory, multi-device, and multi-process configurations.
    Demonstrates quantum volume circuit generation, scalability analysis
    across multiple qubit counts, and reports performance metrics.
 
+8. **substatevector_indices.cpp**
+   Reports all substatevector (subSV) indices in any deployment configuration.
+   This is pedagogical, helping illustrate the cuStateVec Ex distribution
+   schemes possible, and complements the interoperability_dot.cpp sample.
+   
 ### External Communicator Plugin
 
 The cuStateVec Ex API supports custom inter-process communicators through
 an external plugin interface. This allows users to implement their own
 communication layer instead of using the built-in OPENMPI/MPICH support.
 
-8. **mpiCommunicator.c**
+9. **mpiCommunicator.c**
    Example C-based external MPI communicator plugin demonstrating how to
    implement a custom communicator. This plugin wraps MPI functions to provide
    inter-process communication for distributed quantum circuit simulation.
@@ -96,10 +102,10 @@ This generates `libmpiCommunicator.so` in the current directory, which can be lo
 1. Edit `stateVectorConstruction.cpp` to activate the configuration for
    external communicator.  (Currently commented out.)
 2. Rebuild the samples
-3. Run:
+3. Run with the `-p` flag, otherwise all processes will independently run in single-process mode.
 
 ```bash
-mpirun -np 4 ./quantum_volume
+mpirun -np 4 ./quantum_volume -p
 ```
 
 ## Build Instructions
@@ -129,9 +135,9 @@ make clean              # Remove executables
 ### Running Multi-Device/Multi-Process Examples
 
 ```bash
-./interoperability_dot                # Single-device mode
-./interoperability_dot -d 2           # Multi-device mode with 2 devices
-mpirun -np 4 ./interoperability_dot   # Multi-process mode
+./interoperability_dot                   # Single-device mode
+./interoperability_dot -d 2              # Multi-device mode with 2 devices
+mpirun -np 4 ./interoperability_dot -p   # Multi-process mode
 ```
 
 For more details, refer to the [cuStateVec documentation](https://docs.nvidia.com/cuda/cuquantum/latest/custatevec/index.html) and individual source file comments.

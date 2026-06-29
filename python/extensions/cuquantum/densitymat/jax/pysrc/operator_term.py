@@ -19,12 +19,13 @@ from cuquantum.bindings import cudensitymat as cudm
 from .elementary_operator import ElementaryOperator
 from .matrix_operator import MatrixOperator
 from ..utils import (
+    get_batch_size,
+    get_original_shape,
     get_scalar_assignment_callback,
     get_empty_scalar_callback,
     get_scalar_gradient_attachment_callback,
     get_random_odd_pointer_and_object,
     detect_ad_traced_object,
-    is_vmap_traced,
 )
 
 
@@ -56,7 +57,8 @@ class OperatorTerm:
         self.coeffs: list[jax.Array] = []
 
         # Attributes inferred from multiple append calls.
-        self.batch_sizes: list[int] = []  # keep track of batch sizes of all operator products
+        self._op_prod_batch_sizes: list[int] = []  # keep track of batch sizes of all operator products
+        self._update_op_prod_batch_sizes: list[bool] = []  # keep track of whether to update the batch sizes of all operator products
         self.batch_size: int = 1
         self.dtype: jnp.dtype | None = None
 
@@ -86,7 +88,8 @@ class OperatorTerm:
             self.conjs,
             self.duals,
             self.batch_size,
-            self.batch_sizes,
+            self._op_prod_batch_sizes,
+            self._update_op_prod_batch_sizes,
             self.dtype,
             self._op_prod_types,
             self._ptr,
@@ -115,7 +118,8 @@ class OperatorTerm:
             inst.conjs,
             inst.duals,
             inst.batch_size,
-            inst.batch_sizes,
+            inst._op_prod_batch_sizes,
+            inst._update_op_prod_batch_sizes,
             inst.dtype,
             inst._op_prod_types,
             inst._ptr,
@@ -138,11 +142,11 @@ class OperatorTerm:
         """
         in_axes_op_prods = [tuple(op.in_axes for op in op_prod) for op_prod in self.op_prods]
         in_axes_coeffs = []
-        for coeff in self.coeffs:
-            if is_vmap_traced(coeff) or len(coeff) > 1:
-                in_axes_coeffs.append(0)
+        for i in range(len(self.coeffs)):
+            if len(self.coeffs[i]) > 1:
+                in_axes_coeffs.append(0) # XXX
             else:
-                in_axes_coeffs.append(None)
+                in_axes_coeffs.append(None) # XXX
 
         _, aux_data = self.tree_flatten()
         return type(self).tree_unflatten(aux_data, (in_axes_op_prods, in_axes_coeffs))
@@ -161,7 +165,8 @@ class OperatorTerm:
         op_term.conjs = self.conjs.copy()
         op_term.duals = self.duals.copy()
         op_term.batch_size = self.batch_size
-        op_term.batch_sizes = self.batch_sizes.copy()
+        op_term._op_prod_batch_sizes = self._op_prod_batch_sizes.copy()
+        op_term._update_op_prod_batch_sizes = self._update_op_prod_batch_sizes.copy()
         op_term.dtype = self.dtype
         op_term._op_prod_types = self._op_prod_types.copy()
         op_term._ptr = self._ptr
@@ -218,12 +223,12 @@ class OperatorTerm:
                 raise ValueError("All basic operators in an operator product must have batch size 1 or N.")
 
         # Possibly update the batch size of this operator term and check consistency.
-        batch_size = max(op_prod_batch_size, len(coeff))
-        if self.batch_size == 1:
-            self.batch_size = batch_size
-        else:
-            if batch_size not in (1, self.batch_size):
-                raise ValueError("Batch size in this operator product does not match batch size of this operator term.")
+        # batch_size = max(op_prod_batch_size, len(coeff))
+        # if self.batch_size == 1:
+        #     self.batch_size = batch_size
+        # else:
+        #     if batch_size not in (1, self.batch_size):
+        #         raise ValueError("Batch size in this operator product does not match batch size of this operator term.")
 
     def append(self,
                op_prod: Sequence[ElementaryOperator | MatrixOperator],
@@ -335,7 +340,14 @@ class OperatorTerm:
         self.coeffs.append(coeff)
 
         # Set batch size.
-        self.batch_sizes.append(len(coeff))
+        # bs = get_batch_size(coeff)
+        self._op_prod_batch_sizes.append(len(coeff))
+
+        from ..utils import is_vmap_traced
+        if is_vmap_traced(coeff):
+            self._update_op_prod_batch_sizes.append(True)
+        else:
+            self._update_op_prod_batch_sizes.append(False)
 
         # Attributes for handling gradients. None is appended here to preserve length, which is then
         # updated in the _create method.
@@ -355,7 +367,7 @@ class OperatorTerm:
         """
         return self.op_prods[index]
 
-    def _create(self, handle):
+    def _create(self, handle, batch_size: int = 1):
         """
         Create opaque handle to the operator term.
         """
@@ -364,7 +376,7 @@ class OperatorTerm:
         # When JAX flattens and unflattens the PyTrees, it creates new Python objects.
         for op_prod in self.op_prods:
             for elem_op in op_prod:
-                elem_op._create(handle)
+                elem_op._create(handle, batch_size)
 
         # Create the current operator term.
         if self._ptr is None:
@@ -376,24 +388,26 @@ class OperatorTerm:
                 # Detect if the coefficient requires gradient and assign callback, gradient callback,
                 # temporary coefficient pointer and object.
                 self._coeff_requires_grads[i] = detect_ad_traced_object(self.coeffs[i])
-                if not is_vmap_traced(self.coeffs[i]) and len(self.coeffs[i]) == 1:  # non-batched coefficient
+                coeff_shape = get_original_shape(self.coeffs[i])
+                coeff_dtype = self.coeffs[i].dtype
+
+                if self._update_op_prod_batch_sizes[i]:
+                    self._op_prod_batch_sizes[i] = batch_size
+
+                if self._op_prod_batch_sizes[i] == 1:  # non-batched coefficient
 
                     # Traced scalars need to be passed through an intermediate memory slot.
-                    self._coeff_callbacks[i] = get_scalar_assignment_callback(self.coeffs[i])
+                    self._coeff_callbacks[i] = get_scalar_assignment_callback(coeff_dtype)
                     self._coeff_ptrs[i] = self._coeff_callbacks[i].callback.coeff.data.ptr
 
                     # If gradient is computed on the coefficient, assign gradient callback and pointer.
+                    # The gradient buffer is sized to batch_size so cudensitymat can write one value
+                    # per batch element regardless of whether the coefficient itself is batched.
                     if self._coeff_requires_grads[i]:
-                        self._coeff_grad_callbacks[i] = get_scalar_gradient_attachment_callback(self.coeffs[i])
+                        self._coeff_grad_callbacks[i] = get_scalar_gradient_attachment_callback((batch_size,), coeff_dtype)
                         self._coeff_grad_ptrs[i] = self._coeff_grad_callbacks[i].callback.scalar_grad.data.ptr
 
                 else:  # batched coefficients
-                    if is_vmap_traced(self.coeffs[i]):
-                        coeff_shape = self.coeffs[i].val.shape
-                        coeff_dtype = self.coeffs[i].val.dtype
-                    else:
-                        coeff_shape = self.coeffs[i].shape
-                        coeff_dtype = self.coeffs[i].dtype
                     static_coeff_buf = cp.ones(coeff_shape, dtype=coeff_dtype)
                     self._coeff_ptrs[i] = static_coeff_buf.data.ptr
                     self._coeff_ptr_objs[i] = static_coeff_buf
@@ -403,11 +417,11 @@ class OperatorTerm:
                     self._total_coeffs_ptrs[i], self._total_coeffs_ptr_objs[i] = get_random_odd_pointer_and_object()
 
                     if self._coeff_requires_grads[i]:
-                        self._coeff_grad_callbacks[i] = get_scalar_gradient_attachment_callback(self.coeffs[i])
+                        self._coeff_grad_callbacks[i] = get_scalar_gradient_attachment_callback((self._op_prod_batch_sizes[i],), coeff_dtype)
                         self._coeff_grad_ptrs[i] = self._coeff_grad_callbacks[i].callback.scalar_grad.data.ptr
 
                 if self._op_prod_types[i] is ElementaryOperator:
-                    if self.batch_sizes[i] == 1:
+                    if self._op_prod_batch_sizes[i] == 1:
                         cudm.operator_term_append_elementary_product(
                             handle,
                             self._ptr,
@@ -427,14 +441,14 @@ class OperatorTerm:
                             [elem_op._ptr for elem_op in self.op_prods[i]],
                             self.modes[i],
                             self.duals[i],
-                            self.batch_sizes[i],
+                            self._op_prod_batch_sizes[i],
                             self._coeff_ptrs[i],
                             self._total_coeffs_ptrs[i],
                             self._coeff_callbacks[i],
                             self._coeff_grad_callbacks[i],
                         )
                 else:  # MatrixOperator
-                    if self.batch_sizes[i] == 1:
+                    if self._op_prod_batch_sizes[i] == 1:
                         cudm.operator_term_append_matrix_product(
                             handle,
                             self._ptr,
@@ -454,7 +468,7 @@ class OperatorTerm:
                             [mat_op._ptr for mat_op in self.op_prods[i]],
                             self.conjs[i],
                             self.duals[i],
-                            self.batch_sizes[i],
+                            self._op_prod_batch_sizes[i],
                             self._coeff_ptrs[i],
                             self._total_coeffs_ptrs[i],
                             self._coeff_callbacks[i],

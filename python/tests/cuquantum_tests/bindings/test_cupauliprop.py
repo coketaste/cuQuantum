@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+import contextlib
 import functools
 
 import pytest
@@ -111,6 +112,158 @@ def manage_resource(name):
                         delattr(self, name)
         return test_func
     return decorator
+
+
+def _alloc_and_attach_workspace(handle, workspace):
+    sz = int(cupp.workspace_get_memory_size(
+        handle, workspace,
+        cupp.Memspace.DEVICE,
+        cupp.WorkspaceKind.WORKSPACE_SCRATCH))
+    d_mem = cp.cuda.alloc(sz)
+    cupp.workspace_set_memory(
+        handle, workspace,
+        cupp.Memspace.DEVICE,
+        cupp.WorkspaceKind.WORKSPACE_SCRATCH,
+        d_mem.ptr, sz)
+    
+    # calle rmust retain d_mem reference to defer de-alloc
+    return d_mem
+
+
+def _alloc_pauli_expansion_pair(num_qubits, num_terms, coef_dtype):
+    npack = cupp.get_num_packed_integers(num_qubits)
+    xz_b = num_terms * 2 * npack * np.dtype(np.uint64).itemsize
+    coef_b = num_terms * np.dtype(coef_dtype).itemsize
+    return cp.cuda.alloc(xz_b), cp.cuda.alloc(coef_b), xz_b, coef_b
+
+
+@contextlib.contextmanager
+def _sorted_deduplicated_view(
+    handle,
+    workspace,
+    view_in,
+    *,
+    num_qubits,
+    num_terms,
+    data_type_int,
+    coef_dtype,
+    max_workspace_bytes,
+    stream_ptr,
+):
+    """Sort ``view_in`` then deduplicate; yield a contiguous view on the deduped expansion."""
+
+    sx, sc, xz_b, cf_b = _alloc_pauli_expansion_pair(num_qubits, num_terms, coef_dtype)
+    dx, dc, _, _ = _alloc_pauli_expansion_pair(num_qubits, num_terms, coef_dtype)
+    sorted_exp = sorted_view = dedup_exp = dedup_view = None
+    try:
+        cupp.pauli_expansion_view_prepare_sort(
+            handle, view_in,
+            cupp.SortOrder.LITTLE_ENDIAN_BITWISE,
+            max_workspace_bytes, workspace)
+
+        # must retain buffer1 to avoid premature workspace dealloc
+        buffer1 = _alloc_and_attach_workspace(handle, workspace)
+
+        sorted_exp = cupp.create_pauli_expansion(
+            handle, num_qubits, sx.ptr, xz_b, sc.ptr, cf_b,
+            data_type_int, num_terms, 0, 1)
+        cupp.pauli_expansion_view_execute_sort(
+            handle, view_in, sorted_exp,
+            cupp.SortOrder.LITTLE_ENDIAN_BITWISE,
+            workspace, stream_ptr)
+        sorted_view = cupp.pauli_expansion_get_contiguous_range(
+            handle, sorted_exp, 0, num_terms)
+
+        cupp.pauli_expansion_view_prepare_deduplication(
+            handle, sorted_view, int(cupp.SortOrder.NONE),
+            max_workspace_bytes, workspace)
+
+        # must retain buffer2 to avoid premature workspace dealloc
+        buffer2 = _alloc_and_attach_workspace(handle, workspace)
+
+        dedup_exp = cupp.create_pauli_expansion(
+            handle, num_qubits, dx.ptr, xz_b, dc.ptr, cf_b,
+            data_type_int, num_terms, 0, 0)
+        cupp.pauli_expansion_view_execute_deduplication(
+            handle, sorted_view, dedup_exp,
+            int(cupp.SortOrder.NONE), workspace, stream_ptr)
+
+        nt = cupp.pauli_expansion_get_num_terms(handle, dedup_exp)
+        dedup_view = cupp.pauli_expansion_get_contiguous_range(
+            handle, dedup_exp, 0, nt)
+        cp.cuda.get_current_stream().synchronize()
+
+        yield dedup_view
+    finally:
+        if dedup_view is not None:
+            cupp.destroy_pauli_expansion_view(dedup_view)
+        if dedup_exp is not None:
+            cupp.destroy_pauli_expansion(dedup_exp)
+        if sorted_view is not None:
+            cupp.destroy_pauli_expansion_view(sorted_view)
+        if sorted_exp is not None:
+            cupp.destroy_pauli_expansion(sorted_exp)
+
+
+@contextlib.contextmanager
+def _fused_workspaces(handle):
+    """Yield three distinct (bufferless) workspace descriptors for the fused prepare."""
+    ws = [cupp.create_workspace_descriptor(handle) for _ in range(3)]
+    try:
+        yield ws
+    finally:
+        for w in ws:
+            cupp.destroy_workspace_descriptor(w)
+
+
+@contextlib.contextmanager
+def _fused_io_expansions(handle, num_qubits, num_terms, coef_dtype, out_capacity=None):
+    """Yield ``(view_in, expansion_in, expansion_out)`` for fused-application tests."""
+    if out_capacity is None:
+        out_capacity = num_terms
+    data_type = NAME_TO_DATA_TYPE[np.dtype(coef_dtype).name]
+    dxi, dci, xz_in, cf_in = _alloc_pauli_expansion_pair(num_qubits, num_terms, coef_dtype)
+    dxo, dco, xz_out, cf_out = _alloc_pauli_expansion_pair(num_qubits, max(out_capacity, 1), coef_dtype)
+    exp_in = exp_out = view_in = None
+    try:
+        exp_in = cupp.create_pauli_expansion(
+            handle, num_qubits, dxi.ptr, xz_in, dci.ptr, cf_in, data_type, num_terms, 0, 1)
+        exp_out = cupp.create_pauli_expansion(
+            handle, num_qubits, dxo.ptr, xz_out, dco.ptr, cf_out, data_type, 0, 0, 1)
+        view_in = cupp.pauli_expansion_get_contiguous_range(handle, exp_in, 0, num_terms)
+        yield view_in, exp_in, exp_out
+    finally:
+        if view_in is not None:
+            cupp.destroy_pauli_expansion_view(view_in)
+        if exp_out is not None:
+            cupp.destroy_pauli_expansion(exp_out)
+        if exp_in is not None:
+            cupp.destroy_pauli_expansion(exp_in)
+        # Retain device buffers until the expansions are destroyed.
+        del dxi, dci, dxo, dco
+
+
+@contextlib.contextmanager
+def _operators(handle, specs):
+    """Create operators from compact specs, destroying them on exit.
+
+    Each spec is either ``("clifford", gate_kind, qubits)`` or
+    ``("rotation", angle, qubits, paulis)``.
+    """
+    ops = []
+    try:
+        for spec in specs:
+            if spec[0] == "clifford":
+                _, kind, qubits = spec
+                ops.append(cupp.create_clifford_gate_operator(handle, kind, qubits))
+            else:
+                _, angle, qubits, paulis = spec
+                ops.append(cupp.create_pauli_rotation_gate_operator(
+                    handle, angle, len(paulis), qubits, paulis))
+        yield ops
+    finally:
+        for op in ops:
+            cupp.destroy_operator(op)
 
 
 class TestLibHelper:
@@ -328,12 +481,23 @@ class TestPauliExpansionViewOperations:
     @manage_resource('pauli_expansion_view')
     @manage_resource('workspace')
     def test_view_prepare_trace_with_expansion_view_backward_diff(self):
+        # C prepare requires expansions that report deduplicated Pauli strings; fixture does not.
         max_workspace = 1 << 30
-        xz_size_1, coef_size_1, xz_size_2, coef_size_2 = (
-            cupp.pauli_expansion_view_prepare_trace_with_expansion_view_backward_diff(
-                self.handle, self.pauli_expansion_view, self.pauli_expansion_view,
-                max_workspace, self.workspace)
-        )
+        dtype = self.dtype
+        with _sorted_deduplicated_view(
+            self.handle,
+            self.workspace,
+            self.pauli_expansion_view,
+            num_qubits=self.num_qubits,
+            num_terms=self.num_terms,
+            data_type_int=NAME_TO_DATA_TYPE[np.dtype(dtype).name],
+            coef_dtype=dtype,
+            max_workspace_bytes=max_workspace,
+            stream_ptr=cp.cuda.get_current_stream().ptr,
+        ) as dv:
+            xz_size_1, coef_size_1, xz_size_2, coef_size_2 = (
+                cupp.pauli_expansion_view_prepare_trace_with_expansion_view_backward_diff(
+                    self.handle, dv, dv, max_workspace, self.workspace))
 
         assert isinstance(xz_size_1, (int, np.integer))
         assert isinstance(coef_size_1, (int, np.integer))
@@ -536,20 +700,25 @@ class TestOperatorApplicationWorkflow:
     @manage_resource('handle')
     @manage_resource('workspace')
     def test_operator_application_workflow(self):
-        # Create input expansion
-        num_packed_ints = cupp.get_num_packed_integers(self.num_qubits)
-        xz_bits_size = self.num_terms * 2 * num_packed_ints * 8
-        coef_size = self.num_terms * np.dtype(self.dtype).itemsize
         
-        d_xz_in = cp.cuda.alloc(xz_bits_size)
-        d_coef_in = cp.cuda.alloc(coef_size)
-        
+        # Establish buffer sizes
+        data_type = NAME_TO_DATA_TYPE[np.dtype(self.dtype).name]
+        d_xz_in, d_coef_in, xz_bits_size, coef_size = _alloc_pauli_expansion_pair(
+            self.num_qubits, self.num_terms, self.dtype)
+        d_xz_out, d_coef_out, _, _ = _alloc_pauli_expansion_pair(
+            self.num_qubits, self.num_terms, self.dtype)
+
+        # Create input and output expansions
         expansion_in = cupp.create_pauli_expansion(
             self.handle, self.num_qubits,
             d_xz_in.ptr, xz_bits_size,
             d_coef_in.ptr, coef_size,
-            NAME_TO_DATA_TYPE[np.dtype(self.dtype).name],
-            self.num_terms, 0, 1)
+            data_type, self.num_terms, 0, 1)
+        expansion_out = cupp.create_pauli_expansion(
+            self.handle, self.num_qubits,
+            d_xz_out.ptr, xz_bits_size,
+            d_coef_out.ptr, coef_size,
+            data_type, 0, 0, 1)
         
         try:
             # Create view
@@ -576,12 +745,22 @@ class TestOperatorApplicationWorkflow:
                     assert isinstance(coef_out_size, (int, np.integer))
                     assert xz_out_size > 0
                     assert coef_out_size > 0
+                    assert xz_out_size <= xz_bits_size
+                    assert coef_out_size <= coef_size
+                    
+                    # must retain buffer to avoid premature workspace dealloc
+                    buffer = _alloc_and_attach_workspace(self.handle, self.workspace)
+
+                    cupp.pauli_expansion_view_compute_operator_application(
+                        self.handle, view_in, expansion_out, oper,
+                        0, 0, 1, 0, None, self.workspace, 0)
                     
                 finally:
                     cupp.destroy_operator(oper)
             finally:
                 cupp.destroy_pauli_expansion_view(view_in)
         finally:
+            cupp.destroy_pauli_expansion(expansion_out)
             cupp.destroy_pauli_expansion(expansion_in)
 
 
@@ -625,20 +804,25 @@ class TestOperatorApplicationWithTruncation:
     @manage_resource('handle')
     @manage_resource('workspace')
     def test_operator_application_with_truncation(self):
-        # Create input expansion
-        num_packed_ints = cupp.get_num_packed_integers(self.num_qubits)
-        xz_bits_size = self.num_terms * 2 * num_packed_ints * 8
-        coef_size = self.num_terms * np.dtype(self.dtype).itemsize
+
+        # Establish buffer sizes
+        data_type = NAME_TO_DATA_TYPE[np.dtype(self.dtype).name]
+        d_xz_in, d_coef_in, xz_bits_size, coef_size = _alloc_pauli_expansion_pair(
+            self.num_qubits, self.num_terms, self.dtype)
+        d_xz_out, d_coef_out, _, _ = _alloc_pauli_expansion_pair(
+            self.num_qubits, self.num_terms, self.dtype)
         
-        d_xz_in = cp.cuda.alloc(xz_bits_size)
-        d_coef_in = cp.cuda.alloc(coef_size)
-        
+        # Create input and output expansions
         expansion_in = cupp.create_pauli_expansion(
             self.handle, self.num_qubits,
             d_xz_in.ptr, xz_bits_size,
             d_coef_in.ptr, coef_size,
-            NAME_TO_DATA_TYPE[np.dtype(self.dtype).name],
-            self.num_terms, 0, 1)
+            data_type, self.num_terms, 0, 1)
+        expansion_out = cupp.create_pauli_expansion(
+            self.handle, self.num_qubits,
+            d_xz_out.ptr, xz_bits_size,
+            d_coef_out.ptr, coef_size,
+            data_type, 0, 0, 1)
         
         try:
             # Create view
@@ -684,13 +868,166 @@ class TestOperatorApplicationWithTruncation:
                     assert isinstance(coef_out_size, (int, np.integer))
                     assert xz_out_size > 0
                     assert coef_out_size > 0
+                    assert xz_out_size <= xz_bits_size
+                    assert coef_out_size <= coef_size
+                    
+                    # must retain buffer1 to avoid premature workspace dealloc
+                    buffer = _alloc_and_attach_workspace(self.handle, self.workspace)
+                    
+                    cupp.pauli_expansion_view_compute_operator_application(
+                        self.handle, view_in, expansion_out, oper,
+                        0, 0, 1, 2, strategies, self.workspace, 0)
                     
                 finally:
                     cupp.destroy_operator(oper)
             finally:
                 cupp.destroy_pauli_expansion_view(view_in)
         finally:
+            cupp.destroy_pauli_expansion(expansion_out)
             cupp.destroy_pauli_expansion(expansion_in)
+
+
+@testing.parameterize(*testing.product({
+    'dtype': (np.complex64, np.complex128),
+}))
+class TestFusedOperatorApplication:
+    """Argument-passing and negative tests for the fused multi-operator API.
+
+    Correctness coverage is established by the pythonic-API tests; here we only verify that
+    the Python arguments reach the C layer and that documented invalid inputs raise.
+    """
+
+    num_qubits = 4
+    num_terms = 5
+
+    # Two same-kind (Clifford) operators acting within the 4-qubit register.
+    _CLIFFORD_SPECS = [
+        ("clifford", cupp.CliffordGateKind.CLIFFORD_GATE_H, [0]),
+        ("clifford", cupp.CliffordGateKind.CLIFFORD_GATE_CX, [0, 1]),
+    ]
+
+    @manage_resource('handle')
+    def test_prepare_fused_application(self):
+        with _fused_io_expansions(self.handle, self.num_qubits, self.num_terms, self.dtype) as (view_in, _, _), \
+             _fused_workspaces(self.handle) as (ws_min, ws_max, ws_avg), \
+             _operators(self.handle, self._CLIFFORD_SPECS) as ops:
+            min_cap, avg_cap, max_cap = (
+                cupp.pauli_expansion_view_prepare_operator_fused_application(
+                    self.handle, view_in, len(ops), ops, [0] * len(ops),
+                    0, None, 1 << 30, ws_min, ws_avg, ws_max))
+
+            # Each tier is a valid capacity; overflowed quantities would come back as -1.
+            for cap in (min_cap, avg_cap, max_cap):
+                assert isinstance(cap, (int, np.integer))
+                assert cap >= 0
+
+            # Each sizing tier's workspace descriptor should be independently queryable.
+            for ws in (ws_min, ws_max, ws_avg):
+                size = cupp.workspace_get_memory_size(self.handle, ws, cupp.Memspace.DEVICE,
+                                                      cupp.WorkspaceKind.WORKSPACE_SCRATCH)
+                assert isinstance(size, (int, np.integer))
+
+    @manage_resource('handle')
+    def test_compute_fused_application(self):
+        with _fused_io_expansions(self.handle, self.num_qubits, self.num_terms, self.dtype) as (view_in, _, exp_out), \
+             _fused_workspaces(self.handle) as (ws_min, ws_max, ws_avg), \
+             _operators(self.handle, self._CLIFFORD_SPECS) as ops:
+            cupp.pauli_expansion_view_prepare_operator_fused_application(
+                self.handle, view_in, len(ops), ops, [0] * len(ops),
+                0, None, 1 << 30, ws_min, ws_avg, ws_max)
+
+            # Attach a buffer sized to the failsafe (max) tier, then compute. A successful
+            # fused application returns ``None``; any on-the-fly failure raises.
+            buffer = _alloc_and_attach_workspace(self.handle, ws_max)  # noqa: F841 (retain alloc)
+            assert cupp.pauli_expansion_view_compute_operator_fused_application(
+                self.handle, view_in, exp_out, len(ops), ops, [0] * len(ops),
+                0, None, ws_max, 0) is None
+
+    @manage_resource('handle')
+    def test_prepare_fused_zero_operators_raises(self):
+        with _fused_io_expansions(self.handle, self.num_qubits, self.num_terms, self.dtype) as (view_in, _, _), \
+             _fused_workspaces(self.handle) as (ws_min, ws_max, ws_avg):
+            with pytest.raises(cupp.cuPauliPropError):
+                cupp.pauli_expansion_view_prepare_operator_fused_application(
+                    self.handle, view_in, 0, [], [], 0, None, 1 << 30, ws_min, ws_avg, ws_max)
+
+    @manage_resource('handle')
+    def test_prepare_fused_inconsistent_kinds_raises(self):
+        specs = [
+            ("clifford", cupp.CliffordGateKind.CLIFFORD_GATE_H, [0]),
+            ("rotation", np.pi / 4, [0], [cupp.PauliKind.PAULI_X]),
+        ]
+        with _fused_io_expansions(self.handle, self.num_qubits, self.num_terms, self.dtype) as (view_in, _, _), \
+             _fused_workspaces(self.handle) as (ws_min, ws_max, ws_avg), \
+             _operators(self.handle, specs) as ops:
+            with pytest.raises(cupp.cuPauliPropError):
+                cupp.pauli_expansion_view_prepare_operator_fused_application(
+                    self.handle, view_in, len(ops), ops, [0] * len(ops),
+                    0, None, 1 << 30, ws_min, ws_avg, ws_max)
+
+    @manage_resource('handle')
+    def test_prepare_fused_unsupported_kind_raises(self):
+        # A consistent sequence of (unsupported) Pauli rotation gates: rejected as NotSupported.
+        specs = [
+            ("rotation", np.pi / 4, [0], [cupp.PauliKind.PAULI_X]),
+            ("rotation", np.pi / 4, [1], [cupp.PauliKind.PAULI_X]),
+        ]
+        with _fused_io_expansions(self.handle, self.num_qubits, self.num_terms, self.dtype) as (view_in, _, _), \
+             _fused_workspaces(self.handle) as (ws_min, ws_max, ws_avg), \
+             _operators(self.handle, specs) as ops:
+            with pytest.raises(cupp.cuPauliPropError):
+                cupp.pauli_expansion_view_prepare_operator_fused_application(
+                    self.handle, view_in, len(ops), ops, [0] * len(ops),
+                    0, None, 1 << 30, ws_min, ws_avg, ws_max)
+
+    @manage_resource('handle')
+    def test_prepare_fused_non_distinct_workspaces_raises(self):
+        with _fused_io_expansions(self.handle, self.num_qubits, self.num_terms, self.dtype) as (view_in, _, _), \
+             _fused_workspaces(self.handle) as (ws_min, _ws_max, _ws_avg), \
+             _operators(self.handle, self._CLIFFORD_SPECS) as ops:
+            # Passing the same descriptor for all three sizing tiers is rejected.
+            with pytest.raises(cupp.cuPauliPropError):
+                cupp.pauli_expansion_view_prepare_operator_fused_application(
+                    self.handle, view_in, len(ops), ops, [0] * len(ops),
+                    0, None, 1 << 30, ws_min, ws_min, ws_min)
+
+    @manage_resource('handle')
+    def test_compute_fused_inconsistent_kinds_raises(self):
+        specs = [
+            ("clifford", cupp.CliffordGateKind.CLIFFORD_GATE_H, [0]),
+            ("rotation", np.pi / 4, [0], [cupp.PauliKind.PAULI_X]),
+        ]
+        with _fused_io_expansions(self.handle, self.num_qubits, self.num_terms, self.dtype) as (view_in, _, exp_out), \
+             _operators(self.handle, specs) as ops:
+            d_ws = cp.cuda.alloc(1 << 20)
+            ws = cupp.create_workspace_descriptor(self.handle)
+            cupp.workspace_set_memory(self.handle, ws, cupp.Memspace.DEVICE,
+                                      cupp.WorkspaceKind.WORKSPACE_SCRATCH, d_ws.ptr, 1 << 20)
+            try:
+                with pytest.raises(cupp.cuPauliPropError):
+                    cupp.pauli_expansion_view_compute_operator_fused_application(
+                        self.handle, view_in, exp_out, len(ops), ops, [0] * len(ops),
+                        0, None, ws, 0)
+            finally:
+                cupp.destroy_workspace_descriptor(ws)
+
+    @manage_resource('handle')
+    def test_compute_fused_insufficient_out_capacity_raises(self):
+        # Output expansion capacity (1) is smaller than the input view's term count.
+        with _fused_io_expansions(self.handle, self.num_qubits, self.num_terms, self.dtype,
+                                  out_capacity=1) as (view_in, _, exp_out), \
+             _operators(self.handle, self._CLIFFORD_SPECS) as ops:
+            d_ws = cp.cuda.alloc(1 << 20)
+            ws = cupp.create_workspace_descriptor(self.handle)
+            cupp.workspace_set_memory(self.handle, ws, cupp.Memspace.DEVICE,
+                                      cupp.WorkspaceKind.WORKSPACE_SCRATCH, d_ws.ptr, 1 << 20)
+            try:
+                with pytest.raises(cupp.cuPauliPropError):
+                    cupp.pauli_expansion_view_compute_operator_fused_application(
+                        self.handle, view_in, exp_out, len(ops), ops, [0] * len(ops),
+                        0, None, ws, 0)
+            finally:
+                cupp.destroy_workspace_descriptor(ws)
 
 
 class TestEnums:
@@ -721,6 +1058,12 @@ class TestEnums:
     def test_truncation_strategy_kind_enum(self):
         assert hasattr(cupp.TruncationStrategyKind, 'TRUNCATION_STRATEGY_COEFFICIENT_BASED')
         assert hasattr(cupp.TruncationStrategyKind, 'TRUNCATION_STRATEGY_PAULI_WEIGHT_BASED')
+    
+    def test_fused_failure_status_codes(self):
+        assert hasattr(cupp.Status, 'MANDATORY_MEMORY_OVERFLOWED')
+        assert hasattr(cupp.Status, 'INSUFFICIENT_WORKSPACE')
+        assert hasattr(cupp.Status, 'INSUFFICIENT_OUT_EXPANSION')
+        assert hasattr(cupp.Status, 'INSUFFICIENT_DEVICE_PROPERTY')
     
     def test_sort_order_enum(self):
         assert hasattr(cupp.SortOrder, 'NONE')

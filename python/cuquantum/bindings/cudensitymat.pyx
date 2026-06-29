@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated with version 26.03.1, generator version 0.3.1.dev1508+g784d12dd6.d20260402. Do not modify it directly.
+# This code was automatically generated with version 26.06.0, generator version 0.3.1.dev1663+gc4ecc6582.d20260605. Do not modify it directly.
 
 cimport cython
 cimport cpython
@@ -158,6 +158,15 @@ class TimePropagationScopeKind(_IntEnum):
     """
     PROPAGATION_SCOPE_SPLIT = CUDENSITYMAT_PROPAGATION_SCOPE_SPLIT
 
+class EigenDecompositionScopeKind(_IntEnum):
+    """
+    Eigensolver scope (full vs split decomposition).
+
+    See `cudensitymatEigenDecompositionScopeKind_t`.
+    """
+    EIGEN_SCOPE_FULL = CUDENSITYMAT_EIGEN_SCOPE_FULL
+    EIGEN_SCOPE_SPLIT = CUDENSITYMAT_EIGEN_SCOPE_SPLIT
+
 class TimePropagationScopeSplitKind(_IntEnum):
     """
     Split kind for split-scope propagation.
@@ -166,6 +175,14 @@ class TimePropagationScopeSplitKind(_IntEnum):
     """
     PROPAGATION_SCOPE_SPLIT_TDVP = CUDENSITYMAT_PROPAGATION_SCOPE_SPLIT_TDVP
 
+class EigenDecompositionScopeSplitKind(_IntEnum):
+    """
+    Split kind for split-scope decomposition.
+
+    See `cudensitymatEigenDecompositionScopeSplitKind_t`.
+    """
+    EIGEN_SCOPE_SPLIT_DMRG = CUDENSITYMAT_EIGEN_SCOPE_SPLIT_DMRG
+
 class TimePropagationApproachKind(_IntEnum):
     """
     Time propagation approach (time integration / exponentiation method).
@@ -173,6 +190,14 @@ class TimePropagationApproachKind(_IntEnum):
     See `cudensitymatTimePropagationApproachKind_t`.
     """
     PROPAGATION_APPROACH_KRYLOV = CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV
+
+class EigenDecompositionApproachKind(_IntEnum):
+    """
+    Eigensolver approach (iterative solver methods).
+
+    See `cudensitymatEigenDecompositionApproachKind_t`.
+    """
+    EIGEN_APPROACH_KRYLOV = CUDENSITYMAT_EIGEN_APPROACH_KRYLOV
 
 class TimePropagationAttribute(_IntEnum):
     """
@@ -184,9 +209,19 @@ class TimePropagationAttribute(_IntEnum):
     PROPAGATION_SPLIT_SCOPE_TDVP_CONFIG = CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_CONFIG
     PROPAGATION_APPROACH_KRYLOV_CONFIG = CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_CONFIG
 
+class EigenDecompositionAttribute(_IntEnum):
+    """
+    Eigensolver configuration attributes.
+
+    See `cudensitymatEigenDecompositionAttribute_t`.
+    """
+    EIGEN_SPLIT_SCOPE_KIND = CUDENSITYMAT_EIGEN_SPLIT_SCOPE_KIND
+    EIGEN_SPLIT_SCOPE_DMRG_CONFIG = CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_CONFIG
+    EIGEN_APPROACH_KRYLOV_CONFIG = CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_CONFIG
+
 class TimePropagationApproachKrylovConfigAttribute(_IntEnum):
     """
-    Configuration attributes for Krylov-subspace method.
+    Configuration attributes for Krylov-subspace time propagation method.
 
     See `cudensitymatTimePropagationApproachKrylovConfigAttribute_t`.
     """
@@ -195,6 +230,16 @@ class TimePropagationApproachKrylovConfigAttribute(_IntEnum):
     PROPAGATION_APPROACH_KRYLOV_MIN_BETA = CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_MIN_BETA
     PROPAGATION_APPROACH_KRYLOV_ADAPTIVE_STEP_SIZE = CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_ADAPTIVE_STEP_SIZE
 
+class EigenDecompositionApproachKrylovConfigAttribute(_IntEnum):
+    """
+    Configuration attributes for Krylov-subspace eigensolver method.
+
+    See `cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t`.
+    """
+    EIGEN_APPROACH_KRYLOV_MAX_DIM = CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MAX_DIM
+    EIGEN_APPROACH_KRYLOV_MAX_RESTARTS = CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MAX_RESTARTS
+    EIGEN_APPROACH_KRYLOV_MIN_BLOCK_SIZE = CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MIN_BLOCK_SIZE
+
 class TimePropagationScopeSplitTDVPConfigAttribute(_IntEnum):
     """
     Configuration attributes for TDVP time propagation method.
@@ -202,6 +247,103 @@ class TimePropagationScopeSplitTDVPConfigAttribute(_IntEnum):
     See `cudensitymatTimePropagationScopeSplitTDVPConfigAttribute_t`.
     """
     PROPAGATION_SPLIT_SCOPE_TDVP_ORDER = CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_ORDER
+    PROPAGATION_SPLIT_SCOPE_TDVP_NUM_SITES = CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_NUM_SITES
+    PROPAGATION_SPLIT_SCOPE_TDVP_SVD_CONFIG = CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_SVD_CONFIG
+
+class EigenDecompositionScopeSplitDMRGConfigAttribute(_IntEnum):
+    """
+    Configuration attributes for DMRG eigensolver method.
+
+    See `cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t`.
+    """
+    EIGEN_SPLIT_SCOPE_DMRG_NUM_SITES = CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_NUM_SITES
+    EIGEN_SPLIT_SCOPE_DMRG_SVD_CONFIG = CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_SVD_CONFIG
+    EIGEN_SPLIT_SCOPE_DMRG_MAX_SWEEPS = CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_MAX_SWEEPS
+    EIGEN_SPLIT_SCOPE_DMRG_ENERGY_TOLERANCE = CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_ENERGY_TOLERANCE
+
+class StateFittingScopeKind(_IntEnum):
+    """
+    State-fitting scope (full vs split fitting).
+
+    See `cudensitymatStateFittingScopeKind_t`.
+    """
+    FITTING_SCOPE_FULL = CUDENSITYMAT_FITTING_SCOPE_FULL
+    FITTING_SCOPE_SPLIT = CUDENSITYMAT_FITTING_SCOPE_SPLIT
+
+class StateFittingScopeSplitKind(_IntEnum):
+    """
+    Split kind for split-scope state fitting.
+
+    See `cudensitymatStateFittingScopeSplitKind_t`.
+    """
+    FITTING_SCOPE_SPLIT_ALS = CUDENSITYMAT_FITTING_SCOPE_SPLIT_ALS
+
+class StateFittingApproachKind(_IntEnum):
+    """
+    State-fitting approach.
+
+    See `cudensitymatStateFittingApproachKind_t`.
+    """
+    FITTING_APPROACH_LINSOLVE = CUDENSITYMAT_FITTING_APPROACH_LINSOLVE
+
+class StateFittingAttribute(_IntEnum):
+    """
+    State-fitting configuration attributes.
+
+    See `cudensitymatStateFittingAttribute_t`.
+    """
+    FITTING_SPLIT_SCOPE_KIND = CUDENSITYMAT_FITTING_SPLIT_SCOPE_KIND
+    FITTING_SPLIT_SCOPE_ALS_CONFIG = CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_CONFIG
+    FITTING_APPROACH_LINSOLVE_CONFIG = CUDENSITYMAT_FITTING_APPROACH_LINSOLVE_CONFIG
+
+class StateFittingScopeSplitALSConfigAttribute(_IntEnum):
+    """
+    Configuration attributes for the variational ALS split-scope state-
+    fitting configuration.DMRG-style sweep-to-sweep convergence. The cost
+    function used for the relative tolerance is the squared residual norm
+    `C(k) = ||target - stateOut(k)||^2`. Two-site (or multi-site) ALS
+    sweeps re-split the joined site tensor via SVD; the truncation policy
+    is controlled by an attached `cudensitymatSVDConfig_t`.
+
+    See `cudensitymatStateFittingScopeSplitALSConfigAttribute_t`.
+    """
+    FITTING_SPLIT_SCOPE_ALS_NUM_SITES = CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_NUM_SITES
+    FITTING_SPLIT_SCOPE_ALS_SVD_CONFIG = CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_SVD_CONFIG
+    FITTING_SPLIT_SCOPE_ALS_MAX_SWEEPS = CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_MAX_SWEEPS
+    FITTING_SPLIT_SCOPE_ALS_TOLERANCE = CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_TOLERANCE
+
+class StateFittingApproachLinSolveConfigAttribute(_IntEnum):
+    """
+    Configuration attributes for the LinSolve state-fitting
+    approach.Approach-level knobs that control canonical-form (gauge)
+    management during variational state fitting; independent of split-vs-
+    full scope and of the chosen split-kind algorithm.
+
+    See `cudensitymatStateFittingApproachLinSolveConfigAttribute_t`.
+    """
+    FITTING_APPROACH_LINSOLVE_TOLERANCE = CUDENSITYMAT_FITTING_APPROACH_LINSOLVE_TOLERANCE
+
+class SVDConfigAttribute(_IntEnum):
+    """
+    SVD configuration attributes.
+
+    See `cudensitymatSVDConfigAttribute_t`.
+    """
+    ABS_CUTOFF = CUDENSITYMAT_SVD_CONFIG_ABS_CUTOFF
+    REL_CUTOFF = CUDENSITYMAT_SVD_CONFIG_REL_CUTOFF
+    DISCARDED_WEIGHT_CUTOFF = CUDENSITYMAT_SVD_CONFIG_DISCARDED_WEIGHT_CUTOFF
+    MAX_EXTENT = CUDENSITYMAT_SVD_CONFIG_MAX_EXTENT
+
+class EigenDecompositionSpectrumKind(_IntEnum):
+    """
+    Kinds of the operator eigen-spectrum computation.
+
+    See `cudensitymatEigenDecompositionSpectrumKind_t`.
+    """
+    EIGEN_SPECTRUM_LARGEST = CUDENSITYMAT_EIGEN_SPECTRUM_LARGEST
+    EIGEN_SPECTRUM_SMALLEST = CUDENSITYMAT_EIGEN_SPECTRUM_SMALLEST
+    EIGEN_SPECTRUM_LARGEST_REAL = CUDENSITYMAT_EIGEN_SPECTRUM_LARGEST_REAL
+    EIGEN_SPECTRUM_SMALLEST_REAL = CUDENSITYMAT_EIGEN_SPECTRUM_SMALLEST_REAL
 
 class Memspace(_IntEnum):
     """
@@ -428,6 +570,42 @@ cpdef intptr_t create_state_mps(intptr_t handle, int purity, int32_t num_space_m
     return <intptr_t>state
 
 
+cpdef state_mps_set_current_bond_extents(intptr_t handle, intptr_t state, bond_extents):
+    """Records the current (valid) bond extents of a matrix-product-state quantum state.
+
+    Args:
+        handle (intptr_t): Library handle.
+        state (intptr_t): Matrix-product-state quantum state.
+        bond_extents (object): Current (valid) bond extents. The array length equals the number of bonds (number of space modes minus one for open boundary condition). May be ``NULL`` for a single-site state, which has no bonds. It can be:
+
+            - an :class:`int` as the pointer address to the array, or
+            - a Python sequence of ``int64_t``.
+
+
+    .. seealso:: `cudensitymatStateMPSSetCurrentBondExtents`
+    """
+    cdef nullable_unique_ptr[ vector[int64_t] ] _bond_extents_
+    get_resource_ptr[int64_t](_bond_extents_, bond_extents, <int64_t*>NULL)
+    with nogil:
+        __status__ = cudensitymatStateMPSSetCurrentBondExtents(<const Handle>handle, <State>state, <const int64_t*>(_bond_extents_.data()))
+    check_status(__status__)
+
+
+cpdef state_mps_get_current_bond_extents(intptr_t handle, intptr_t state, intptr_t bond_extents):
+    """Retrieves the current (valid) bond extents of a matrix-product-state quantum state.
+
+    Args:
+        handle (intptr_t): Library handle.
+        state (intptr_t): Matrix-product-state quantum state.
+        bond_extents (intptr_t): Output array for the current (valid) bond extents. The array length equals the number of bonds (number of space modes minus one for open boundary condition). May be ``NULL`` for a single-site state, which has no bonds.
+
+    .. seealso:: `cudensitymatStateMPSGetCurrentBondExtents`
+    """
+    with nogil:
+        __status__ = cudensitymatStateMPSGetCurrentBondExtents(<const Handle>handle, <const State>state, <int64_t*>bond_extents)
+    check_status(__status__)
+
+
 cpdef destroy_state(intptr_t state):
     """Destroys the quantum state.
 
@@ -466,13 +644,13 @@ cpdef state_attach_component_storage(intptr_t handle, intptr_t state, int32_t nu
     Args:
         handle (intptr_t): Library handle.
         state (intptr_t): Quantum state (or a batch of quantum states).
-        num_state_components (int32_t): Number of components (tensors) in the quantum state representation (on the current process). The number of components can be retrived by calling the API function ``cudensitymatStateGetNumComponents``.
+        num_state_components (int32_t): Number of components (tensors) in the quantum state representation (on the current process). The number of components can be retrieved by calling the API function ``cudensitymatStateGetNumComponents``.
         component_buffer (object): Pointers to user-owned GPU-accessible storage buffers for all components (tensors) constituting the quantum state representation (on the current process). It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of :class:`int`\s (as pointer addresses).
 
-        component_buffer_size (object): Sizes of the provded storage buffers for all components (tensors) constituting the quantum state representation (on the current process). It can be:
+        component_buffer_size (object): Sizes of the provided storage buffers for all components (tensors) constituting the quantum state representation (on the current process). It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``size_t``.
@@ -1024,7 +1202,7 @@ cpdef operator_term_append_matrix_product(intptr_t handle, intptr_t operator_ter
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of :class:`int`\s (as pointer addresses).
 
-        matrix_conjugation (object): Hermitean conjugation status of each matrix in the matrix operator product (zero means normal, positive integer means conjugate-transposed). For real matrices, hermitean conjugation reduces to a mere matrix transpose since there is no complex conjugation involved. It can be:
+        matrix_conjugation (object): Hermitian conjugation status of each matrix in the matrix operator product (zero means normal, positive integer means conjugate-transposed). For real matrices, hermitean conjugation reduces to a mere matrix transpose since there is no complex conjugation involved. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -1068,7 +1246,7 @@ cpdef operator_term_append_matrix_product_batch(intptr_t handle, intptr_t operat
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of :class:`int`\s (as pointer addresses).
 
-        matrix_conjugation (object): Hermitean conjugation status of each matrix in the matrix operator product (zero means normal, positive integer means conjugate-transposed). For real matrices, hermitean conjugation reduces to a mere matrix transpose since there is no complex conjugation involved. It can be:
+        matrix_conjugation (object): Hermitian conjugation status of each matrix in the matrix operator product (zero means normal, positive integer means conjugate-transposed). For real matrices, hermitean conjugation reduces to a mere matrix transpose since there is no complex conjugation involved. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -1113,7 +1291,7 @@ cpdef operator_term_append_mpo_product(intptr_t handle, intptr_t operator_term, 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of :class:`int`\s (as pointer addresses).
 
-        mpo_conjugation (object): Hermitean conjugation status of each MPO in the MPO product (zero means normal, positive integer means conjugate-transposed). It can be:
+        mpo_conjugation (object): Hermitian conjugation status of each MPO in the MPO product (zero means normal, positive integer means conjugate-transposed). It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -1285,21 +1463,192 @@ cpdef attach_batched_coefficients(intptr_t handle, intptr_t superoperator, int32
     check_status(__status__)
 
 
-cpdef operator_configure_action(intptr_t handle, intptr_t superoperator, intptr_t state_in, intptr_t state_out, intptr_t attribute_value, size_t attribute_size):
-    """Configures the operator action on a quantum state.
+cpdef intptr_t create_state_fitting_scope_split_als_config(intptr_t handle) except? 0:
+    """Creates a variational ALS split-scope state-fitting configuration object with default settings.
 
     Args:
         handle (intptr_t): Library handle.
-        superoperator (intptr_t): Operator.
-        state_in (intptr_t): Representative input quantum state on which the operator is supposed to act. The actual quantum state acted on during computation may be different, but it has to be of the same shape, kind, and factorization structure (topology, bond dimensions, etc).
-        state_out (intptr_t): Representative output quantum state produced by the action of the operator on the input quantum state. The actual quantum state acted on during computation may be different, but it has to be of the same shape, kind, and factorization structure (topology, bond dimensions, etc).
-        attribute_value (intptr_t): Configuration attribute.
-        attribute_size (size_t): Pointer to the configuration attribute value (type-erased).
 
-    .. seealso:: `cudensitymatOperatorConfigureAction`
+    Returns:
+        intptr_t: ALS split-scope state-fitting configuration object.
+
+    .. seealso:: `cudensitymatCreateStateFittingScopeSplitALSConfig`
+    """
+    cdef StateFittingScopeSplitALSConfig config
+    with nogil:
+        __status__ = cudensitymatCreateStateFittingScopeSplitALSConfig(<const Handle>handle, &config)
+    check_status(__status__)
+    return <intptr_t>config
+
+
+cpdef destroy_state_fitting_scope_split_als_config(intptr_t config):
+    """Destroys a variational ALS split-scope state-fitting configuration object.
+
+    Args:
+        config (intptr_t): ALS split-scope state-fitting configuration object.
+
+    .. seealso:: `cudensitymatDestroyStateFittingScopeSplitALSConfig`
     """
     with nogil:
-        __status__ = cudensitymatOperatorConfigureAction(<const Handle>handle, <Operator>superoperator, <const State>state_in, <const State>state_out, <const void*>attribute_value, attribute_size)
+        __status__ = cudensitymatDestroyStateFittingScopeSplitALSConfig(<StateFittingScopeSplitALSConfig>config)
+    check_status(__status__)
+
+
+######################### Python specific utility #########################
+
+cdef dict state_fitting_scope_split_als_config_attribute_sizes = {
+    CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_NUM_SITES: _numpy.int32,
+    CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_SVD_CONFIG: _numpy.intp,
+    CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_MAX_SWEEPS: _numpy.int32,
+    CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_TOLERANCE: _numpy.float64,
+}
+
+cpdef get_state_fitting_scope_split_als_config_attribute_dtype(int attr):
+    """Get the Python data type of the corresponding StateFittingScopeSplitALSConfigAttribute attribute.
+
+    Args:
+        attr (StateFittingScopeSplitALSConfigAttribute): The attribute to query.
+
+    Returns:
+        The data type of the queried attribute.
+
+    .. note:: This API has no C counterpart and is a convenient helper for
+        allocating memory for :func:`state_fitting_scope_split_als_config_get_attribute`, :func:`state_fitting_scope_split_als_config_set_attribute`.
+    """
+    return state_fitting_scope_split_als_config_attribute_sizes[attr]
+
+###########################################################################
+
+cpdef state_fitting_scope_split_als_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size):
+    """Sets an attribute of the variational ALS split-scope state-fitting configuration.
+
+    Args:
+        handle (intptr_t): Library handle.
+        config (intptr_t): ALS split-scope state-fitting configuration object.
+        attribute (StateFittingScopeSplitALSConfigAttribute): Attribute to set.
+        attribute_value (intptr_t): Pointer to the attribute value.
+        attribute_size (size_t): Size of the attribute value in bytes.
+
+    .. note:: To compute the attribute size, use the itemsize of the corresponding data
+        type, which can be queried using :func:`get_state_fitting_scope_split_als_config_attribute_dtype`.
+
+    .. seealso:: `cudensitymatStateFittingScopeSplitALSConfigSetAttribute`
+    """
+    with nogil:
+        __status__ = cudensitymatStateFittingScopeSplitALSConfigSetAttribute(<const Handle>handle, <StateFittingScopeSplitALSConfig>config, <_StateFittingScopeSplitALSConfigAttribute>attribute, <const void*>attribute_value, attribute_size)
+    check_status(__status__)
+
+
+cpdef state_fitting_scope_split_als_config_get_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size):
+    """Gets an attribute of the variational ALS split-scope state-fitting configuration.
+
+    Args:
+        handle (intptr_t): Library handle.
+        config (intptr_t): ALS split-scope state-fitting configuration object.
+        attribute (StateFittingScopeSplitALSConfigAttribute): Attribute to get.
+        attribute_value (intptr_t): Pointer to store the attribute value.
+        attribute_size (size_t): Size of the buffer in bytes.
+
+    .. note:: To compute the attribute size, use the itemsize of the corresponding data
+        type, which can be queried using :func:`get_state_fitting_scope_split_als_config_attribute_dtype`.
+
+    .. seealso:: `cudensitymatStateFittingScopeSplitALSConfigGetAttribute`
+    """
+    with nogil:
+        __status__ = cudensitymatStateFittingScopeSplitALSConfigGetAttribute(<const Handle>handle, <const StateFittingScopeSplitALSConfig>config, <_StateFittingScopeSplitALSConfigAttribute>attribute, <void*>attribute_value, attribute_size)
+    check_status(__status__)
+
+
+cpdef intptr_t create_state_fitting_approach_lin_solve_config(intptr_t handle) except? 0:
+    """Creates a LinSolve state-fitting approach configuration object with default settings.
+
+    Args:
+        handle (intptr_t): Library handle.
+
+    Returns:
+        intptr_t: LinSolve state-fitting approach configuration object.
+
+    .. seealso:: `cudensitymatCreateStateFittingApproachLinSolveConfig`
+    """
+    cdef StateFittingApproachLinSolveConfig config
+    with nogil:
+        __status__ = cudensitymatCreateStateFittingApproachLinSolveConfig(<const Handle>handle, &config)
+    check_status(__status__)
+    return <intptr_t>config
+
+
+cpdef destroy_state_fitting_approach_lin_solve_config(intptr_t config):
+    """Destroys a LinSolve state-fitting approach configuration object.
+
+    Args:
+        config (intptr_t): LinSolve state-fitting approach configuration object.
+
+    .. seealso:: `cudensitymatDestroyStateFittingApproachLinSolveConfig`
+    """
+    with nogil:
+        __status__ = cudensitymatDestroyStateFittingApproachLinSolveConfig(<StateFittingApproachLinSolveConfig>config)
+    check_status(__status__)
+
+
+######################### Python specific utility #########################
+
+cdef dict state_fitting_approach_lin_solve_config_attribute_sizes = {
+    CUDENSITYMAT_FITTING_APPROACH_LINSOLVE_TOLERANCE: _numpy.float64,
+}
+
+cpdef get_state_fitting_approach_lin_solve_config_attribute_dtype(int attr):
+    """Get the Python data type of the corresponding StateFittingApproachLinSolveConfigAttribute attribute.
+
+    Args:
+        attr (StateFittingApproachLinSolveConfigAttribute): The attribute to query.
+
+    Returns:
+        The data type of the queried attribute.
+
+    .. note:: This API has no C counterpart and is a convenient helper for
+        allocating memory for :func:`state_fitting_approach_lin_solve_config_get_attribute`, :func:`state_fitting_approach_lin_solve_config_set_attribute`.
+    """
+    return state_fitting_approach_lin_solve_config_attribute_sizes[attr]
+
+###########################################################################
+
+cpdef state_fitting_approach_lin_solve_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size):
+    """Sets an attribute of the LinSolve state-fitting approach configuration.
+
+    Args:
+        handle (intptr_t): Library handle.
+        config (intptr_t): LinSolve state-fitting approach configuration object.
+        attribute (StateFittingApproachLinSolveConfigAttribute): Attribute to set.
+        attribute_value (intptr_t): Pointer to the attribute value.
+        attribute_size (size_t): Size of the attribute value in bytes.
+
+    .. note:: To compute the attribute size, use the itemsize of the corresponding data
+        type, which can be queried using :func:`get_state_fitting_approach_lin_solve_config_attribute_dtype`.
+
+    .. seealso:: `cudensitymatStateFittingApproachLinSolveConfigSetAttribute`
+    """
+    with nogil:
+        __status__ = cudensitymatStateFittingApproachLinSolveConfigSetAttribute(<const Handle>handle, <StateFittingApproachLinSolveConfig>config, <_StateFittingApproachLinSolveConfigAttribute>attribute, <const void*>attribute_value, attribute_size)
+    check_status(__status__)
+
+
+cpdef state_fitting_approach_lin_solve_config_get_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size):
+    """Gets an attribute of the LinSolve state-fitting approach configuration.
+
+    Args:
+        handle (intptr_t): Library handle.
+        config (intptr_t): LinSolve state-fitting approach configuration object.
+        attribute (StateFittingApproachLinSolveConfigAttribute): Attribute to get.
+        attribute_value (intptr_t): Pointer to store the attribute value.
+        attribute_size (size_t): Size of the buffer in bytes.
+
+    .. note:: To compute the attribute size, use the itemsize of the corresponding data
+        type, which can be queried using :func:`get_state_fitting_approach_lin_solve_config_attribute_dtype`.
+
+    .. seealso:: `cudensitymatStateFittingApproachLinSolveConfigGetAttribute`
+    """
+    with nogil:
+        __status__ = cudensitymatStateFittingApproachLinSolveConfigGetAttribute(<const Handle>handle, <const StateFittingApproachLinSolveConfig>config, <_StateFittingApproachLinSolveConfigAttribute>attribute, <void*>attribute_value, attribute_size)
     check_status(__status__)
 
 
@@ -1389,7 +1738,7 @@ cpdef operator_compute_action_backward_diff(intptr_t handle, intptr_t superopera
     check_status(__status__)
 
 
-cpdef intptr_t create_operator_action(intptr_t handle, int32_t num_operators, operators) except? 0:
+cpdef intptr_t create_operator_action(intptr_t handle, int32_t num_operators, operators, int scope_kind, int approach_kind) except? 0:
     """Creates an action descriptor for one or more operators, thus defining an aggregate action of the operator(s) on a set of input quantum states compliant with the operator domains, where all input quantum states can also be batched.
 
     Args:
@@ -1400,6 +1749,8 @@ cpdef intptr_t create_operator_action(intptr_t handle, int32_t num_operators, op
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of :class:`int`\s (as pointer addresses).
 
+        scope_kind (StateFittingScopeKind): Operator action scope (full or split). State-fitting enum ``cudensitymatStateFittingScopeKind_t``; selects the dense (FULL) or factorized (SPLIT, e.g. MPS) state-fitting code path used when applying the operator(s).
+        approach_kind (StateFittingApproachKind): Operator action approach. State-fitting enum ``cudensitymatStateFittingApproachKind_t``; selects the gauge/orthogonalization strategy used to keep the output state representable in the chosen scope.
 
     Returns:
         intptr_t: Operator action.
@@ -1410,7 +1761,7 @@ cpdef intptr_t create_operator_action(intptr_t handle, int32_t num_operators, op
     get_resource_ptrs[Operator](_operators_, operators, <Operator*>NULL)
     cdef OperatorAction operator_action
     with nogil:
-        __status__ = cudensitymatCreateOperatorAction(<const Handle>handle, num_operators, <Operator*>(_operators_.data()), &operator_action)
+        __status__ = cudensitymatCreateOperatorAction(<const Handle>handle, num_operators, <Operator*>(_operators_.data()), <_StateFittingScopeKind>scope_kind, <_StateFittingApproachKind>approach_kind, &operator_action)
     check_status(__status__)
     return <intptr_t>operator_action
 
@@ -1425,6 +1776,50 @@ cpdef destroy_operator_action(intptr_t operator_action):
     """
     with nogil:
         __status__ = cudensitymatDestroyOperatorAction(<OperatorAction>operator_action)
+    check_status(__status__)
+
+
+######################### Python specific utility #########################
+
+cdef dict state_fitting_attribute_sizes = {
+    CUDENSITYMAT_FITTING_SPLIT_SCOPE_KIND: _numpy.int32,
+    CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_CONFIG: _numpy.intp,
+    CUDENSITYMAT_FITTING_APPROACH_LINSOLVE_CONFIG: _numpy.intp,
+}
+
+cpdef get_state_fitting_attribute_dtype(int attr):
+    """Get the Python data type of the corresponding StateFittingAttribute attribute.
+
+    Args:
+        attr (StateFittingAttribute): The attribute to query.
+
+    Returns:
+        The data type of the queried attribute.
+
+    .. note:: This API has no C counterpart and is a convenient helper for
+        allocating memory for :func:`operator_action_configure`.
+    """
+    return state_fitting_attribute_sizes[attr]
+
+###########################################################################
+
+cpdef operator_action_configure(intptr_t handle, intptr_t operator_action, int attribute, intptr_t attribute_value, size_t attribute_size):
+    """Configures the operator action object with a configuration attribute.
+
+    Args:
+        handle (intptr_t): Library handle.
+        operator_action (intptr_t): Operator action object.
+        attribute (StateFittingAttribute): Attribute to set.
+        attribute_value (intptr_t): Pointer to the attribute value.
+        attribute_size (size_t): Size of the attribute value in bytes.
+
+    .. note:: To compute the attribute size, use the itemsize of the corresponding data
+        type, which can be queried using :func:`get_state_fitting_attribute_dtype`.
+
+    .. seealso:: `cudensitymatOperatorActionConfigure`
+    """
+    with nogil:
+        __status__ = cudensitymatOperatorActionConfigure(<const Handle>handle, <OperatorAction>operator_action, <_StateFittingAttribute>attribute, <const void*>attribute_value, attribute_size)
     check_status(__status__)
 
 
@@ -1455,7 +1850,7 @@ cpdef operator_action_prepare(intptr_t handle, intptr_t operator_action, state_i
 
 
 cpdef operator_action_compute(intptr_t handle, intptr_t operator_action, double time, int64_t batch_size, int32_t num_params, intptr_t params, state_in, intptr_t state_out, intptr_t workspace, intptr_t stream):
-    """Executes the action of one or more operators constituting the aggreggate operator(s) action on the same number of input quantum states, accumulating the results into a single output quantum state.
+    """Executes the action of one or more operators constituting the aggregate operator(s) action on the same number of input quantum states, accumulating the results into a single output quantum state.
 
     Args:
         handle (intptr_t): Library handle.
@@ -1613,7 +2008,6 @@ cpdef get_operator_spectrum_config_dtype(int attr):
 
 ###########################################################################
 
-
 cpdef operator_spectrum_configure(intptr_t handle, intptr_t spectrum, int attribute, intptr_t attribute_value, size_t attribute_value_size):
     """Configures the eigen-spectrum computation object.
 
@@ -1719,6 +2113,8 @@ cpdef destroy_time_propagation_scope_split_tdvp_config(intptr_t config):
 
 cdef dict time_propagation_scope_split_tdvp_config_attribute_sizes = {
     CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_ORDER: _numpy.int32,
+    CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_NUM_SITES: _numpy.int32,
+    CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_SVD_CONFIG: _numpy.intp,
 }
 
 cpdef get_time_propagation_scope_split_tdvp_config_attribute_dtype(int attr):
@@ -1736,7 +2132,6 @@ cpdef get_time_propagation_scope_split_tdvp_config_attribute_dtype(int attr):
     return time_propagation_scope_split_tdvp_config_attribute_sizes[attr]
 
 ###########################################################################
-
 
 cpdef time_propagation_scope_split_tdvp_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size):
     """Sets an attribute of the TDVP configuration.
@@ -1779,13 +2174,13 @@ cpdef time_propagation_scope_split_tdvp_config_get_attribute(intptr_t handle, in
 
 
 cpdef intptr_t create_time_propagation_approach_krylov_config(intptr_t handle) except? 0:
-    """Creates a Krylov configuration object with default settings.
+    """Creates a Krylov-subspace time propagation configuration object with default settings.
 
     Args:
         handle (intptr_t): Library handle.
 
     Returns:
-        intptr_t: Krylov configuration object.
+        intptr_t: Krylov-subspace time propagation configuration object.
 
     .. seealso:: `cudensitymatCreateTimePropagationApproachKrylovConfig`
     """
@@ -1797,10 +2192,10 @@ cpdef intptr_t create_time_propagation_approach_krylov_config(intptr_t handle) e
 
 
 cpdef destroy_time_propagation_approach_krylov_config(intptr_t config):
-    """Destroys a Krylov configuration object.
+    """Destroys a Krylov-subspace time propagation configuration object.
 
     Args:
-        config (intptr_t): Krylov configuration object.
+        config (intptr_t): Krylov-subspace time propagation configuration object.
 
     .. seealso:: `cudensitymatDestroyTimePropagationApproachKrylovConfig`
     """
@@ -1834,13 +2229,12 @@ cpdef get_time_propagation_approach_krylov_config_attribute_dtype(int attr):
 
 ###########################################################################
 
-
 cpdef time_propagation_approach_krylov_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size):
-    """Sets an attribute of the Krylov configuration.
+    """Sets an attribute of the Krylov-subspace time propagation configuration.
 
     Args:
         handle (intptr_t): Library handle.
-        config (intptr_t): Krylov configuration object.
+        config (intptr_t): Krylov-subspace time propagation configuration object.
         attribute (TimePropagationApproachKrylovConfigAttribute): Attribute to set.
         attribute_value (intptr_t): Pointer to the attribute value.
         attribute_size (size_t): Size of the attribute value in bytes.
@@ -1856,11 +2250,11 @@ cpdef time_propagation_approach_krylov_config_set_attribute(intptr_t handle, int
 
 
 cpdef time_propagation_approach_krylov_config_get_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size):
-    """Gets an attribute of the Krylov configuration.
+    """Gets an attribute of the Krylov-subspace time propagation configuration.
 
     Args:
         handle (intptr_t): Library handle.
-        config (intptr_t): Krylov configuration object.
+        config (intptr_t): Krylov-subspace time propagation configuration object.
         attribute (TimePropagationApproachKrylovConfigAttribute): Attribute to get.
         attribute_value (intptr_t): Pointer to store the attribute value.
         attribute_size (size_t): Size of the buffer in bytes.
@@ -1934,7 +2328,6 @@ cpdef get_time_propagation_attribute_dtype(int attr):
 
 ###########################################################################
 
-
 cpdef time_propagation_configure(intptr_t handle, intptr_t time_propagation, int attribute, intptr_t attribute_value, size_t attribute_size):
     """Configures the time propagation object with a configuration attribute.
 
@@ -1984,7 +2377,7 @@ cpdef time_propagation_compute(intptr_t handle, intptr_t time_propagation, doubl
         time_step_real (double): Real part of time step for propagation.
         time_step_imag (double): Imaginary part of time step for propagation.
         time (double): Time value.
-        batch_size (int64_t): Batch size (>=1).
+        batch_size (int64_t): Batch size (==1).
         num_params (int32_t): Number of variable parameters defined by the user.
         params (intptr_t): GPU-accessible pointer to an F-order 2d-array of user-defined real parameter values: params[num_params, batch_size].
         state_in (intptr_t): Input quantum state (can be batched).
@@ -1996,6 +2389,423 @@ cpdef time_propagation_compute(intptr_t handle, intptr_t time_propagation, doubl
     """
     with nogil:
         __status__ = cudensitymatTimePropagationCompute(<const Handle>handle, <TimePropagation>time_propagation, time_step_real, time_step_imag, time, batch_size, num_params, <const double*>params, <const State>state_in, <State>state_out, <WorkspaceDescriptor>workspace, <Stream>stream)
+    check_status(__status__)
+
+
+cpdef intptr_t create_svd_config(intptr_t handle) except? 0:
+    """Creates an SVD truncation configuration object with default settings.
+
+    Args:
+        handle (intptr_t): Library handle.
+
+    Returns:
+        intptr_t: SVD configuration object.
+
+    .. seealso:: `cudensitymatCreateSVDConfig`
+    """
+    cdef SVDConfig config
+    with nogil:
+        __status__ = cudensitymatCreateSVDConfig(<const Handle>handle, &config)
+    check_status(__status__)
+    return <intptr_t>config
+
+
+cpdef destroy_svd_config(intptr_t config):
+    """Destroys an SVD configuration object.
+
+    Args:
+        config (intptr_t): SVD configuration object.
+
+    .. seealso:: `cudensitymatDestroySVDConfig`
+    """
+    with nogil:
+        __status__ = cudensitymatDestroySVDConfig(<SVDConfig>config)
+    check_status(__status__)
+
+
+######################### Python specific utility #########################
+
+cdef dict svd_config_attribute_sizes = {
+    CUDENSITYMAT_SVD_CONFIG_ABS_CUTOFF: _numpy.float64,
+    CUDENSITYMAT_SVD_CONFIG_REL_CUTOFF: _numpy.float64,
+    CUDENSITYMAT_SVD_CONFIG_DISCARDED_WEIGHT_CUTOFF: _numpy.float64,
+    CUDENSITYMAT_SVD_CONFIG_MAX_EXTENT: _numpy.int64,
+}
+
+cpdef get_svd_config_attribute_dtype(int attr):
+    """Get the Python data type of the corresponding SVDConfigAttribute attribute.
+
+    Args:
+        attr (SVDConfigAttribute): The attribute to query.
+
+    Returns:
+        The data type of the queried attribute.
+
+    .. note:: This API has no C counterpart and is a convenient helper for
+        allocating memory for :func:`svd_config_get_attribute`, :func:`svd_config_set_attribute`.
+    """
+    return svd_config_attribute_sizes[attr]
+
+###########################################################################
+
+cpdef svd_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size):
+    """Sets an attribute of the SVD configuration.
+
+    Args:
+        handle (intptr_t): Library handle.
+        config (intptr_t): SVD configuration object.
+        attribute (SVDConfigAttribute): Attribute to set.
+        attribute_value (intptr_t): Pointer to the attribute value.
+        attribute_size (size_t): Size of the attribute value in bytes.
+
+    .. note:: To compute the attribute size, use the itemsize of the corresponding data
+        type, which can be queried using :func:`get_svd_config_attribute_dtype`.
+
+    .. seealso:: `cudensitymatSVDConfigSetAttribute`
+    """
+    with nogil:
+        __status__ = cudensitymatSVDConfigSetAttribute(<const Handle>handle, <SVDConfig>config, <_SVDConfigAttribute>attribute, <const void*>attribute_value, attribute_size)
+    check_status(__status__)
+
+
+cpdef svd_config_get_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size):
+    """Gets an attribute of the SVD configuration.
+
+    Args:
+        handle (intptr_t): Library handle.
+        config (intptr_t): SVD configuration object.
+        attribute (SVDConfigAttribute): Attribute to get.
+        attribute_value (intptr_t): Pointer to store the attribute value.
+        attribute_size (size_t): Size of the buffer in bytes.
+
+    .. note:: To compute the attribute size, use the itemsize of the corresponding data
+        type, which can be queried using :func:`get_svd_config_attribute_dtype`.
+
+    .. seealso:: `cudensitymatSVDConfigGetAttribute`
+    """
+    with nogil:
+        __status__ = cudensitymatSVDConfigGetAttribute(<const Handle>handle, <const SVDConfig>config, <_SVDConfigAttribute>attribute, <void*>attribute_value, attribute_size)
+    check_status(__status__)
+
+
+cpdef intptr_t create_eigen_decomposition_scope_split_dmrg_config(intptr_t handle) except? 0:
+    """Creates a DMRG configuration object with default settings.
+
+    Args:
+        handle (intptr_t): Library handle.
+
+    Returns:
+        intptr_t: DMRG configuration object.
+
+    .. seealso:: `cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig`
+    """
+    cdef EigenDecompositionScopeSplitDMRGConfig config
+    with nogil:
+        __status__ = cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig(<const Handle>handle, &config)
+    check_status(__status__)
+    return <intptr_t>config
+
+
+cpdef destroy_eigen_decomposition_scope_split_dmrg_config(intptr_t config):
+    """Destroys a DMRG configuration object.
+
+    Args:
+        config (intptr_t): DMRG configuration object.
+
+    .. seealso:: `cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig`
+    """
+    with nogil:
+        __status__ = cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig(<EigenDecompositionScopeSplitDMRGConfig>config)
+    check_status(__status__)
+
+
+######################### Python specific utility #########################
+
+cdef dict eigen_decomposition_scope_split_dmrg_config_attribute_sizes = {
+    CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_NUM_SITES: _numpy.int32,
+    CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_SVD_CONFIG: _numpy.intp,
+    CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_MAX_SWEEPS: _numpy.int32,
+    CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_ENERGY_TOLERANCE: _numpy.float64,
+}
+
+cpdef get_eigen_decomposition_scope_split_dmrg_config_attribute_dtype(int attr):
+    """Get the Python data type of the corresponding EigenDecompositionScopeSplitDMRGConfigAttribute attribute.
+
+    Args:
+        attr (EigenDecompositionScopeSplitDMRGConfigAttribute): The attribute to query.
+
+    Returns:
+        The data type of the queried attribute.
+
+    .. note:: This API has no C counterpart and is a convenient helper for
+        allocating memory for :func:`eigen_decomposition_scope_split_dmrg_config_get_attribute`, :func:`eigen_decomposition_scope_split_dmrg_config_set_attribute`.
+    """
+    return eigen_decomposition_scope_split_dmrg_config_attribute_sizes[attr]
+
+###########################################################################
+
+cpdef eigen_decomposition_scope_split_dmrg_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size):
+    """Sets an attribute of the DMRG configuration.
+
+    Args:
+        handle (intptr_t): Library handle.
+        config (intptr_t): DMRG configuration object.
+        attribute (EigenDecompositionScopeSplitDMRGConfigAttribute): Attribute to set.
+        attribute_value (intptr_t): Pointer to the attribute value.
+        attribute_size (size_t): Size of the attribute value in bytes.
+
+    .. note:: To compute the attribute size, use the itemsize of the corresponding data
+        type, which can be queried using :func:`get_eigen_decomposition_scope_split_dmrg_config_attribute_dtype`.
+
+    .. seealso:: `cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute`
+    """
+    with nogil:
+        __status__ = cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute(<const Handle>handle, <EigenDecompositionScopeSplitDMRGConfig>config, <_EigenDecompositionScopeSplitDMRGConfigAttribute>attribute, <const void*>attribute_value, attribute_size)
+    check_status(__status__)
+
+
+cpdef eigen_decomposition_scope_split_dmrg_config_get_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size):
+    """Gets an attribute of the DMRG configuration.
+
+    Args:
+        handle (intptr_t): Library handle.
+        config (intptr_t): DMRG configuration object.
+        attribute (EigenDecompositionScopeSplitDMRGConfigAttribute): Attribute to get.
+        attribute_value (intptr_t): Pointer to store the attribute value.
+        attribute_size (size_t): Size of the buffer in bytes.
+
+    .. note:: To compute the attribute size, use the itemsize of the corresponding data
+        type, which can be queried using :func:`get_eigen_decomposition_scope_split_dmrg_config_attribute_dtype`.
+
+    .. seealso:: `cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute`
+    """
+    with nogil:
+        __status__ = cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute(<const Handle>handle, <const EigenDecompositionScopeSplitDMRGConfig>config, <_EigenDecompositionScopeSplitDMRGConfigAttribute>attribute, <void*>attribute_value, attribute_size)
+    check_status(__status__)
+
+
+cpdef intptr_t create_eigen_decomposition_approach_krylov_config(intptr_t handle) except? 0:
+    """Creates a Krylov-subspace eigensolver configuration object with default settings.
+
+    Args:
+        handle (intptr_t): Library handle.
+
+    Returns:
+        intptr_t: Krylov-subspace eigensolver configuration object.
+
+    .. seealso:: `cudensitymatCreateEigenDecompositionApproachKrylovConfig`
+    """
+    cdef EigenDecompositionApproachKrylovConfig config
+    with nogil:
+        __status__ = cudensitymatCreateEigenDecompositionApproachKrylovConfig(<const Handle>handle, &config)
+    check_status(__status__)
+    return <intptr_t>config
+
+
+cpdef destroy_eigen_decomposition_approach_krylov_config(intptr_t config):
+    """Destroys a Krylov-subspace eigensolver configuration object.
+
+    Args:
+        config (intptr_t): Krylov-subspace eigensolver configuration object.
+
+    .. seealso:: `cudensitymatDestroyEigenDecompositionApproachKrylovConfig`
+    """
+    with nogil:
+        __status__ = cudensitymatDestroyEigenDecompositionApproachKrylovConfig(<EigenDecompositionApproachKrylovConfig>config)
+    check_status(__status__)
+
+
+######################### Python specific utility #########################
+
+cdef dict eigen_decomposition_approach_krylov_config_attribute_sizes = {
+    CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MAX_DIM: _numpy.int32,
+    CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MAX_RESTARTS: _numpy.int32,
+    CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MIN_BLOCK_SIZE: _numpy.int32,
+}
+
+cpdef get_eigen_decomposition_approach_krylov_config_attribute_dtype(int attr):
+    """Get the Python data type of the corresponding EigenDecompositionApproachKrylovConfigAttribute attribute.
+
+    Args:
+        attr (EigenDecompositionApproachKrylovConfigAttribute): The attribute to query.
+
+    Returns:
+        The data type of the queried attribute.
+
+    .. note:: This API has no C counterpart and is a convenient helper for
+        allocating memory for :func:`eigen_decomposition_approach_krylov_config_get_attribute`, :func:`eigen_decomposition_approach_krylov_config_set_attribute`.
+    """
+    return eigen_decomposition_approach_krylov_config_attribute_sizes[attr]
+
+###########################################################################
+
+cpdef eigen_decomposition_approach_krylov_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size):
+    """Sets an attribute of the Krylov-subspace eigensolver configuration.
+
+    Args:
+        handle (intptr_t): Library handle.
+        config (intptr_t): Krylov-subspace eigensolver configuration object.
+        attribute (EigenDecompositionApproachKrylovConfigAttribute): Attribute to set.
+        attribute_value (intptr_t): Pointer to the attribute value.
+        attribute_size (size_t): Size of the attribute value in bytes.
+
+    .. note:: To compute the attribute size, use the itemsize of the corresponding data
+        type, which can be queried using :func:`get_eigen_decomposition_approach_krylov_config_attribute_dtype`.
+
+    .. seealso:: `cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute`
+    """
+    with nogil:
+        __status__ = cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute(<const Handle>handle, <EigenDecompositionApproachKrylovConfig>config, <_EigenDecompositionApproachKrylovConfigAttribute>attribute, <const void*>attribute_value, attribute_size)
+    check_status(__status__)
+
+
+cpdef eigen_decomposition_approach_krylov_config_get_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size):
+    """Gets an attribute of the Krylov-subspace eigensolver configuration.
+
+    Args:
+        handle (intptr_t): Library handle.
+        config (intptr_t): Krylov-subspace eigensolver configuration object.
+        attribute (EigenDecompositionApproachKrylovConfigAttribute): Attribute to get.
+        attribute_value (intptr_t): Pointer to store the attribute value.
+        attribute_size (size_t): Size of the buffer in bytes.
+
+    .. note:: To compute the attribute size, use the itemsize of the corresponding data
+        type, which can be queried using :func:`get_eigen_decomposition_approach_krylov_config_attribute_dtype`.
+
+    .. seealso:: `cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute`
+    """
+    with nogil:
+        __status__ = cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute(<const Handle>handle, <const EigenDecompositionApproachKrylovConfig>config, <_EigenDecompositionApproachKrylovConfigAttribute>attribute, <void*>attribute_value, attribute_size)
+    check_status(__status__)
+
+
+cpdef intptr_t create_eigen_decomposition(intptr_t handle, intptr_t superoperator, int32_t is_hermitian, int spectrum_kind, int scope_kind, int approach_kind) except? 0:
+    """Creates the eigen-decomposition computation object for a given operator.
+
+    Args:
+        handle (intptr_t): Library handle.
+        superoperator (intptr_t): Operator.
+        is_hermitian (int32_t): Specifies whether the operator is Hermitian (!=0) or not (0).
+        spectrum_kind (EigenDecompositionSpectrumKind): Requested kind of the eigen-spectrum computation.
+        scope_kind (EigenDecompositionScopeKind): Requested decomposition scope (full vs split).
+        approach_kind (EigenDecompositionApproachKind): Requested decomposition approach (e.g., Krylov).
+
+    Returns:
+        intptr_t: Eigen-decomposition computation object.
+
+    .. seealso:: `cudensitymatCreateEigenDecomposition`
+    """
+    cdef EigenDecomposition eigen_decomposition
+    with nogil:
+        __status__ = cudensitymatCreateEigenDecomposition(<const Handle>handle, <Operator>superoperator, is_hermitian, <_EigenDecompositionSpectrumKind>spectrum_kind, <_EigenDecompositionScopeKind>scope_kind, <_EigenDecompositionApproachKind>approach_kind, &eigen_decomposition)
+    check_status(__status__)
+    return <intptr_t>eigen_decomposition
+
+
+cpdef destroy_eigen_decomposition(intptr_t eigen_decomposition):
+    """Destroys an eigen-decomposition computation object.
+
+    Args:
+        eigen_decomposition (intptr_t): Eigen-decomposition computation object.
+
+    .. seealso:: `cudensitymatDestroyEigenDecomposition`
+    """
+    with nogil:
+        __status__ = cudensitymatDestroyEigenDecomposition(<EigenDecomposition>eigen_decomposition)
+    check_status(__status__)
+
+
+######################### Python specific utility #########################
+
+cdef dict eigen_decomposition_attribute_sizes = {
+    CUDENSITYMAT_EIGEN_SPLIT_SCOPE_KIND: _numpy.int32,
+    CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_CONFIG: _numpy.intp,
+    CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_CONFIG: _numpy.intp,
+}
+
+cpdef get_eigen_decomposition_attribute_dtype(int attr):
+    """Get the Python data type of the corresponding EigenDecompositionAttribute attribute.
+
+    Args:
+        attr (EigenDecompositionAttribute): The attribute to query.
+
+    Returns:
+        The data type of the queried attribute.
+
+    .. note:: This API has no C counterpart and is a convenient helper for
+        allocating memory for :func:`eigen_decomposition_configure`.
+    """
+    return eigen_decomposition_attribute_sizes[attr]
+
+###########################################################################
+
+cpdef eigen_decomposition_configure(intptr_t handle, intptr_t eigen_decomposition, int attribute, intptr_t attribute_value, size_t attribute_size):
+    """Configures the eigen-decomposition object with a configuration attribute.
+
+    Args:
+        handle (intptr_t): Library handle.
+        eigen_decomposition (intptr_t): Eigen-decomposition computation object.
+        attribute (EigenDecompositionAttribute): Attribute to configure.
+        attribute_value (intptr_t): Pointer to the attribute value.
+        attribute_size (size_t): Size of the attribute value in bytes.
+
+    .. note:: To compute the attribute size, use the itemsize of the corresponding data
+        type, which can be queried using :func:`get_eigen_decomposition_attribute_dtype`.
+
+    .. seealso:: `cudensitymatEigenDecompositionConfigure`
+    """
+    with nogil:
+        __status__ = cudensitymatEigenDecompositionConfigure(<const Handle>handle, <EigenDecomposition>eigen_decomposition, <_EigenDecompositionAttribute>attribute, <const void*>attribute_value, attribute_size)
+    check_status(__status__)
+
+
+cpdef eigen_decomposition_prepare(intptr_t handle, intptr_t eigen_decomposition, int32_t max_eigen_states, intptr_t state, int compute_type, size_t workspace_size_limit, intptr_t workspace, intptr_t stream):
+    """Prepares the eigen-decomposition object for computation.
+
+    Args:
+        handle (intptr_t): Library handle.
+        eigen_decomposition (intptr_t): Eigen-decomposition computation object.
+        max_eigen_states (int32_t): Maximum number of eigen-pairs to compute.
+        state (intptr_t): Representative quantum state (cannot be batched).
+        compute_type (ComputeType): Desired compute type.
+        workspace_size_limit (size_t): Workspace buffer size limit (bytes).
+        workspace (intptr_t): Empty workspace descriptor on entrance. The workspace buffer sizes required for the computation will be set on return.
+        stream (intptr_t): CUDA stream.
+
+    .. seealso:: `cudensitymatEigenDecompositionPrepare`
+    """
+    with nogil:
+        __status__ = cudensitymatEigenDecompositionPrepare(<const Handle>handle, <EigenDecomposition>eigen_decomposition, max_eigen_states, <const State>state, <_ComputeType>compute_type, workspace_size_limit, <WorkspaceDescriptor>workspace, <Stream>stream)
+    check_status(__status__)
+
+
+cpdef eigen_decomposition_compute(intptr_t handle, intptr_t eigen_decomposition, double time, int64_t batch_size, int32_t num_params, intptr_t params, int32_t num_eigen_states, eigenstates, intptr_t eigenvalues, intptr_t tolerances, intptr_t workspace, intptr_t stream):
+    """Computes the eigen-decomposition of an operator.
+
+    Args:
+        handle (intptr_t): Library handle.
+        eigen_decomposition (intptr_t): Eigen-decomposition computation object.
+        time (double): Specified time.
+        batch_size (int64_t): Batch size (must be 1 in this release; >1 returns ``CUDENSITYMAT_STATUS_NOT_SUPPORTED`` at Compute).
+        num_params (int32_t): Number of variable parameters defined by the user.
+        params (intptr_t): GPU-accessible pointer to an F-order 2d-array of user-defined real parameter values: params[num_params, batch_size].
+        num_eigen_states (int32_t): Actual number of eigenstates to compute, which must not exceed the value of the ``maxEigenStates`` parameter provided during the preparation of the eigen-decomposition computation object.
+        eigenstates (object): Quantum eigenstates. The initial values of the provided quantum states will be used as the initial guesses for the iterative solver. It can be:
+
+            - an :class:`int` as the pointer address to the array, or
+            - a Python sequence of :class:`int`\s (as pointer addresses).
+
+        eigenvalues (intptr_t): Pointer to the eigenvalues storage (F-order array of shape [num_eigen_states, batch_size]) in GPU-accessible RAM (same data type as used by the quantum state and operator).
+        tolerances (intptr_t): Pointer to an F-order array of shape [num_eigen_states, batch_size] in CPU-accessible RAM. The initial values represent the desirable convergence tolerances for all eigen-states. The returned values represent the actually achieved residual norms for all eigen-states.
+        workspace (intptr_t): Allocated workspace descriptor.
+        stream (intptr_t): CUDA stream.
+
+    .. seealso:: `cudensitymatEigenDecompositionCompute`
+    """
+    cdef nullable_unique_ptr[ vector[State*] ] _eigenstates_
+    get_resource_ptrs[State](_eigenstates_, eigenstates, <State*>NULL)
+    with nogil:
+        __status__ = cudensitymatEigenDecompositionCompute(<const Handle>handle, <EigenDecomposition>eigen_decomposition, time, batch_size, num_params, <const double*>params, num_eigen_states, <State*>(_eigenstates_.data()), <void*>eigenvalues, <double*>tolerances, <WorkspaceDescriptor>workspace, <Stream>stream)
     check_status(__status__)
 
 

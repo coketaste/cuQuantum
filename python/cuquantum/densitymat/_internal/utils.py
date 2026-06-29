@@ -23,6 +23,23 @@ class InvalidObjectState(Exception):
     pass
 
 
+def resolve_enum(value, mapping, name):
+    if isinstance(value, str):
+        key = value if value in mapping else value.lower()
+        if key not in mapping:
+            raise ValueError(
+                f"Unknown {name}: {value!r}. Supported values: {list(mapping.keys())}"
+            )
+        return mapping[key]
+    return value
+
+
+def set_config_attribute(set_fn, get_dtype_fn, handle, config_ptr, enum_val, value):
+    dtype = get_dtype_fn(enum_val)
+    val_arr = np.array([value], dtype=dtype)
+    set_fn(handle, config_ptr, enum_val, val_arr.ctypes.data, val_arr.dtype.itemsize)
+
+
 def cuda_call_ctx(ctx, blocking: Optional[bool] = None):
     blocking = ctx.blocking if blocking is None else blocking
     return cutn_utils.cuda_call_ctx(ctx._stream_holder, blocking, ctx._do_timing)

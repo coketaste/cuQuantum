@@ -33,8 +33,20 @@ ifdef NCCL_ROOT
   endif
 endif
 
+ifeq ($(shell test -d "${CUDENSITYMAT_ROOT}/lib64" && echo "exists"),exists)
+  CUDENSITYMAT_LIB_DIR := ${CUDENSITYMAT_ROOT}/lib64
+else
+  CUDENSITYMAT_LIB_DIR := ${CUDENSITYMAT_ROOT}/lib
+endif
+
+ifeq ($(shell test -d "${CUTENSORNET_ROOT}/lib64" && echo "exists"),exists)
+  CUTENSORNET_LIB_DIR := ${CUTENSORNET_ROOT}/lib64
+else
+  CUTENSORNET_LIB_DIR := ${CUTENSORNET_ROOT}/lib
+endif
+
 INCLUDE_DIRS     := -I${CUDENSITYMAT_ROOT}/include -I${CUTENSORNET_ROOT}/include -I${CUTENSOR_ROOT}/include
-LIBRARY_DIRS     := -L${CUDENSITYMAT_ROOT}/lib -lcudensitymat -L${CUTENSORNET_ROOT}/lib -lcutensornet -L${CUTENSOR_LIB_DIR} -lcutensor
+LIBRARY_DIRS     := -L${CUDENSITYMAT_LIB_DIR} -lcudensitymat -L${CUTENSORNET_LIB_DIR} -lcutensornet -L${CUTENSOR_LIB_DIR} -lcutensor
 ARCH_FLAGS_SM75  = -gencode arch=compute_75,code=sm_75
 ARCH_FLAGS_SM80  = -gencode arch=compute_80,code=sm_80
 ARCH_FLAGS_SM86  = -gencode arch=compute_86,code=sm_86

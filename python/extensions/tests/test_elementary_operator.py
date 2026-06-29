@@ -102,9 +102,51 @@ class TestElementaryOperator:
 
         assert elem_op.num_modes == len(data.shape) // 2
         assert elem_op.mode_extents == data.shape[:len(data.shape) // 2]
-        assert elem_op.data.shape == (1, *data.shape)
+        assert elem_op.data.shape == data.shape
         assert elem_op.sparsity == cudm.ElementaryOperatorSparsity.OPERATOR_SPARSITY_MULTIDIAGONAL
         assert elem_op.diag_offsets == (0, 1)
+
+    @pytest.mark.parametrize(
+        "data",
+        list(product(
+            [(2, 4, 2), (3, 6, 2)],
+            [jnp.float32, jnp.float64, jnp.complex64, jnp.complex128],
+        )),
+        indirect=True,
+    )
+    @pytest.mark.parametrize("diag_offsets", [(0, 1)])
+    def test_init_multidiagonal_batched(self, data, diag_offsets):
+        """
+        Test initializing explicitly batched multidiagonal elementary operator (3D data).
+        Verifies that mode_extents reports the mode dimension, not the batch dimension.
+        """
+        batch_size = data.shape[0]
+        extent = data.shape[1]
+        elem_op = ElementaryOperator(data, diag_offsets=diag_offsets)
+
+        assert elem_op.num_modes == 1
+        assert elem_op.mode_extents == (extent,)
+        assert elem_op.batch_size == batch_size
+        assert elem_op.data.shape == data.shape
+        assert elem_op.sparsity == cudm.ElementaryOperatorSparsity.OPERATOR_SPARSITY_MULTIDIAGONAL
+
+    @pytest.mark.parametrize("batch_size", [2, 3])
+    @pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64, jnp.complex64, jnp.complex128])
+    def test_init_multidiagonal_vmap(self, batch_size, dtype):
+        """
+        Test that a 2D multidiagonal elementary operator created inside jax.vmap correctly
+        detects the implicit vmap batch size via get_batch_size, rather than defaulting to 1.
+        """
+        extent, ndiags = 4, 2
+        diag_offsets = (0, 1)
+        data = jax.random.normal(key, (batch_size, extent, ndiags), dtype=dtype)
+
+        def make_op(data_slice):
+            return ElementaryOperator(data_slice, diag_offsets=diag_offsets)
+
+        result = jax.vmap(make_op)(data)
+        assert result.batch_size == batch_size
+        assert result.mode_extents == (extent,)
 
     @pytest.mark.parametrize(
         "data,diag_offsets",

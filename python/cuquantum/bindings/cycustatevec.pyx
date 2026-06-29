@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.03.1, generator version 0.3.1.dev1503+gab711511a.d20260402. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1733+g9725189ff.d20260608. Do not modify it directly.
 
 from ._internal cimport custatevec as _custatevec
 
@@ -283,16 +283,16 @@ cdef custatevecStatus_t custatevecMeasureBatched(custatevecHandle_t handle, void
     return _custatevec._custatevecMeasureBatched(handle, batchedSv, svDataType, nIndexBits, nSVs, svStride, bitStrings, bitOrdering, bitStringLen, randnums, collapse)
 
 
-cdef custatevecStatus_t custatevecSubSVMigratorCreate(custatevecHandle_t handle, custatevecSubSVMigratorDescriptor_t* migrator, void* deviceSlots, cudaDataType_t svDataType, int nDeviceSlots, int nLocalIndexBits) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    return _custatevec._custatevecSubSVMigratorCreate(handle, migrator, deviceSlots, svDataType, nDeviceSlots, nLocalIndexBits)
+cdef custatevecStatus_t custatevecSubSVMigratorCreate(custatevecHandle_t handle, custatevecSubSVMigratorDescriptor_t* migrator, void* deviceSlices, cudaDataType_t svDataType, int nDeviceSlices, int nSliceLocalIndexBits) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _custatevec._custatevecSubSVMigratorCreate(handle, migrator, deviceSlices, svDataType, nDeviceSlices, nSliceLocalIndexBits)
 
 
 cdef custatevecStatus_t custatevecSubSVMigratorDestroy(custatevecHandle_t handle, custatevecSubSVMigratorDescriptor_t migrator) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     return _custatevec._custatevecSubSVMigratorDestroy(handle, migrator)
 
 
-cdef custatevecStatus_t custatevecSubSVMigratorMigrate(custatevecHandle_t handle, custatevecSubSVMigratorDescriptor_t migrator, int deviceSlotIndex, const void* srcSubSV, void* dstSubSV, custatevecIndex_t begin, custatevecIndex_t end) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    return _custatevec._custatevecSubSVMigratorMigrate(handle, migrator, deviceSlotIndex, srcSubSV, dstSubSV, begin, end)
+cdef custatevecStatus_t custatevecSubSVMigratorMigrate(custatevecHandle_t handle, custatevecSubSVMigratorDescriptor_t migrator, int deviceSliceIndex, const void* srcSubSVSlice, void* dstSubSVSlice, custatevecIndex_t begin, custatevecIndex_t end) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _custatevec._custatevecSubSVMigratorMigrate(handle, migrator, deviceSliceIndex, srcSubSVSlice, dstSubSVSlice, begin, end)
 
 
 cdef custatevecStatus_t custatevecComputeExpectationBatchedGetWorkspaceSize(custatevecHandle_t handle, cudaDataType_t svDataType, const uint32_t nIndexBits, const uint32_t nSVs, const custatevecIndex_t svStride, const void* matrices, cudaDataType_t matrixDataType, custatevecMatrixLayout_t layout, const uint32_t nMatrices, const uint32_t nBasisBits, custatevecComputeType_t computeType, size_t* extraWorkspaceSizeInBytes) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:

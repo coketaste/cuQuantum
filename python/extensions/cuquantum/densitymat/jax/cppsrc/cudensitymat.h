@@ -63,8 +63,8 @@
 // LIBRARY VERSION
 
 #define CUDENSITYMAT_MAJOR 0 //!< cuDensityMat major version.
-#define CUDENSITYMAT_MINOR 5 //!< cuDensityMat minor version.
-#define CUDENSITYMAT_PATCH 2 //!< cuDensityMat patch version.
+#define CUDENSITYMAT_MINOR 6 //!< cuDensityMat minor version.
+#define CUDENSITYMAT_PATCH 0 //!< cuDensityMat patch version.
 #define CUDENSITYMAT_VERSION (CUDENSITYMAT_MAJOR * 10000 + CUDENSITYMAT_MINOR * 100 + CUDENSITYMAT_PATCH)
 
 
@@ -244,14 +244,30 @@ typedef enum
   CUDENSITYMAT_PROPAGATION_SCOPE_SPLIT = 1, ///< Split propagation (e.g., operator splitting)
 } cudensitymatTimePropagationScopeKind_t;
 
-/*
- * \brief Full-scope kind for time propagation.
- *
+/**
+ * \brief Eigensolver scope (full vs split decomposition).
+ */
 typedef enum
 {
-  CUDENSITYMAT_PROPAGATION_SCOPE_FULL_EXACT = 0, ///< Exact (full) propagation (default for dense states)
-} cudensitymatTimePropagationScopeFullKind_t;
-*/
+  CUDENSITYMAT_EIGEN_SCOPE_FULL = 0,  ///< Full-state eigensolver
+  CUDENSITYMAT_EIGEN_SCOPE_SPLIT = 1, ///< Split-state eigensolver (e.g., MPS-DMRG)
+} cudensitymatEigenDecompositionScopeKind_t;
+
+// /**
+//  * \brief Full-scope kind for time propagation.
+//  */
+// typedef enum
+// {
+//   CUDENSITYMAT_PROPAGATION_SCOPE_FULL_EXACT = 0, ///< Exact (full) propagation (default for dense states)
+// } cudensitymatTimePropagationScopeFullKind_t;
+
+// /**
+//  * \brief Full-scope kind for eigen decomposition.
+//  */
+// typedef enum
+// {
+//   CUDENSITYMAT_EIGEN_SCOPE_FULL_EXACT = 0, ///< Exact (full) decomposition (default for dense states)
+// } cudensitymatEigenDecompositionScopeFullKind_t;
 
 /**
  * \brief Split kind for split-scope propagation.
@@ -262,6 +278,14 @@ typedef enum
 } cudensitymatTimePropagationScopeSplitKind_t;
 
 /**
+ * \brief Split kind for split-scope decomposition.
+ */
+typedef enum
+{
+  CUDENSITYMAT_EIGEN_SCOPE_SPLIT_DMRG = 0, ///< DMRG-based split decomposition (default)
+} cudensitymatEigenDecompositionScopeSplitKind_t;
+
+/**
  * \brief Time propagation approach (time integration / exponentiation method).
  */
 typedef enum
@@ -270,43 +294,216 @@ typedef enum
 } cudensitymatTimePropagationApproachKind_t;
 
 /**
+ * \brief Eigensolver approach (iterative solver methods).
+ */
+typedef enum
+{
+  CUDENSITYMAT_EIGEN_APPROACH_KRYLOV = 0, ///< Krylov subspace method
+//CUDENSITYMAT_EIGEN_APPROACH_DAVIDSON = 1, ///< Davidson method
+} cudensitymatEigenDecompositionApproachKind_t;
+
+/**
  * \brief Time propagation configuration attributes.
  */
 typedef enum
 {
-  CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_KIND = 0,       ///< int32_t (cudensitymatTimePropagationScopeSplitKind_t): Split kind
-//CUDENSITYMAT_PROPAGATION_FULL_SCOPE_KIND = 1,        ///< int32_t (cudensitymatTimePropagationScopeFullKind_t): Full-scope kind
+  CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_KIND = 0,        ///< int32_t (cudensitymatTimePropagationScopeSplitKind_t): Split kind
+//CUDENSITYMAT_PROPAGATION_FULL_SCOPE_KIND = 1,         ///< int32_t (cudensitymatTimePropagationScopeFullKind_t): Full-scope kind
 //CUDENSITYMAT_PROPAGATION_FULL_SCOPE_EXACT_CONFIG = 2, ///< cudensitymatTimePropagationScopeFullExactConfig_t: Full exact-scope configuration
   CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_CONFIG = 3, ///< cudensitymatTimePropagationScopeSplitTDVPConfig_t: TDVP split configuration
   CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_CONFIG = 10, ///< cudensitymatTimePropagationApproachKrylovConfig_t: Krylov approach configuration
 } cudensitymatTimePropagationAttribute_t;
 
-/*
- * \brief Configuration attributes for full exact-scope propagation.
- *
+/**
+ * \brief Eigensolver configuration attributes.
+ */
 typedef enum
 {
-} cudensitymatTimePropagationScopeFullExactConfigAttribute_t;
-*/
+  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_KIND = 0,           ///< int32_t (cudensitymatEigenDecompositionScopeSplitKind_t): Split kind
+//CUDENSITYMAT_EIGEN_FULL_SCOPE_KIND = 1,            ///< int32_t (cudensitymatEigenDecompositionScopeFullKind_t): Full-scope kind
+//CUDENSITYMAT_EIGEN_FULL_SCOPE_EXACT_CONFIG = 2,    ///< cudensitymatEigenDecompositionScopeFullExactConfig_t: Full exact-scope configuration
+  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_CONFIG = 3,    ///< cudensitymatEigenDecompositionScopeSplitDMRGConfig_t: DMRG split configuration
+  CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_CONFIG = 10,    ///< cudensitymatEigenDecompositionApproachKrylovConfig_t: Krylov approach configuration
+} cudensitymatEigenDecompositionAttribute_t;
+
+// /**
+//  * \brief Configuration attributes for full exact-scope propagation.
+//  */
+// typedef enum
+// {
+// } cudensitymatTimePropagationScopeFullExactConfigAttribute_t;
+
+// /**
+//  * \brief Configuration attributes for full exact-scope eigensolver.
+//  */
+// typedef enum
+// {
+// } cudensitymatEigenDecompositionScopeFullExactConfigAttribute_t;
 
 /**
- * \brief Configuration attributes for Krylov-subspace method.
+ * \brief Configuration attributes for Krylov-subspace time propagation method.
  */
 typedef enum
 {
   CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_TOLERANCE = 0,         ///< double: Convergence tolerance (default: 0, resolved to machine epsilon of the compute precision)
-  CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_MAX_DIM = 1,         ///< int32_t: Maximum Krylov subspace dimension (default: 30)
+  CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_MAX_DIM = 1,           ///< int32_t: Maximum Krylov subspace dimension (default: 30)
   CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_MIN_BETA = 2,          ///< double: Minimum threshold for off-diagonal Hessenberg element h_{m+1,m} to proceed with Krylov expansion; below this indicates linear dependence or numerical breakdown (default: 0, resolved to machine epsilon of the compute precision)
   CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_ADAPTIVE_STEP_SIZE = 3 ///< int32_t: Enable adaptive step size control (0=disabled, 1=enabled, default: 1)
 } cudensitymatTimePropagationApproachKrylovConfigAttribute_t;
+
+/**
+ * \brief Configuration attributes for Krylov-subspace eigensolver method.
+ *
+ * \note CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MAX_DIM is a blocks-to-eigenpairs ratio (default 5), not an absolute subspace dim like the same-named time-propagation attribute (default 30).
+ */
+typedef enum
+{
+  CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MAX_DIM = 0,                ///< int32_t: Configures the max ratio of the number of Krylov subspace blocks to the number of requested eigen-pairs (default: 5)
+  CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MAX_RESTARTS = 1,           ///< int32_t: Configures the max number of restarted iterations of the block Krylov algorithm (default: 19)
+  CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MIN_BLOCK_SIZE = 2,         ///< int32_t: Configures the min block size of the block Krylov algorithm (default: 1)
+} cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t;
 
 /**
  * \brief Configuration attributes for TDVP time propagation method.
  */
 typedef enum
 {
-  CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_ORDER = 0,                    ///< int32_t: Order of TDVP sweeps (2 (default), 4 (not implemented))
+  CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_ORDER = 0,                    ///< int32_t: Order of TDVP sweeps. Only order 2 is currently supported (default: 2); other values return CUDENSITYMAT_STATUS_NOT_SUPPORTED.
+  CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_NUM_SITES = 1,                ///< int32_t: Number of neighboring sites updated together (1 or 2; default: 1). Values >= 3 return CUDENSITYMAT_STATUS_NOT_SUPPORTED; non-positive values return CUDENSITYMAT_STATUS_INVALID_VALUE.
+  CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_SVD_CONFIG = 2,               ///< cudensitymatSVDConfig_t: SVD truncation configuration
 } cudensitymatTimePropagationScopeSplitTDVPConfigAttribute_t;
+
+/**
+ * \brief Configuration attributes for DMRG eigensolver method.
+ */
+typedef enum
+{
+  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_NUM_SITES = 0,                       ///< int32_t: Number of sites in the DMRG chain (default: 1)
+  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_SVD_CONFIG = 1,                      ///< cudensitymatSVDConfig_t: SVD truncation configuration
+  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_MAX_SWEEPS = 2,                      ///< int32_t: Maximum number of full L-R-L sweeps (default: 20)
+  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_ENERGY_TOLERANCE = 3,                ///< double: Convergence threshold on the change in variational energy between consecutive sweeps; the sweep loop terminates when |E_k - E_{k-1}| falls below this value (default: 1e-10)
+} cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t;
+
+/**
+ * \brief State-fitting scope (full vs split fitting).
+ */
+typedef enum
+{
+  CUDENSITYMAT_FITTING_SCOPE_FULL  = 0, ///< Full-state fitting (default for dense states)
+  CUDENSITYMAT_FITTING_SCOPE_SPLIT = 1, ///< Split-state fitting (e.g., MPS)
+} cudensitymatStateFittingScopeKind_t;
+
+// /**
+//  * \brief Full-scope kind for state fitting.
+//  */
+// typedef enum
+// {
+//   CUDENSITYMAT_FITTING_SCOPE_FULL_EXACT = 0, ///< Exact (full) fitting (default for dense states)
+// } cudensitymatStateFittingScopeFullKind_t;
+
+/**
+ * \brief Split kind for split-scope state fitting.
+ */
+typedef enum
+{
+  CUDENSITYMAT_FITTING_SCOPE_SPLIT_ALS   = 0, ///< Variational ALS fitting (default)
+//CUDENSITYMAT_FITTING_SCOPE_SPLIT_ZIPUP = 1, ///< Zip-up (not implemented)
+} cudensitymatStateFittingScopeSplitKind_t;
+
+/**
+ * \brief State-fitting approach.
+ */
+typedef enum
+{
+  CUDENSITYMAT_FITTING_APPROACH_LINSOLVE = 0, ///< LinSolve approach (default)
+} cudensitymatStateFittingApproachKind_t;
+
+/**
+ * \brief State-fitting configuration attributes.
+ */
+typedef enum
+{
+  CUDENSITYMAT_FITTING_SPLIT_SCOPE_KIND = 0,             ///< int32_t (cudensitymatStateFittingScopeSplitKind_t): Split kind
+//CUDENSITYMAT_FITTING_FULL_SCOPE_KIND = 1,              ///< int32_t (cudensitymatStateFittingScopeFullKind_t): Full-scope kind
+//CUDENSITYMAT_FITTING_FULL_SCOPE_EXACT_CONFIG = 2,      ///< cudensitymatStateFittingScopeFullExactConfig_t: Full exact-scope configuration
+  CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_CONFIG = 3,       ///< cudensitymatStateFittingScopeSplitALSConfig_t: ALS state-fitting split-scope configuration
+  CUDENSITYMAT_FITTING_APPROACH_LINSOLVE_CONFIG = 10,   ///< cudensitymatStateFittingApproachLinSolveConfig_t: LinSolve state-fitting approach configuration
+} cudensitymatStateFittingAttribute_t;
+
+/**
+ * \brief Configuration attributes for the variational ALS split-scope state-fitting configuration.
+ *
+ * \details DMRG-style sweep-to-sweep convergence. The cost function used for
+ * the relative tolerance is the squared residual norm `C(k) = ||target - stateOut(k)||^2`.
+ * Two-site (or multi-site) ALS sweeps re-split the joined site tensor via SVD;
+ * the truncation policy is controlled by an attached `cudensitymatSVDConfig_t`.
+ */
+typedef enum
+{
+  CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_NUM_SITES  = 0,   ///< int32_t: Number of sites jointly updated per local solve (default: 1). Two-site (or larger) updates require an attached SVD configuration to re-split the joined tensor.
+  CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_SVD_CONFIG = 1,   ///< cudensitymatSVDConfig_t: SVD truncation configuration (used by 2-site or multi-site updates)
+  CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_MAX_SWEEPS = 2,   ///< int32_t: Maximum number of full forward+backward sweeps (default: 20)
+  CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_TOLERANCE  = 3,   ///< double: Relative sweep-to-sweep convergence tolerance on the cost function (default: 1e-10)
+} cudensitymatStateFittingScopeSplitALSConfigAttribute_t;
+
+/**
+ * \brief Configuration attributes for the LinSolve state-fitting approach.
+ *
+ * \details Approach-level knobs that control canonical-form (gauge) management
+ * during variational state fitting; independent of split-vs-full scope and of
+ * the chosen split-kind algorithm.
+ */
+typedef enum
+{
+  CUDENSITYMAT_FITTING_APPROACH_LINSOLVE_TOLERANCE = 0, ///< double: Orthonormality residual tolerance for canonicalized site tensors `T`; if `||T^dag T - I||` falls below this threshold the gauge is treated as exact and re-canonicalization is skipped (default: 0, resolved to machine epsilon of the compute precision)
+} cudensitymatStateFittingApproachLinSolveConfigAttribute_t;
+
+// /**
+//  * \brief Post-compute info attributes for time propagation.
+//  *
+//  * \details Returned by `cudensitymatTimePropagationGetInfo` after a successful
+//  * `cudensitymatTimePropagationCompute`. Reflect diagnostics from the most
+//  * recent compute call.
+//  */
+// typedef enum
+// {
+//   CUDENSITYMAT_PROPAGATION_LAST_KRYLOV_DIM = 0, 
+// } cudensitymatTimePropagationInfoAttribute_t;
+
+// /**
+//  * \brief Post-compute info attributes for eigen-decomposition.
+//  *
+//  * \details Returned by `cudensitymatEigenDecompositionGetInfo` after a
+//  * successful `cudensitymatEigenDecompositionCompute`. Reflect diagnostics
+//  * from the most recent compute call.
+//  */
+// typedef enum
+// {
+//   CUDENSITYMAT_EIGEN_NUM_RESTARTS = 0, 
+//   CUDENSITYMAT_EIGEN_KRYLOV_DIM = 1,
+// } cudensitymatEigenDecompositionInfoAttribute_t;
+
+/**
+ * \brief SVD configuration attributes.
+ */
+typedef enum
+{
+  CUDENSITYMAT_SVD_CONFIG_ABS_CUTOFF = 0,              ///< double: Absolute singular value cutoff (default: 1e-16)
+  CUDENSITYMAT_SVD_CONFIG_REL_CUTOFF = 1,              ///< double: Relative singular value cutoff (default: 1e-14)
+  CUDENSITYMAT_SVD_CONFIG_DISCARDED_WEIGHT_CUTOFF = 2, ///< double: Maximum cumulative discarded weight (default: 0.0)
+  CUDENSITYMAT_SVD_CONFIG_MAX_EXTENT = 3,              ///< int64_t: Upper bound on the number of singular values retained, applied alongside the cutoff thresholds; the most restrictive criterion wins (default: 0 = no count limit)
+} cudensitymatSVDConfigAttribute_t;
+
+/**
+ * \brief Kinds of the operator eigen-spectrum computation.
+ */
+typedef enum
+{
+  CUDENSITYMAT_EIGEN_SPECTRUM_LARGEST = 0,       ///< Compute the largest by magnitude eigen-values of the operator
+  CUDENSITYMAT_EIGEN_SPECTRUM_SMALLEST = 1,      ///< Compute the smallest by magnitude eigen-values of the operator
+  CUDENSITYMAT_EIGEN_SPECTRUM_LARGEST_REAL = 2,  ///< Compute the largest by the real part eigen-values of the operator
+  CUDENSITYMAT_EIGEN_SPECTRUM_SMALLEST_REAL = 3, ///< Compute the smallest by the real part eigen-values of the operator
+} cudensitymatEigenDecompositionSpectrumKind_t;
 
 /** 
  * \brief Memory spaces for workspace buffer allocation.
@@ -441,18 +638,36 @@ typedef void * cudensitymatWorkspaceDescriptor_t;
 typedef void * cudensitymatTimePropagation_t;
 
 /**
+ * \brief Opaque data structure representing eigen-decomposition
+ * of a super-linear map.
+ */
+typedef void * cudensitymatEigenDecomposition_t;
+
+/**
  * \brief Opaque data structure holding Krylov-subspace propagation configuration.
  *
  * \details This configuration object controls the Krylov subspace expansion
- * used for computing matrix exponential action during local time propagation.
+ * used for computing matrix exponential action during time propagation.
  */
 typedef void * cudensitymatTimePropagationApproachKrylovConfig_t;
 
-/*
- * \brief Opaque data structure holding Full-scope propagation configuration.
+/**
+ * \brief Opaque data structure holding Krylov-subspace eigensolver configuration.
  *
-typedef void * cudensitymatTimePropagationScopeFullExactConfig_t;
-*/
+ * \details This configuration object controls the Krylov subspace expansion
+ * used for computing the eigen-spectrum during eigensolve.
+ */
+typedef void * cudensitymatEigenDecompositionApproachKrylovConfig_t;
+
+// /**
+//  * \brief Opaque data structure holding Full-scope propagation configuration.
+//  */
+// typedef void * cudensitymatTimePropagationScopeFullExactConfig_t;
+
+// /**
+//  * \brief Opaque data structure holding Full-scope eigensolver configuration.
+//  */
+// typedef void * cudensitymatEigenDecompositionScopeFullExactConfig_t;
 
 /**
  * \brief Opaque data structure holding TDVP propagation configuration.
@@ -463,25 +678,68 @@ typedef void * cudensitymatTimePropagationScopeFullExactConfig_t;
 typedef void * cudensitymatTimePropagationScopeSplitTDVPConfig_t;
 
 /**
- * \brief Explicit data structure specifying a given time interval or time range.
+ * \brief Opaque data structure holding DMRG eigensolver configuration.
  *
- * \details The time interval bounds are specified by two doubles,
- * timeStart and timeFinish. The explicit time range, that is, the
- * sequence of time points within the requested time interval can be
- * generated by either setting a time step or providing explicit
- * time points manually via a C array of doubles.
- *
- * \note Providing explicit time points (numPoints > 0)
- * overrides the timeStep value.
+ * \details This configuration object controls the DMRG eigensolver method
+ * and its associated configuration.
  */
-typedef struct
-{
-  double timeStart;       ///< Start time
-  double timeFinish;      ///< Finish time
-  double timeStep;        ///< Time step (zero value means undefined)
-  int64_t numPoints;      ///< (Optional) Number of explicit time points inside the [timeStart:timeFinish] interval, 0 otherwise
-  const double * points;  ///< (Optional) Ordered array with explicit time points inside the [timeStart:timeFinish] interval, NULL otherwise
-} cudensitymatTimeRange_t;
+typedef void * cudensitymatEigenDecompositionScopeSplitDMRGConfig_t;
+
+/**
+ * \brief Opaque data structure holding variational ALS configuration
+ * for split-scope state fitting on a factorized (e.g., MPS) quantum state.
+ *
+ * \details This configuration object controls the variational ALS fitting
+ * algorithm used to fit a target factorized quantum state. The same object
+ * can be attached to any API surface that performs split-scope state fitting
+ * via ALS through the `CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_CONFIG`
+ * attribute slot.
+ */
+typedef void * cudensitymatStateFittingScopeSplitALSConfig_t;
+
+/**
+ * \brief Opaque data structure holding LinSolve state-fitting
+ * approach configuration.
+ *
+ * \details Approach-level configuration that controls canonical-form (gauge)
+ * management during variational state fitting. Independent of split-vs-full
+ * scope and of the chosen split-kind algorithm; attached via the
+ * `CUDENSITYMAT_FITTING_APPROACH_LINSOLVE_CONFIG` attribute slot.
+ */
+typedef void * cudensitymatStateFittingApproachLinSolveConfig_t;
+
+/**
+ * \brief Opaque data structure holding SVD truncation configuration.
+ *
+ * \details This configuration object controls SVD truncation parameters
+ * used by algorithms that decompose tensors via SVD (e.g., 2-site TDVP,
+ * DMRG, or 2-site ALS state fitting). Algorithm-agnostic: a single instance
+ * can be attached to a `cudensitymatTimePropagation_t`, a
+ * `cudensitymatEigenDecomposition_t`, or a state-fitting split-scope ALS
+ * configuration via the corresponding SVD-config attribute slot.
+ */
+typedef void * cudensitymatSVDConfig_t;
+
+// /**
+//  * \brief Explicit data structure specifying a given time interval or time range.
+//  *
+//  * \details The time interval bounds are specified by two doubles,
+//  * timeStart and timeFinish. The explicit time range, that is, the
+//  * sequence of time points within the requested time interval can be
+//  * generated by either setting a time step or providing explicit
+//  * time points manually via a C array of doubles.
+//  *
+//  * \note Providing explicit time points (numPoints > 0)
+//  * overrides the timeStep value.
+//  */
+// typedef struct
+// {
+//   double timeStart;       ///< Start time
+//   double timeFinish;      ///< Finish time
+//   double timeStep;        ///< Time step (zero value means undefined)
+//   int64_t numPoints;      ///< (Optional) Number of explicit time points inside the [timeStart:timeFinish] interval, 0 otherwise
+//   const double * points;  ///< (Optional) Ordered array with explicit time points inside the [timeStart:timeFinish] interval, NULL otherwise
+// } cudensitymatTimeRange_t;
 
 /**
  * \brief Explicit data structure for storing an inter-process communicator in a type-erased form.
@@ -632,7 +890,7 @@ const cudensitymatWrappedTensorCallback_t cudensitymatTensorCallbackNone = {NULL
  *      and returns the gradient of the (potentially batched) scalar
  *      coefficient with respect to the chosen parameters gradient seed.
  *  - Backward differentiation:
- *      The callback function takes the adjoint of the (potentailly batched)
+ *      The callback function takes the adjoint of the (potentially batched)
  *      scalar coefficient and returns the contribution to the gradient of
  *      the total cost function with respect to the user-provided real parameter
  *      values that originates from that scalar coefficient.
@@ -693,7 +951,7 @@ typedef int32_t (*cudensitymatScalarGradientCallback_t) (double time,
  *      and returns the gradient of the (potentially batched) tensor
  *      with respect to the chosen parameters gradient seed.
  *  - Backward differentiation:
- *      The callback function takes the adjoint of the (potentailly batched)
+ *      The callback function takes the adjoint of the (potentially batched)
  *      tensor and returns the contribution to the gradient of the total cost function
  *      with respect to the user-provided real parameter values that originates from
  *      that tensor.
@@ -809,7 +1067,7 @@ typedef void (*cudensitymatLoggerCallback_t)(int32_t logLevel,
 /**
  * \typedef cudensitymatLoggerCallbackData_t
  * \brief A callback function pointer type for logging APIs. Use `cudensitymatLoggerSetCallbackData` to set the callback function and user data.
- * \param[in] logLevel Loggin level.
+ * \param[in] logLevel Logging level.
  * \param[in] functionName Name of the API that logged this message.
  * \param[in] message Log message.
  * \param[in] userData User's data to be used by the callback.
@@ -993,6 +1251,46 @@ cudensitymatStatus_t cudensitymatCreateStateMPS(
                     cudensitymatState_t * state);
 
 /**
+ * \brief Records the current (valid) bond extents of a matrix-product-state quantum state.
+ *
+ * Metadata only: records the per-bond current (valid) extents without allocating, moving, or
+ * modifying any tensor storage. Each current extent must satisfy
+ * `0 < bondExtents[i] <= maximum[i]`, where the maximum (buffer) extents are exactly the
+ * `bondExtents` passed to ::cudensitymatCreateStateMPS. Immediately after creation the current
+ * extents equal the maximum extents.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] state Matrix-product-state quantum state.
+ * \param[in] bondExtents Current (valid) bond extents. The array length equals the number of bonds
+ * (number of space modes minus one for open boundary condition). May be `NULL` for a single-site
+ * state, which has no bonds.
+ * \return cudensitymatStatus_t
+ *
+ * \note The maximum (buffer) bond extents are fixed at state creation and need no separate getter.
+ */
+cudensitymatStatus_t cudensitymatStateMPSSetCurrentBondExtents(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatState_t state,
+                    const int64_t bondExtents[]);
+
+/**
+ * \brief Retrieves the current (valid) bond extents of a matrix-product-state quantum state.
+ *
+ * The current extents may differ from the maximum (buffer) extents after truncating updates.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] state Matrix-product-state quantum state.
+ * \param[out] bondExtents Output array for the current (valid) bond extents. The array length
+ * equals the number of bonds (number of space modes minus one for open boundary condition). May be
+ * `NULL` for a single-site state, which has no bonds.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatStateMPSGetCurrentBondExtents(
+                    const cudensitymatHandle_t handle,
+                    const cudensitymatState_t state,
+                    int64_t bondExtents[]);
+
+/**
  * \brief Destroys the quantum state.
  * 
  * \param[in] state Quantum state (or a batch of quantum states).
@@ -1050,7 +1348,7 @@ cudensitymatStatus_t cudensitymatStateGetNumComponents(
  * \param[in] numStateComponents Number of components (tensors)
  * in the quantum state representation (on the current process).
  * \param[out] componentBufferSize Storage size (bytes) for each
- * component (tensor) consituting the quantum state representation
+ * component (tensor) constituting the quantum state representation
  * (on the current process).
  * \return cudensitymatStatus_t 
  */
@@ -1070,9 +1368,9 @@ cudensitymatStatus_t cudensitymatStateGetComponentStorageSize(
  * the quantum state representation (on the current process
  * in multi-process runs). The initial value of the provided
  * storage buffers will be respected by the library,
- * thus providing a mechanism for specifing any initial value
+ * thus providing a mechanism for specifying any initial value
  * of the quantum state in its chosen representation form.
- * In multi-process runs, API function `cudensitymatGetComponentInfo`
+ * In multi-process runs, API function `cudensitymatStateGetComponentInfo`
  * can be used for retrieving the information on which slice of the
  * requested component (tensor) is stored on the current process.
  *
@@ -1080,12 +1378,12 @@ cudensitymatStatus_t cudensitymatStateGetComponentStorageSize(
  * \param[inout] state Quantum state (or a batch of quantum states)
  * \param[in] numStateComponents Number of components (tensors)
  * in the quantum state representation (on the current process).
- * The number of components can be retrived by calling the API
+ * The number of components can be retrieved by calling the API
  * function `cudensitymatStateGetNumComponents`.
  * \param[in] componentBuffer Pointers to user-owned GPU-accessible
  * storage buffers for all components (tensors) constituting
  * the quantum state representation (on the current process).
- * \param[in] componentBufferSize Sizes of the provded storage
+ * \param[in] componentBufferSize Sizes of the provided storage
  * buffers for all components (tensors) constituting the quantum
  * state representation (on the current process).
  * \return cudensitymatStatus_t 
@@ -1753,7 +2051,7 @@ cudensitymatStatus_t cudensitymatOperatorTermAppendElementaryProductBatch(
  *
  * \details The full matrix operators constituting the provided
  * matrix operator product are applied to the quantum state in-order,
- * either on the left or on the rigt, either normal or in the
+ * either on the left or on the right, either normal or in the
  * conjugate-transposed form.
  *
  * \param[in] handle Library handle.
@@ -1762,7 +2060,7 @@ cudensitymatStatus_t cudensitymatOperatorTermAppendElementaryProductBatch(
  * in the matrix operator product.
  * \param[in] matrixOperators Full matrix operators constituting
  * the matrix operator product.
- * \param[in] matrixConjugation Hermitean conjugation status of each matrix
+ * \param[in] matrixConjugation Hermitian conjugation status of each matrix
  * in the matrix operator product (zero means normal, positive integer means
  * conjugate-transposed). For real matrices, hermitean conjugation reduces
  * to a mere matrix transpose since there is no complex conjugation involved.
@@ -1801,7 +2099,7 @@ cudensitymatStatus_t cudensitymatOperatorTermAppendMatrixProduct(
  * API function in which the provided coefficients form an array of some length given by
  * the `batchSize` argument. The provided full matrix operator itself may or may not be batched.
  * If it is batched, its batch size must match the one the `batchSize` argument. If the full
- * matrix operator itlsef is not batched, the same matrix will be used for all batch instances
+ * matrix operator itself is not batched, the same matrix will be used for all batch instances
  * defined here. Furthermore, all non-unity batch sizes must match the batch size of the quantum
  * state acted on.
  *
@@ -1811,7 +2109,7 @@ cudensitymatStatus_t cudensitymatOperatorTermAppendMatrixProduct(
  * in the matrix operator product.
  * \param[in] matrixOperators Full matrix operators constituting
  * the matrix operator product (each full matrix operator may or may not be batched).
- * \param[in] matrixConjugation Hermitean conjugation status of each matrix
+ * \param[in] matrixConjugation Hermitian conjugation status of each matrix
  * in the matrix operator product (zero means normal, positive integer means
  * conjugate-transposed). For real matrices, hermitean conjugation reduces
  * to a mere matrix transpose since there is no complex conjugation involved.
@@ -1856,7 +2154,7 @@ cudensitymatStatus_t cudensitymatOperatorTermAppendMatrixProductBatch(
  * \param[inout] operatorTerm Operator term.
  * \param[in] numMPOOperators Number of MPO operators in the MPO product.
  * \param[in] mpoOperators MPO operators constituting the MPO product.
- * \param[in] mpoConjugation Hermitean conjugation status of each MPO in the MPO product
+ * \param[in] mpoConjugation Hermitian conjugation status of each MPO in the MPO product
  * (zero means normal, positive integer means conjugate-transposed).
  * \param[in] stateModesActedOn State modes acted on by the product of matrix product operators.
  * This is a concatenated list of the state modes acted on by all constituting MPO operators
@@ -2032,6 +2330,140 @@ cudensitymatStatus_t cudensitymatAttachBatchedCoefficients(
                       void * operatorProductBatchedCoeffsTmp[],
                       void * operatorProductBatchedCoeffs[]);
 
+// ============================================================================
+// State-Fitting Split-Scope ALS Configuration API
+// ============================================================================
+
+/**
+ * \brief Creates a variational ALS split-scope state-fitting configuration object with default settings.
+ *
+ * \param[in] handle Library handle.
+ * \param[out] config ALS split-scope state-fitting configuration object.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatCreateStateFittingScopeSplitALSConfig(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatStateFittingScopeSplitALSConfig_t * config);
+
+/**
+ * \brief Destroys a variational ALS split-scope state-fitting configuration object.
+ *
+ * \param[in] config ALS split-scope state-fitting configuration object.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatDestroyStateFittingScopeSplitALSConfig(cudensitymatStateFittingScopeSplitALSConfig_t config);
+
+/**
+ * \brief Sets an attribute of the variational ALS split-scope state-fitting configuration.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] config ALS split-scope state-fitting configuration object.
+ * \param[in] attribute Attribute to set.
+ * \param[in] attributeValue Pointer to the attribute value.
+ * \param[in] attributeSize Size of the attribute value in bytes.
+ * \return cudensitymatStatus_t
+ *
+ * \note The library captures the attribute by value at this call; the caller
+ * retains ownership of `attributeValue` (and of any nested sub-config handles
+ * it points to) and may destroy the source as soon as the call returns.
+ */
+cudensitymatStatus_t cudensitymatStateFittingScopeSplitALSConfigSetAttribute(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatStateFittingScopeSplitALSConfig_t config,
+                    cudensitymatStateFittingScopeSplitALSConfigAttribute_t attribute,
+                    const void * attributeValue,
+                    size_t attributeSize);
+
+/**
+ * \brief Gets an attribute of the variational ALS split-scope state-fitting configuration.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] config ALS split-scope state-fitting configuration object.
+ * \param[in] attribute Attribute to get.
+ * \param[out] attributeValue Pointer to store the attribute value.
+ * \param[in] attributeSize Size of the buffer in bytes.
+ * \return cudensitymatStatus_t
+ *
+ * \note The destination at `attributeValue` is caller-owned: scalar attributes
+ * are written directly into the supplied storage; sub-config-handle attributes
+ * (where applicable) require the caller to first allocate the destination via
+ * the corresponding `cudensitymatCreate*Config` call, after which the bound
+ * sub-configuration is copied into it by value.
+ */
+cudensitymatStatus_t cudensitymatStateFittingScopeSplitALSConfigGetAttribute(
+                    const cudensitymatHandle_t handle,
+                    const cudensitymatStateFittingScopeSplitALSConfig_t config,
+                    cudensitymatStateFittingScopeSplitALSConfigAttribute_t attribute,
+                    void * attributeValue,
+                    size_t attributeSize);
+
+// ============================================================================
+// State-Fitting Approach LinSolve Configuration API
+// ============================================================================
+
+/**
+ * \brief Creates a LinSolve state-fitting approach configuration object with default settings.
+ *
+ * \param[in] handle Library handle.
+ * \param[out] config LinSolve state-fitting approach configuration object.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatCreateStateFittingApproachLinSolveConfig(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatStateFittingApproachLinSolveConfig_t * config);
+
+/**
+ * \brief Destroys a LinSolve state-fitting approach configuration object.
+ *
+ * \param[in] config LinSolve state-fitting approach configuration object.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatDestroyStateFittingApproachLinSolveConfig(cudensitymatStateFittingApproachLinSolveConfig_t config);
+
+/**
+ * \brief Sets an attribute of the LinSolve state-fitting approach configuration.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] config LinSolve state-fitting approach configuration object.
+ * \param[in] attribute Attribute to set.
+ * \param[in] attributeValue Pointer to the attribute value.
+ * \param[in] attributeSize Size of the attribute value in bytes.
+ * \return cudensitymatStatus_t
+ *
+ * \note The library captures the attribute by value at this call; the caller
+ * retains ownership of `attributeValue` (and of any nested sub-config handles
+ * it points to) and may destroy the source as soon as the call returns.
+ */
+cudensitymatStatus_t cudensitymatStateFittingApproachLinSolveConfigSetAttribute(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatStateFittingApproachLinSolveConfig_t config,
+                    cudensitymatStateFittingApproachLinSolveConfigAttribute_t attribute,
+                    const void * attributeValue,
+                    size_t attributeSize);
+
+/**
+ * \brief Gets an attribute of the LinSolve state-fitting approach configuration.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] config LinSolve state-fitting approach configuration object.
+ * \param[in] attribute Attribute to get.
+ * \param[out] attributeValue Pointer to store the attribute value.
+ * \param[in] attributeSize Size of the buffer in bytes.
+ * \return cudensitymatStatus_t
+ *
+ * \note The destination at `attributeValue` is caller-owned: scalar attributes
+ * are written directly into the supplied storage; sub-config-handle attributes
+ * (where applicable) require the caller to first allocate the destination via
+ * the corresponding `cudensitymatCreate*Config` call, after which the bound
+ * sub-configuration is copied into it by value.
+ */
+cudensitymatStatus_t cudensitymatStateFittingApproachLinSolveConfigGetAttribute(
+                    const cudensitymatHandle_t handle,
+                    const cudensitymatStateFittingApproachLinSolveConfig_t config,
+                    cudensitymatStateFittingApproachLinSolveConfigAttribute_t attribute,
+                    void * attributeValue,
+                    size_t attributeSize);
+
 /**
  * \brief Prepares the operator for an action on a quantum state.
  *
@@ -2179,7 +2611,7 @@ cudensitymatStatus_t cudensitymatOperatorPrepareActionBackwardDiff(
  * is computed as a sum of contributions over all differentiable elementary tensor
  * operators, matrix operators, and complex scalar coefficients which parameterize
  * the operator, as follows:
- *   dc/dp[n] = (dA[i,k] * x[k])/dp[n] = sum_j (dA[i,k] * x[k])/qQ[j] * dQ[j]/dp[n]
+ *   dc/dp[n] = (dA[i,k] * x[k])/dp[n] = sum_j (dA[i,k] * x[k])/dQ[j] * dQ[j]/dp[n]
  * where Q[j] is a specific differentiable quantity (elementary tensor operator, matrix operator,
  * or complex scalar coefficient) which parameterizes the operator, and dQ[j]/dp[n]
  * is the partial derivative of Q[j] with respect to the n-th user-defined real parameter p[n].
@@ -2259,6 +2691,12 @@ cudensitymatStatus_t cudensitymatOperatorComputeActionBackwardDiff(
  * \param[in] operators Constituting operator(s) with the same domain of action.
  * Some of the operators may be set to NULL to represent zero action on a specific
  * input quantum state.
+ * \param[in] scopeKind Operator action scope (full or split). State-fitting enum
+ * `cudensitymatStateFittingScopeKind_t`; selects the dense (FULL) or factorized
+ * (SPLIT, e.g. MPS) state-fitting code path used when applying the operator(s).
+ * \param[in] approachKind Operator action approach. State-fitting enum
+ * `cudensitymatStateFittingApproachKind_t`; selects the gauge/orthogonalization
+ * strategy used to keep the output state representable in the chosen scope.
  * \param[out] operatorAction Operator action.
  * \return cudensitymatStatus_t 
  */
@@ -2266,6 +2704,8 @@ cudensitymatStatus_t cudensitymatCreateOperatorAction(
                     const cudensitymatHandle_t handle,
                     int32_t numOperators,
                     cudensitymatOperator_t operators[],
+                    cudensitymatStateFittingScopeKind_t scopeKind,
+                    cudensitymatStateFittingApproachKind_t approachKind,
                     cudensitymatOperatorAction_t * operatorAction);
 
 /**
@@ -2275,6 +2715,30 @@ cudensitymatStatus_t cudensitymatCreateOperatorAction(
  * \return cudensitymatStatus_t 
  */
 cudensitymatStatus_t cudensitymatDestroyOperatorAction(cudensitymatOperatorAction_t operatorAction);
+
+/**
+ * \brief Configures the operator action object with a configuration attribute.
+ *
+ * \details Configure should be called between Create and Prepare. If called
+ * after Prepare, the user must invoke Prepare again before the next Compute.
+ *
+ * \param[in] handle Library handle.
+ * \param[inout] operatorAction Operator action object.
+ * \param[in] attribute Attribute to set.
+ * \param[in] attributeValue Pointer to the attribute value.
+ * \param[in] attributeSize Size of the attribute value in bytes.
+ * \return cudensitymatStatus_t
+ *
+ * \note The configuration and its sub-configurations are captured by value at attach time; the user may
+ * destroy the configuration object as soon as the corresponding `Configure`
+ * call returns.
+ */
+cudensitymatStatus_t cudensitymatOperatorActionConfigure(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatOperatorAction_t operatorAction,
+                    cudensitymatStateFittingAttribute_t attribute,
+                    const void * attributeValue,
+                    size_t attributeSize);
 
 /**
  * \brief Prepares the (aggregate) operator(s) action for computation.
@@ -2313,7 +2777,7 @@ cudensitymatStatus_t cudensitymatOperatorActionPrepare(
 
 /**
  * \brief Executes the action of one or more operators constituting
- * the aggreggate operator(s) action on the same number of input
+ * the aggregate operator(s) action on the same number of input
  * quantum states, accumulating the results into a single output
  * quantum state.
  * 
@@ -2636,6 +3100,10 @@ cudensitymatStatus_t cudensitymatDestroyTimePropagationScopeSplitTDVPConfig(cude
  * \param[in] attributeValue Pointer to the attribute value.
  * \param[in] attributeSize Size of the attribute value in bytes.
  * \return cudensitymatStatus_t
+ *
+ * \note The library captures the attribute by value at this call; the caller
+ * retains ownership of `attributeValue` (and of any nested sub-config handles
+ * it points to) and may destroy the source as soon as the call returns.
  */
 cudensitymatStatus_t cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute(
                     const cudensitymatHandle_t handle,
@@ -2653,6 +3121,12 @@ cudensitymatStatus_t cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute
  * \param[out] attributeValue Pointer to store the attribute value.
  * \param[in] attributeSize Size of the buffer in bytes.
  * \return cudensitymatStatus_t
+ *
+ * \note The destination at `attributeValue` is caller-owned: scalar attributes
+ * are written directly into the supplied storage; sub-config-handle attributes
+ * (where applicable) require the caller to first allocate the destination via
+ * the corresponding `cudensitymatCreate*Config` call, after which the bound
+ * sub-configuration is copied into it by value.
  */
 cudensitymatStatus_t cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute(
                     const cudensitymatHandle_t handle,
@@ -2662,14 +3136,14 @@ cudensitymatStatus_t cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute
                     size_t attributeSize);
 
 // ============================================================================
-// Krylov Configuration API
+// Krylov Configuration API (time propagation)
 // ============================================================================
 
 /**
- * \brief Creates a Krylov configuration object with default settings.
+ * \brief Creates a Krylov-subspace time propagation configuration object with default settings.
  *
  * \param[in] handle Library handle.
- * \param[out] config Krylov configuration object.
+ * \param[out] config Krylov-subspace time propagation configuration object.
  * \return cudensitymatStatus_t
  */
 cudensitymatStatus_t cudensitymatCreateTimePropagationApproachKrylovConfig(
@@ -2677,22 +3151,26 @@ cudensitymatStatus_t cudensitymatCreateTimePropagationApproachKrylovConfig(
                     cudensitymatTimePropagationApproachKrylovConfig_t * config);
 
 /**
- * \brief Destroys a Krylov configuration object.
+ * \brief Destroys a Krylov-subspace time propagation configuration object.
  *
- * \param[in] config Krylov configuration object.
+ * \param[in] config Krylov-subspace time propagation configuration object.
  * \return cudensitymatStatus_t
  */
 cudensitymatStatus_t cudensitymatDestroyTimePropagationApproachKrylovConfig(cudensitymatTimePropagationApproachKrylovConfig_t config);
 
 /**
- * \brief Sets an attribute of the Krylov configuration.
+ * \brief Sets an attribute of the Krylov-subspace time propagation configuration.
  *
  * \param[in] handle Library handle.
- * \param[in] config Krylov configuration object.
+ * \param[in] config Krylov-subspace time propagation configuration object.
  * \param[in] attribute Attribute to set.
  * \param[in] attributeValue Pointer to the attribute value.
  * \param[in] attributeSize Size of the attribute value in bytes.
  * \return cudensitymatStatus_t
+ *
+ * \note The library captures the attribute by value at this call; the caller
+ * retains ownership of `attributeValue` (and of any nested sub-config handles
+ * it points to) and may destroy the source as soon as the call returns.
  */
 cudensitymatStatus_t cudensitymatTimePropagationApproachKrylovConfigSetAttribute(
                     const cudensitymatHandle_t handle,
@@ -2702,14 +3180,20 @@ cudensitymatStatus_t cudensitymatTimePropagationApproachKrylovConfigSetAttribute
                     size_t attributeSize);
 
 /**
- * \brief Gets an attribute of the Krylov configuration.
+ * \brief Gets an attribute of the Krylov-subspace time propagation configuration.
  *
  * \param[in] handle Library handle.
- * \param[in] config Krylov configuration object.
+ * \param[in] config Krylov-subspace time propagation configuration object.
  * \param[in] attribute Attribute to get.
  * \param[out] attributeValue Pointer to store the attribute value.
  * \param[in] attributeSize Size of the buffer in bytes.
  * \return cudensitymatStatus_t
+ *
+ * \note The destination at `attributeValue` is caller-owned: scalar attributes
+ * are written directly into the supplied storage; sub-config-handle attributes
+ * (where applicable) require the caller to first allocate the destination via
+ * the corresponding `cudensitymatCreate*Config` call, after which the bound
+ * sub-configuration is copied into it by value.
  */
 cudensitymatStatus_t cudensitymatTimePropagationApproachKrylovConfigGetAttribute(
                     const cudensitymatHandle_t handle,
@@ -2731,7 +3215,7 @@ cudensitymatStatus_t cudensitymatTimePropagationApproachKrylovConfigGetAttribute
  * \param[in] scopeKind Requested propagation scope.
  * \param[in] approachKind Requested propagation approach.
  * \param[out] timePropagation Time propagation object.
- * \return cudensitymatStatus_t 
+ * \return cudensitymatStatus_t
  */
 cudensitymatStatus_t cudensitymatCreateTimePropagation(
                     const cudensitymatHandle_t handle,
@@ -2752,12 +3236,19 @@ cudensitymatStatus_t cudensitymatDestroyTimePropagation(cudensitymatTimePropagat
 /**
  * \brief Configures the time propagation object with a configuration attribute.
  *
+ * \details Configure should be called between Create and Prepare. If called
+ * after Prepare, the user must invoke Prepare again before the next Compute.
+ *
  * \param[in] handle Library handle.
  * \param[inout] timePropagation Time propagation object.
  * \param[in] attribute Attribute to set.
  * \param[in] attributeValue Pointer to the attribute value.
  * \param[in] attributeSize Size of the attribute value in bytes.
  * \return cudensitymatStatus_t
+ *
+ * \note The configuration and its sub-configurations are captured by value at attach time; the user may
+ * destroy the configuration object as soon as the corresponding `Configure`
+ * call returns.
  */
 cudensitymatStatus_t cudensitymatTimePropagationConfigure(
                     const cudensitymatHandle_t handle,
@@ -2768,6 +3259,10 @@ cudensitymatStatus_t cudensitymatTimePropagationConfigure(
 
 /**
  * \brief Prepares the time propagation object for computation.
+ *
+ * \details In general, before the time propagation can be computed,
+ * it needs to be prepared for computation first, which is the 
+ * purpose of this API function.
  *
  * \param[in] handle Library handle.
  * \param[inout] timePropagation Time propagation object.
@@ -2780,15 +3275,15 @@ cudensitymatStatus_t cudensitymatTimePropagationConfigure(
  * \param[in] stream CUDA stream.
  * \return cudensitymatStatus_t 
  */
- cudensitymatStatus_t cudensitymatTimePropagationPrepare(
-  const cudensitymatHandle_t handle,
-  cudensitymatTimePropagation_t timePropagation,
-  const cudensitymatState_t stateIn,
-  const cudensitymatState_t stateOut,
-  cudensitymatComputeType_t computeType,
-  size_t workspaceSizeLimit,
-  cudensitymatWorkspaceDescriptor_t workspace,
-  cudaStream_t stream);
+cudensitymatStatus_t cudensitymatTimePropagationPrepare(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatTimePropagation_t timePropagation,
+                    const cudensitymatState_t stateIn,
+                    const cudensitymatState_t stateOut,
+                    cudensitymatComputeType_t computeType,
+                    size_t workspaceSizeLimit,
+                    cudensitymatWorkspaceDescriptor_t workspace,
+                    cudaStream_t stream);
 
 /**
  * \brief Computes the time propagation of a quantum state under the action of the operator.
@@ -2811,7 +3306,7 @@ cudensitymatStatus_t cudensitymatTimePropagationConfigure(
  * \param[in] timeStepReal Real part of time step for propagation.
  * \param[in] timeStepImag Imaginary part of time step for propagation.
  * \param[in] time Time value.
- * \param[in] batchSize Batch size (>=1).
+ * \param[in] batchSize Batch size (==1).
  * \param[in] numParams Number of variable parameters defined by the user.
  * \param[in] params GPU-accessible pointer to an F-order 2d-array
  * of user-defined real parameter values: params[numParams, batchSize].
@@ -2835,7 +3330,435 @@ cudensitymatStatus_t cudensitymatTimePropagationCompute(
                     cudensitymatWorkspaceDescriptor_t workspace,
                     cudaStream_t stream);
 
+// /**
+//  * \brief Queries post-compute info from the time propagation object.
+//  *
+//  * \details Returns a diagnostic value from the most recent successful
+//  * `cudensitymatTimePropagationCompute` call. The returned value is undefined
+//  * if no Compute has been performed on this object yet.
+//  *
+//  * \param[in] handle Library handle.
+//  * \param[in] timePropagation Time propagation object.
+//  * \param[in] attribute Info attribute to query.
+//  * \param[out] attributeValue CPU-accessible pointer to store the attribute value.
+//  * \param[in] attributeSize Size of the destination buffer in bytes.
+//  * \return cudensitymatStatus_t
+//  */
+// cudensitymatStatus_t cudensitymatTimePropagationGetInfo(
+//                     const cudensitymatHandle_t handle,
+//                     const cudensitymatTimePropagation_t timePropagation,
+//                     cudensitymatTimePropagationInfoAttribute_t attribute,
+//                     void * attributeValue,
+//                     size_t attributeSize);
+
 /** \} end propagatorAPI */
+
+/**
+ * \defgroup svdConfigAPI SVD truncation configuration API
+ * \{
+ *
+ * \details The SVD configuration object is algorithm-agnostic: a single
+ * instance can be attached to either a `cudensitymatTimePropagation_t` or
+ * a `cudensitymatEigenDecomposition_t` via the corresponding split-scope
+ * SVD-config attribute (e.g., `CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_SVD_CONFIG`
+ * or `CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_SVD_CONFIG`).
+ *
+ * \note The configuration is captured by value at attach time; the user may
+ * destroy the configuration object as soon as the corresponding `Configure`
+ * call returns.
+ */
+
+/**
+ * \brief Creates an SVD truncation configuration object with default settings.
+ *
+ * \param[in] handle Library handle.
+ * \param[out] config SVD configuration object.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatCreateSVDConfig(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatSVDConfig_t * config);
+
+/**
+ * \brief Destroys an SVD configuration object.
+ *
+ * \param[in] config SVD configuration object.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatDestroySVDConfig(cudensitymatSVDConfig_t config);
+
+/**
+ * \brief Sets an attribute of the SVD configuration.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] config SVD configuration object.
+ * \param[in] attribute Attribute to set.
+ * \param[in] attributeValue Pointer to the attribute value.
+ * \param[in] attributeSize Size of the attribute value in bytes.
+ * \return cudensitymatStatus_t
+ *
+ * \note The library captures the attribute by value at this call; the caller
+ * retains ownership of `attributeValue` (and of any nested sub-config handles
+ * it points to) and may destroy the source as soon as the call returns.
+ */
+cudensitymatStatus_t cudensitymatSVDConfigSetAttribute(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatSVDConfig_t config,
+                    cudensitymatSVDConfigAttribute_t attribute,
+                    const void * attributeValue,
+                    size_t attributeSize);
+
+/**
+ * \brief Gets an attribute of the SVD configuration.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] config SVD configuration object.
+ * \param[in] attribute Attribute to get.
+ * \param[out] attributeValue Pointer to store the attribute value.
+ * \param[in] attributeSize Size of the buffer in bytes.
+ * \return cudensitymatStatus_t
+ *
+ * \note The destination at `attributeValue` is caller-owned: scalar attributes
+ * are written directly into the supplied storage; sub-config-handle attributes
+ * (where applicable) require the caller to first allocate the destination via
+ * the corresponding `cudensitymatCreate*Config` call, after which the bound
+ * sub-configuration is copied into it by value.
+ */
+cudensitymatStatus_t cudensitymatSVDConfigGetAttribute(
+                    const cudensitymatHandle_t handle,
+                    const cudensitymatSVDConfig_t config,
+                    cudensitymatSVDConfigAttribute_t attribute,
+                    void * attributeValue,
+                    size_t attributeSize);
+
+/** \} end svdConfigAPI */
+
+/**
+ * \defgroup eigenDecompositionAPI Operator eigen-decomposition API
+ * \{
+ */
+
+// ============================================================================
+// DMRG Configuration API
+// ============================================================================
+
+/**
+ * \brief Creates a DMRG configuration object with default settings.
+ *
+ * \param[in] handle Library handle.
+ * \param[out] config DMRG configuration object.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatEigenDecompositionScopeSplitDMRGConfig_t * config);
+
+/**
+ * \brief Destroys a DMRG configuration object.
+ *
+ * \param[in] config DMRG configuration object.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig(cudensitymatEigenDecompositionScopeSplitDMRGConfig_t config);
+
+/**
+ * \brief Sets an attribute of the DMRG configuration.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] config DMRG configuration object.
+ * \param[in] attribute Attribute to set.
+ * \param[in] attributeValue Pointer to the attribute value.
+ * \param[in] attributeSize Size of the attribute value in bytes.
+ * \return cudensitymatStatus_t
+ *
+ * \note The library captures the attribute by value at this call; the caller
+ * retains ownership of `attributeValue` (and of any nested sub-config handles
+ * it points to) and may destroy the source as soon as the call returns.
+ */
+cudensitymatStatus_t cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatEigenDecompositionScopeSplitDMRGConfig_t config,
+                    cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t attribute,
+                    const void * attributeValue,
+                    size_t attributeSize);
+
+/**
+ * \brief Gets an attribute of the DMRG configuration.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] config DMRG configuration object.
+ * \param[in] attribute Attribute to get.
+ * \param[out] attributeValue Pointer to store the attribute value.
+ * \param[in] attributeSize Size of the buffer in bytes.
+ * \return cudensitymatStatus_t
+ *
+ * \note The destination at `attributeValue` is caller-owned: scalar attributes
+ * are written directly into the supplied storage; sub-config-handle attributes
+ * (where applicable) require the caller to first allocate the destination via
+ * the corresponding `cudensitymatCreate*Config` call, after which the bound
+ * sub-configuration is copied into it by value.
+ */
+cudensitymatStatus_t cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute(
+                    const cudensitymatHandle_t handle,
+                    const cudensitymatEigenDecompositionScopeSplitDMRGConfig_t config,
+                    cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t attribute,
+                    void * attributeValue,
+                    size_t attributeSize);
+
+// ============================================================================
+// Krylov Configuration API (eigensolver)
+// ============================================================================
+
+/**
+ * \brief Creates a Krylov-subspace eigensolver configuration object with default settings.
+ *
+ * \param[in] handle Library handle.
+ * \param[out] config Krylov-subspace eigensolver configuration object.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatCreateEigenDecompositionApproachKrylovConfig(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatEigenDecompositionApproachKrylovConfig_t * config);
+
+/**
+ * \brief Destroys a Krylov-subspace eigensolver configuration object.
+ *
+ * \param[in] config Krylov-subspace eigensolver configuration object.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatDestroyEigenDecompositionApproachKrylovConfig(cudensitymatEigenDecompositionApproachKrylovConfig_t config);
+
+/**
+ * \brief Sets an attribute of the Krylov-subspace eigensolver configuration.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] config Krylov-subspace eigensolver configuration object.
+ * \param[in] attribute Attribute to set.
+ * \param[in] attributeValue Pointer to the attribute value.
+ * \param[in] attributeSize Size of the attribute value in bytes.
+ * \return cudensitymatStatus_t
+ *
+ * \note The library captures the attribute by value at this call; the caller
+ * retains ownership of `attributeValue` (and of any nested sub-config handles
+ * it points to) and may destroy the source as soon as the call returns.
+ */
+cudensitymatStatus_t cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatEigenDecompositionApproachKrylovConfig_t config,
+                    cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t attribute,
+                    const void * attributeValue,
+                    size_t attributeSize);
+
+/**
+ * \brief Gets an attribute of the Krylov-subspace eigensolver configuration.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] config Krylov-subspace eigensolver configuration object.
+ * \param[in] attribute Attribute to get.
+ * \param[out] attributeValue Pointer to store the attribute value.
+ * \param[in] attributeSize Size of the buffer in bytes.
+ * \return cudensitymatStatus_t
+ *
+ * \note The destination at `attributeValue` is caller-owned: scalar attributes
+ * are written directly into the supplied storage; sub-config-handle attributes
+ * (where applicable) require the caller to first allocate the destination via
+ * the corresponding `cudensitymatCreate*Config` call, after which the bound
+ * sub-configuration is copied into it by value.
+ */
+cudensitymatStatus_t cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute(
+                    const cudensitymatHandle_t handle,
+                    const cudensitymatEigenDecompositionApproachKrylovConfig_t config,
+                    cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t attribute,
+                    void * attributeValue,
+                    size_t attributeSize);
+
+// ============================================================================
+// Eigen Decomposition API
+// ============================================================================
+
+/**
+ * \brief Creates the eigen-decomposition computation object for a given operator.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] superoperator Operator.
+ * \param[in] isHermitian Specifies whether the operator is Hermitian (!=0) or not (0).
+ * \param[in] spectrumKind Requested kind of the eigen-spectrum computation.
+ * \param[in] scopeKind Requested decomposition scope (full vs split).
+ * \param[in] approachKind Requested decomposition approach (e.g., Krylov).
+ * \param[out] eigenDecomposition Eigen-decomposition computation object.
+ * \return cudensitymatStatus_t
+ *
+ * \note The operator must stay alive during the lifetime of the created
+ * eigen-decomposition object.
+ *
+ * \note `isHermitian == 0` is currently rejected at Create with
+ * `CUDENSITYMAT_STATUS_NOT_SUPPORTED`; only Hermitian operators are
+ * supported in this release. The library trusts the caller's flag and does
+ * not verify Hermiticity of the operator.
+ */
+cudensitymatStatus_t cudensitymatCreateEigenDecomposition(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatOperator_t superoperator,
+                    int32_t isHermitian,
+                    cudensitymatEigenDecompositionSpectrumKind_t spectrumKind,
+                    cudensitymatEigenDecompositionScopeKind_t scopeKind,
+                    cudensitymatEigenDecompositionApproachKind_t approachKind,
+                    cudensitymatEigenDecomposition_t * eigenDecomposition);
+
+/**
+ * \brief Destroys an eigen-decomposition computation object.
+ *
+ * \param[in] eigenDecomposition Eigen-decomposition computation object.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatDestroyEigenDecomposition(cudensitymatEigenDecomposition_t eigenDecomposition);
+
+/**
+ * \brief Configures the eigen-decomposition object with a configuration attribute.
+ *
+ * \details Configure should be called between Create and Prepare. If called
+ * after Prepare, the user must invoke Prepare again before the next Compute.
+ *
+ * \param[in] handle Library handle.
+ * \param[inout] eigenDecomposition Eigen-decomposition computation object.
+ * \param[in] attribute Attribute to configure.
+ * \param[in] attributeValue Pointer to the attribute value.
+ * \param[in] attributeSize Size of the attribute value in bytes.
+ * \return cudensitymatStatus_t
+ *
+ * \note The configuration and its sub-configurations are captured by value at attach time; the user may
+ * destroy the configuration object as soon as the corresponding `Configure`
+ * call returns.
+ */
+cudensitymatStatus_t cudensitymatEigenDecompositionConfigure(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatEigenDecomposition_t eigenDecomposition,
+                    cudensitymatEigenDecompositionAttribute_t attribute,
+                    const void * attributeValue,
+                    size_t attributeSize);
+
+/**
+ * \brief Prepares the eigen-decomposition object for computation.
+ *
+ * \details In general, before the eigen-decomposition can be computed,
+ * it needs to be prepared for computation first (once), which is the
+ * purpose of this API function.
+ *
+ * \param[in] handle Library handle.
+ * \param[inout] eigenDecomposition Eigen-decomposition computation object.
+ * \param[in] maxEigenStates Maximum number of eigen-pairs to compute.
+ * \param[in] state Representative quantum state (cannot be batched).
+ * \param[in] computeType Desired compute type.
+ * \param[in] workspaceSizeLimit Workspace buffer size limit (bytes).
+ * \param[inout] workspace Empty workspace descriptor on entrance.
+ * The workspace buffer sizes required for the computation will be set on return.
+ * \param[in] stream CUDA stream.
+ * \return cudensitymatStatus_t
+ *
+ * \note In this release, Prepare returns `CUDENSITYMAT_STATUS_NOT_SUPPORTED`
+ * when any of the following conditions is met:
+ * (a) the `scopeKind` provided at Create is `CUDENSITYMAT_EIGEN_SCOPE_FULL`;
+ * (b) the bound DMRG configuration has `CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_NUM_SITES`
+ * not in `{1, 2}` (only 1-site and 2-site DMRG are supported in this release);
+ * (c) `maxEigenStates != 1` (only a single eigen-pair is supported in this release);
+ * (d) the `spectrumKind` provided at Create is not
+ * `CUDENSITYMAT_EIGEN_SPECTRUM_SMALLEST_REAL` (only the smallest-real
+ * eigenvalue is supported by the DMRG engine in this release);
+ * (e) the representative `state` is a single-site (1-mode) MPS (an MPS
+ * with at least two sites is required by the DMRG engine).
+ */
+cudensitymatStatus_t cudensitymatEigenDecompositionPrepare(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatEigenDecomposition_t eigenDecomposition,
+                    int32_t maxEigenStates,
+                    const cudensitymatState_t state,
+                    cudensitymatComputeType_t computeType,
+                    size_t workspaceSizeLimit,
+                    cudensitymatWorkspaceDescriptor_t workspace,
+                    cudaStream_t stream);
+
+/**
+ * \brief Computes the eigen-decomposition of an operator.
+ *
+ * \details Computes a requested number of eigen-pairs of the operator
+ * encapsulated inside the eigen-decomposition computation object.
+ *
+ * \param[in] handle Library handle.
+ * \param[inout] eigenDecomposition Eigen-decomposition computation object.
+ * \param[in] time Specified time.
+ * \param[in] batchSize Batch size (must be 1 in this release; >1 returns
+ * `CUDENSITYMAT_STATUS_NOT_SUPPORTED` at Compute).
+ * \param[in] numParams Number of variable parameters defined by the user.
+ * \param[in] params GPU-accessible pointer to an F-order 2d-array
+ * of user-defined real parameter values: params[numParams, batchSize].
+ * \param[in] numEigenStates Actual number of eigenstates to compute,
+ * which must not exceed the value of the `maxEigenStates` parameter
+ * provided during the preparation of the eigen-decomposition computation object.
+ * \param[inout] eigenstates Quantum eigenstates.
+ * The initial values of the provided quantum states will be used as the
+ * initial guesses for the iterative solver.
+ * \param[out] eigenvalues Pointer to the eigenvalues storage (F-order array
+ * of shape [numEigenStates, batchSize]) in GPU-accessible RAM (same data type
+ * as used by the quantum state and operator).
+ * \param[inout] tolerances Pointer to an F-order array of shape [numEigenStates, batchSize]
+ * in CPU-accessible RAM. The initial values represent the desirable convergence tolerances
+ * for all eigen-states. The returned values represent the actually achieved residual norms
+ * for all eigen-states.
+ * \param[in] workspace Allocated workspace descriptor.
+ * \param[in] stream CUDA stream.
+ * \return cudensitymatStatus_t
+ *
+ * \note The initial quantum states passed via the `eigenstates` parameter
+ * must form a linearly independent set (but it does not have to be orthonormal).
+ *
+ * \note `numEigenStates != 1` returns `CUDENSITYMAT_STATUS_NOT_SUPPORTED`
+ * in this release; only a single eigen-pair is supported.
+ *
+ * \note The eigenvalue data type matches the state's data type (i.e., the
+ * complex type used for the input `eigenstates`). For Hermitian operators
+ * the real eigenvalue is written into the complex slot with `imag = 0`.
+ *
+ * \note The input `eigenstates` are used as initial guesses for the iterative
+ * solver. The library does not canonicalize them; the caller is responsible
+ * for providing a linearly-independent (and ideally well-conditioned) set.
+ */
+cudensitymatStatus_t cudensitymatEigenDecompositionCompute(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatEigenDecomposition_t eigenDecomposition,
+                    double time,
+                    int64_t batchSize,
+                    int32_t numParams,
+                    const double * params,
+                    int32_t numEigenStates,
+                    cudensitymatState_t eigenstates[],
+                    void * eigenvalues,
+                    double * tolerances,
+                    cudensitymatWorkspaceDescriptor_t workspace,
+                    cudaStream_t stream);
+
+// /**
+//  * \brief Queries post-compute info from the eigen-decomposition object.
+//  *
+//  * \details Returns a diagnostic value from the most recent successful
+//  * `cudensitymatEigenDecompositionCompute` call.
+//  * The returned value is undefined if no Compute has been performed on this
+//  * object yet.
+//  *
+//  * \param[in] handle Library handle.
+//  * \param[in] eigenDecomposition Eigen-decomposition computation object.
+//  * \param[in] attribute Info attribute to query.
+//  * \param[out] attributeValue CPU-accessible pointer to store the attribute value.
+//  * \param[in] attributeSize Size of the destination buffer in bytes.
+//  * \return cudensitymatStatus_t
+//  */
+// cudensitymatStatus_t cudensitymatEigenDecompositionGetInfo(
+//                     const cudensitymatHandle_t handle,
+//                     const cudensitymatEigenDecomposition_t eigenDecomposition,
+//                     cudensitymatEigenDecompositionInfoAttribute_t attribute,
+//                     void * attributeValue,
+//                     size_t attributeSize);
+
+/** \} end eigenDecompositionAPI */
 
 /**
  * \defgroup workspaceAPI Workspace API
@@ -3025,7 +3948,7 @@ cudensitymatStatus_t cudensitymatMatrixOperatorDenseLocalAttachBuffer(
  * \{
  */
 
-#define CUDENSITYMAT_DISTRIBUTED_INTERFACE_VERSION 260110
+#define CUDENSITYMAT_DISTRIBUTED_INTERFACE_VERSION 260512
 
 /**
  * \brief (Internal): Dynamic API wrapper runtime binding table for the distributed communication service.

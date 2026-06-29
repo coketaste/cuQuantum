@@ -33,6 +33,7 @@ DIAGONAL_GATE_CLASSES = (
     DiagonalGate, IGate, U1Gate,
 )
 
+from .circuit_converter_utils import GateEntry
 from .helpers import _get_backend_asarray_func, get_dtype_name
 
 # https://docs.quantum.ibm.com/api/qiskit/quantum_info#channels
@@ -78,6 +79,21 @@ def is_diagonal_gate(inst):
         return is_diagonal_gate(inst.base_gate)
     return isinstance(inst, DIAGONAL_GATE_CLASSES)
 
+def _parse_channel_to_kraus(operation, gate_qubits, asarray, dtype):
+    """Convert a NOISY_CHANNEL_TYPES operation to a list of Kraus operator tensors."""
+    kraus_data = Kraus(operation).data
+    n_qubits = len(gate_qubits)
+    kraus_ops = []
+    for k in kraus_data:
+        tensor = k.reshape((2, 2) * n_qubits)
+        if get_dtype_name(dtype).startswith("float"):
+            if not np.isreal(tensor).all():
+                imag_max = abs(tensor.imag).max()
+                raise RuntimeError(f"channel Kraus operand found to have imaginary part {imag_max=} while real dtype {dtype} is specified")
+            tensor = tensor.real
+        kraus_ops.append(asarray(tensor, dtype=dtype))
+    return kraus_ops
+
 def parse_gate_sequence(
     circuit, 
     *, 
@@ -88,7 +104,7 @@ def parse_gate_sequence(
     global_phase=0, 
     decompose_gates=True, 
     check_diagonal=True, 
-    gates_are_diagonal=None
+    gates_are_diagonal=None,
 ):
     """
     Return the gate sequence for the given circuit.
@@ -101,6 +117,9 @@ def parse_gate_sequence(
         gates: The current gate sequences
         global_phase: An additional global phase to add to.
         decompose_gate: Whether the operation should be decomposed when operand is being parsed into ndarrays.
+
+    Channels (when present) are always converted to Kraus operator tensors; the pure-vs-mixed
+    distinction is handled downstream by the consumer.
     """
     if gates is None:
         gates = []
@@ -113,10 +132,17 @@ def parse_gate_sequence(
         if qubit_map:
             gate_qubits = [qubit_map[q] for q in gate_qubits]
         if isinstance(operation, (Barrier, Delay)):
-            # no physical meaning in tensor network simulation
             continue
+        if not isinstance(operation, NOISY_CHANNEL_TYPES) and getattr(operation, 'name', None) == 'kraus':
+            operation = Kraus(operation)
         if isinstance(operation, NOISY_CHANNEL_TYPES):
-            raise RuntimeError("CircuitToEinsum currently doesn't support qiskit Circuits with QuantumChannels")
+            if asarray is None:
+                gates.append((operation, gate_qubits))
+                continue
+            kraus_ops = _parse_channel_to_kraus(operation, gate_qubits, asarray, dtype)
+            gates.append((kraus_ops, gate_qubits[::-1]))
+            gates_are_diagonal.append(None)
+            continue
         if AnnotatedOperation is not None and isinstance(operation, AnnotatedOperation):
             raise ValueError(
                 f"AnnotatedOperation '{operation.name}' is not supported. "
@@ -155,9 +181,23 @@ def parse_gate_sequence(
         )
     return gates, global_phase, gates_are_diagonal
 
+def _to_gate_entries(gates, gates_are_diagonal):
+    """Convert parallel (gates, gates_are_diagonal) lists to a list of GateEntry."""
+    entries = []
+    for (operand, qubits), is_diag in zip(gates, gates_are_diagonal):
+        if is_diag is None and isinstance(operand, list):
+            entries.append(GateEntry(kind='general_channel', operand=operand, qubits=qubits))
+        else:
+            entries.append(GateEntry(kind='gate', operand=operand, qubits=qubits, is_diagonal=is_diag))
+    return entries
+
+
 def unfold_circuit(circuit, backend, dtype, *, decompose_gates=True, check_diagonal=True):
     """
-    Unfold the circuit to obtain the qubits and all gate tensors. 
+    Unfold the circuit to obtain the qubits and all gate entries.
+
+    Channels (when present) are always converted to Kraus operator tensors; the pure-vs-mixed
+    distinction is handled downstream by the consumer.
 
     Args:
         circuit: A :class:`qiskit.QuantumCircuit` object. All parameters in the circuit must be binded.
@@ -166,7 +206,8 @@ def unfold_circuit(circuit, backend, dtype, *, decompose_gates=True, check_diago
         decompose_gates: Whether to decompose composite gates down to at most two qubits.
 
     Returns:
-        All qubits and gate operations from the input circuit
+        A tuple ``(qubits, gate_entries)`` where *gate_entries* is a list of
+        :class:`~cuquantum.tensornet._internal.circuit_converter_utils.GateEntry` objects.
     """
     if circuit.parameters:
         raise ValueError(f"Input circuit contains following parameters: {circuit.parameters}. Must be fully parameterized")
@@ -192,7 +233,7 @@ def unfold_circuit(circuit, backend, dtype, *, decompose_gates=True, check_diago
         gates = [(phase_gate, qubits[:1]), ] + gates
         gates_are_diagonal = [True] + gates_are_diagonal
 
-    return qubits, gates, gates_are_diagonal
+    return qubits, _to_gate_entries(gates, gates_are_diagonal)
 
 def get_lightcone_circuit(circuit, coned_qubits):
     """
@@ -206,7 +247,6 @@ def get_lightcone_circuit(circuit, coned_qubits):
         A :class:`qiskit.QuantumCircuit` object that potentially contains less number of gates
     """
     coned_qubits = set(coned_qubits)
-    # No need to explicitly decompose gates here
     gates, global_phase, _ = parse_gate_sequence(circuit, asarray=None, decompose_gates=False, check_diagonal=False)
     newqc = QuantumCircuit(circuit.qubits)
     ix = len(gates)
@@ -215,7 +255,8 @@ def get_lightcone_circuit(circuit, coned_qubits):
         ix -= 1
         operation, gate_qubits = gates[ix]
         qubit_set = set(gate_qubits)
-        if qubit_set & coned_qubits:
+        is_channel = isinstance(operation, NOISY_CHANNEL_TYPES)
+        if is_channel or (qubit_set & coned_qubits):
             tail_operations.append([operation, gate_qubits])
             coned_qubits |= qubit_set
     for operation, gate_qubits in gates[:ix] + tail_operations[::-1]:

@@ -19,13 +19,34 @@ from cuquantum.bindings import cudensitymat as cudm
 from .elementary_operator import ElementaryOperator, DenseOperator, MultidiagonalOperator
 from .matrix_operator import MatrixOperator, LocalDenseMatrixOperator
 from .matrix_product_operator import MatrixProductOperator
-from .state import State
+from .state import State, MPSPureState
+from .state_fitting import (
+    ALSConfig,
+    StateFittingApproachLinSolveConfig,
+    _build_als_config_handle,
+    _build_lin_solve_config_handle,
+)
 from .work_stream import WorkStream
 from ._internal.callbacks import CallbackCoefficient
 from .callbacks import Callback
 from ._internal import utils
-from ._internal.utils import NDArrayType, InvalidObjectState, check_and_get_batchsize
+from ._internal.utils import (
+    NDArrayType,
+    InvalidObjectState,
+    check_and_get_batchsize,
+    resolve_enum as _resolve_enum,
+)
 from ._internal.typemaps import CUDENSITYMAT_COMPUTE_TYPE_MAP
+
+
+_FITTING_SCOPE_KIND_MAP = {
+    "full": cudm.StateFittingScopeKind.FITTING_SCOPE_FULL,
+    "split": cudm.StateFittingScopeKind.FITTING_SCOPE_SPLIT,
+}
+
+_FITTING_APPROACH_KIND_MAP = {
+    "linsolve": cudm.StateFittingApproachKind.FITTING_APPROACH_LINSOLVE,
+}
 
 __all__ = [
     "full_matrix_product",
@@ -1419,19 +1440,31 @@ class Operator:
 
 class OperatorAction:
     """
-    OperatorAction(ctx, operators)
+    OperatorAction(ctx, operators, scope="full", approach="linsolve", scope_config=None, approach_config=None)
 
     Operator action representing the action of a set of :class:`Operator` objects on a set of input states, accumulated into a single output state.
 
     Args:
         ctx: Library context, which contains workspace, stream and other configuration information.
         operators: A sequence of :class:`Operator` objects, the length of which is identical to the length of sequence of input states accepted when computing this instance's action.
+        scope: State-fitting scope. Accepts ``"full"``, ``"split"``, or
+            a ``cudm.StateFittingScopeKind`` enum value.
+        approach: State-fitting approach. Accepts ``"linsolve"`` or a
+            ``cudm.StateFittingApproachKind`` enum value.
+        scope_config: Optional scope-specific configuration
+            (:class:`ALSConfig`).
+        approach_config: Optional approach-specific configuration
+            (:class:`StateFittingApproachLinSolveConfig`).
     """
 
     def __init__(
         self,
         ctx: WorkStream,
         operators: Tuple[Operator],
+        scope: Union[str, "cudm.StateFittingScopeKind"] = "full",
+        approach: Union[str, "cudm.StateFittingApproachKind"] = "linsolve",
+        scope_config: Optional[ALSConfig] = None,
+        approach_config: Optional[StateFittingApproachLinSolveConfig] = None,
     ):
         """
         Initialize an operator action representing the action of a set of :class:`Operator` objects on a set of input states, accumulated into a single output state.
@@ -1450,6 +1483,12 @@ class OperatorAction:
             raise RuntimeError("Operator's constituting this OperatorAction have mismatching Hilbert space dimensions.")
         self._hilbert_space_dims = tuple(_hilbert_space_dims.pop())
 
+        self._scope_kind = _resolve_enum(scope, _FITTING_SCOPE_KIND_MAP, "scope")
+        self._approach_kind = _resolve_enum(approach, _FITTING_APPROACH_KIND_MAP, "approach")
+        self._scope_config = scope_config
+        self._approach_config = approach_config
+        self._requires_configuration = scope_config is not None or approach_config is not None
+
         self._ctx = ctx
         self._default_compute_type = self._ctx.compute_type if self._ctx.compute_type is not None else self._dtype
         self._current_compute_type = None
@@ -1464,7 +1503,13 @@ class OperatorAction:
             op._maybe_instantiate(self._ctx)
             self._batch_size = check_and_get_batchsize(self._batch_size, op._batch_size)
             operators.append(op._validated_ptr)
-        self._ptr = cudm.create_operator_action(self._ctx._handle._validated_ptr, len(self.operators), operators)
+        self._ptr = cudm.create_operator_action(
+            self._ctx._handle._validated_ptr,
+            len(self.operators),
+            operators,
+            self._scope_kind,
+            self._approach_kind,
+        )
         self._finalizer = weakref.finalize(
             self,
             utils.generic_finalizer,
@@ -1485,6 +1530,9 @@ class OperatorAction:
             self._using_terms = self._using_terms.union(set(op.terms))
             self._using_tensor_ops = self._using_tensor_ops.union(op._using_ops)
 
+        if self._requires_configuration:
+            self._apply_configs()
+
     def _check_valid_state(self, *args, **kwargs) -> None:
         """ """
         if not self._valid_state:
@@ -1501,6 +1549,77 @@ class OperatorAction:
         The pointer to this instances C-API counterpart.
         """
         return self._ptr
+
+    def _configure_oa_attribute(self, attr_enum, config_ptr):
+        """Pass a config handle to the operator action via operator_action_configure."""
+        handle = self._ctx._handle._validated_ptr
+        dtype = cudm.get_state_fitting_attribute_dtype(attr_enum)
+        val_arr = np.array([config_ptr], dtype=dtype)
+        cudm.operator_action_configure(
+            handle, self._ptr, attr_enum,
+            val_arr.ctypes.data, val_arr.dtype.itemsize,
+        )
+
+    def _apply_configs(self):
+        """Materialize sub-config C handles, attach them via Configure, and destroy them. 
+        """
+        handle = self._ctx._handle._validated_ptr
+
+        # --- Scope (ALS) config ---
+        if self._scope_config is not None:
+            if not isinstance(self._scope_config, ALSConfig):
+                raise TypeError(
+                    f"scope_config must be an ALSConfig instance, got "
+                    f"{type(self._scope_config).__name__}."
+                )
+            als_ptr = _build_als_config_handle(handle, self._scope_config)
+            try:
+                self._configure_oa_attribute(
+                    cudm.StateFittingAttribute.FITTING_SPLIT_SCOPE_ALS_CONFIG, als_ptr,
+                )
+            finally:
+                cudm.destroy_state_fitting_scope_split_als_config(als_ptr)
+
+        # --- Approach (LinSolve) config ---
+        if self._approach_config is not None:
+            if not isinstance(self._approach_config, StateFittingApproachLinSolveConfig):
+                raise TypeError(
+                    f"approach_config must be a StateFittingApproachLinSolveConfig "
+                    f"instance, got {type(self._approach_config).__name__}."
+                )
+            linsolve_ptr = _build_lin_solve_config_handle(handle, self._approach_config)
+            try:
+                self._configure_oa_attribute(
+                    cudm.StateFittingAttribute.FITTING_APPROACH_LINSOLVE_CONFIG, linsolve_ptr,
+                )
+            finally:
+                cudm.destroy_state_fitting_approach_lin_solve_config(linsolve_ptr)
+
+        self._requires_configuration = False
+
+    @nvmath_utils.precondition(_check_valid_state)
+    def configure(
+        self,
+        scope_config: Optional[ALSConfig] = None,
+        approach_config: Optional[StateFittingApproachLinSolveConfig] = None,
+    ) -> None:
+        """
+        Update the operator-action (state-fitting) configuration.
+
+        :meth:`prepare` must be invoked before the next :meth:`compute` call.
+
+        Args:
+            scope_config: Scope-specific configuration (:class:`ALSConfig`).
+            approach_config: Approach-specific configuration
+                (:class:`StateFittingApproachLinSolveConfig`).
+        """
+        if scope_config is not None:
+            self._scope_config = scope_config
+        if approach_config is not None:
+            self._approach_config = approach_config
+        if scope_config is None and approach_config is None:
+            return
+        self._apply_configs()
 
     @property
     def hilbert_space_dims(self):
@@ -1562,16 +1681,18 @@ class OperatorAction:
             ctx: Library context, which contains workspace, stream and other configuration information.
             states_in: The input quantum states to which the action is to be applied.
             state_out: The output quantum state to which the action is to be accumulated. Defaults to the first element of ``state_in``.
-            compute_type: The CUDA compute type to be used by the computation.
-
-        .. attention::
-            The ``compute_type`` argument is currently not used and will default to the data type.
+            compute_type: CUDA compute type string (e.g. ``"complex128"``).
+                Defaults to ``ctx.compute_type`` when set, otherwise to the
+                operator's dtype.
         """
         if self._ctx != ctx:
             raise ValueError(
                 "OperatorAction objects can only be used with a single WorkStream, and this instance was originally used with another WorkStream. Switching WorkStream is not supported."
             )
         self._current_compute_type = compute_type if compute_type else self._default_compute_type
+
+        if self._requires_configuration:
+            self._apply_configs()
 
         _state_hilbert_spaces = set(state.hilbert_space_dims for state in states_in)
         if len(_state_hilbert_spaces) != 1:
@@ -1591,6 +1712,34 @@ class OperatorAction:
         if state_out and _batch_size != state_out.batch_size:
             raise ValueError("Inconsistent output state batch size.")
         self._prepared_batch_size = _batch_size
+
+        # MPS scope-kind gate (Phase 8 of the MPO-on-MPS plan).
+        #
+        # The MPO-on-MPS variational-fit code path requires the OperatorAction
+        # to have been constructed with `scope="split"` AND `approach="linsolve"`
+        # (the only currently supported combination for MPS state fitting).
+        # Without this guard the C-API would still reject the call via
+        # `StatePureMPS::prepareAction`'s scope-kind gate, but the resulting
+        # NOT_SUPPORTED would surface to Python users as an opaque internal
+        # error string. Surface a precise Python-level error here instead.
+        _resolved_state_out = state_out if state_out is not None else states_in[0]
+        _has_mps_state = isinstance(_resolved_state_out, MPSPureState) or any(
+            isinstance(s, MPSPureState) for s in states_in
+        )
+        if _has_mps_state:
+            if self._scope_kind != cudm.StateFittingScopeKind.FITTING_SCOPE_SPLIT:
+                raise NotImplementedError(
+                    "MPO-on-MPS operator action requires the OperatorAction to be constructed "
+                    "with scope='split' (CUDENSITYMAT_FITTING_SCOPE_SPLIT). "
+                    f"Got scope={self._scope_kind!r}."
+                )
+            if self._approach_kind != cudm.StateFittingApproachKind.FITTING_APPROACH_LINSOLVE:
+                raise NotImplementedError(
+                    "MPO-on-MPS operator action requires the OperatorAction to be constructed "
+                    "with approach='linsolve' (CUDENSITYMAT_FITTING_APPROACH_LINSOLVE). "
+                    f"Got approach={self._approach_kind!r}."
+                )
+
         cudm.operator_action_prepare(
             self._ctx._handle._validated_ptr,
             self._ptr,

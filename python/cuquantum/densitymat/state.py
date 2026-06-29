@@ -737,6 +737,52 @@ class MPSPureState(FactorizedState):
     def _purity(self):
         return cudm.StatePurity.PURE
 
+    @property
+    def current_bond_extents(self) -> Tuple[int, ...]:
+        """The current (valid) bond extents, one per bond.
+
+        For open boundary conditions there are ``len(hilbert_space_dims) - 1`` bonds; a
+        single-site state has none and returns an empty tuple. The current extents may
+        differ from the maximum (buffer) extents :attr:`bond_dims` after truncating updates.
+        """
+        n_bonds = len(self.bond_dims)
+        if n_bonds == 0:
+            return ()
+        out = np.empty(n_bonds, dtype=np.int64)
+        cudm.state_mps_get_current_bond_extents(
+            self._ctx._handle._validated_ptr, self._validated_ptr, out.ctypes.data
+        )
+        return tuple(int(extent) for extent in out)
+
+    def set_current_bond_extents(self, bond_extents: Union[Sequence[int], None]) -> None:
+        """Record the current (valid) bond extents (metadata only; no storage change).
+
+        Args:
+            bond_extents: Current bond extents, length equal to the number of bonds
+                (``len(hilbert_space_dims) - 1`` for open boundary conditions); each must
+                satisfy ``0 < extent <= bond_dims[i]``. May be ``None`` for a single-site
+                state, which has no bonds.
+        """
+        n_bonds = len(self.bond_dims)
+        if n_bonds == 0:
+            cudm.state_mps_set_current_bond_extents(
+                self._ctx._handle._validated_ptr, self._validated_ptr, 0
+            )
+            return
+        if bond_extents is None:
+            raise ValueError("bond_extents must be provided for an MPS with bonds.")
+        extents = np.asarray(bond_extents)
+        if extents.ndim != 1:
+            raise ValueError("bond_extents must be a one-dimensional sequence.")
+        if extents.shape[0] != n_bonds:
+            raise ValueError(
+                f"bond_extents must have length {n_bonds}, got {extents.shape[0]}."
+            )
+        extents = np.ascontiguousarray(extents, dtype=np.int64)
+        cudm.state_mps_set_current_bond_extents(
+            self._ctx._handle._validated_ptr, self._validated_ptr, extents
+        )
+
 
 class DensePureState(DenseState):
     """

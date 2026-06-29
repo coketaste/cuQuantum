@@ -56,13 +56,9 @@ def apply_circuit_with_noise(
     with utils.device_ctx(options.device_id):
         converter = CircuitToEinsum(circuit, dtype=dtype, backend=backend)
     num_channels = 0
-    # dtype = getattr(converter.dtype, '__name__', str(converter.dtype).split('.')[-1])
-    gates = converter.gates
-    gates_are_diagonal = converter._gates_are_diagonal
-    for (gate_operand, gate_qubits), is_diagonal in zip(gates, gates_are_diagonal):
-        # all gate operands are assumed to be unitary
-        qubits_indices = [converter.qubits.index(q) for q in gate_qubits]
-        ns.apply_gate(qubits_indices, gate_operand, diagonal=is_diagonal)
+    for entry in converter._gate_entries:
+        qubits_indices = [converter.qubits.index(q) for q in entry.qubits]
+        ns.apply_gate(qubits_indices, entry.operand, diagonal=entry.is_diagonal)
         for q in qubits_indices:
             ns.apply_channel((q,), channel)
             num_channels += 1

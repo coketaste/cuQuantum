@@ -19,12 +19,5 @@ enum class InputType : int64_t {
 };
 
 
-enum class OutputType : int64_t {
-    OperatorTermBatchedCoeffs,
-    OperatorProductBatchedCoeffs,
-    Gradient
-};
-
-
 XLA_FFI_DECLARE_HANDLER_SYMBOL(OperatorActionHandler);
 XLA_FFI_DECLARE_HANDLER_SYMBOL(OperatorActionBackwardDiffHandler);

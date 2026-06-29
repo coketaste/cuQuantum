@@ -59,6 +59,24 @@ class QuantumChannel:
             self._general = False
         return self._general
 
+def apply_channel_to_mixed_state(state, qubits, channel, as_general=False):
+    """Apply a QuantumChannel to a mixed-purity NetworkState.
+
+    Args:
+        state: A NetworkState with pure_state=False.
+        qubits: Tuple of qubit indices.
+        channel: A QuantumChannel instance.
+        as_general: If True, force the general-channel API even for unitary channels.
+    """
+    if as_general or channel.is_general():
+        ch = QuantumChannel(probs=channel.probs, ops=list(channel.ops), dtype=state.dtype)
+        if not ch.is_general():
+            ch.set_general()
+        state.apply_general_tensor_channel(qubits, ch.ops)
+    else:
+        state.apply_unitary_tensor_channel(qubits, channel.ops, channel.probs)
+
+
 @dataclass
 class QuantumGates:
     I = np.array([[1, 0], [0, 1]]).astype("complex128")

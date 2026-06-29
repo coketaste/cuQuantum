@@ -9,13 +9,13 @@
 You can use `make` or `cmake` to compile the cuPauliProp samples. The environment variables `CUDA_PATH` and `CUQUANTUM_ROOT`  or `CUPAULIPROP_ROOT` need to be defined to point to the CUDA Toolkit and cuPauliProp locations, respectively.
 
 Using `make`:
-```
+```bash
 export CUDA_PATH=<path_to_cuda_root>
 export CUPAULIPROP_ROOT=<path_to_cupauliprop_root>
 make
 ```
 or `cmake`:
-```
+```bash
 export CUDA_PATH=<path_to_cuda_root>
 export CUPAULIPROP_ROOT=<path_to_cupauliprop_root>
 cmake . && make
@@ -24,13 +24,18 @@ cmake . && make
 ## Run
 
 To execute the kicked ising circuit example in a command shell, simply use:
-```
+```bash
 ./kicked_ising_example
+```
+
+To run the fused operators example, which benchmarks applying a sequence of operators via the fused API against the single-operator API, use:
+```bash
+./fused_operators_example
 ```
 
 **Note**: Depending on how CUDA Toolkit is installed,
 you might need to add it to `LD_LIBRARY_PATH` like this:
-```
+```bash
 export LD_LIBRARY_PATH=$CUDA_PATH/lib64:$LD_LIBRARY_PATH
 ```
 

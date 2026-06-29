@@ -294,6 +294,7 @@ def main():
     # during simulation, and ergo inform the accuracy of the simulation. The
     # sufficient buffer sizes are specific to the simulated system, and we here
     # choose a surprisingly small capacity as admitted by the studied circuit.
+    # Note we must not let these buffers descope and be prematurely freed.
     
     d_in_expansion_pauli_buffer = cp.cuda.alloc(expansion_pauli_mem)
     d_in_expansion_coef_buffer = cp.cuda.alloc(expansion_coef_mem)
@@ -367,6 +368,7 @@ def main():
     
     workspace = cupauliprop.create_workspace_descriptor(handle)
     
+    # We must not let d_workspace_buffer de-scope and prematurely dealloc.
     d_workspace_buffer = cp.cuda.alloc(workspace_mem)
     cupauliprop.workspace_set_memory(
         handle, workspace,

@@ -974,6 +974,431 @@ class TestStateAPIs(TestStateBase):
         cutn.marginal_compute(self.handle, self.marginal, 0, self.workspace, self.rdm.data.ptr, self.stream.ptr)
         self.stream.synchronize()
 
+class TestSamplerBindingsRngState:
+
+    @staticmethod
+    def _create_ghz_state(handle, num_qubits, dtype):
+        # cutn.state_apply_tensor_operator stores the gate device pointers
+        # lazily and dereferences them later during prepare/sample. The
+        # caller MUST keep gate_h and gate_cx alive until the sampler is
+        # finished or the cupy memory pool may recycle the underlying
+        # blocks, producing a silently corrupted RDM (all-zero diagonal ->
+        # all-zero samples).
+        qubits_dims = np.asarray([2] * num_qubits, dtype=np.int64)
+        state = cutn.create_state(
+            handle, cutn.StatePurity.PURE, num_qubits, qubits_dims,
+            dtype_to_data_type[dtype])
+
+        gate_h = (2**-0.5 * cp.asarray([[1, 1], [1, -1]], dtype=dtype)).reshape(2, 2, order='F')
+        gate_h_strides = np.array([s // gate_h.itemsize for s in gate_h.strides], dtype=np.int64)
+        cutn.state_apply_tensor_operator(
+            handle, state, 1, (0,), gate_h.data.ptr, gate_h_strides, 1, 0, 1)
+
+        gate_cx = cp.asarray(
+            [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]],
+            dtype=dtype).reshape(2, 2, 2, 2, order='F')
+        gate_cx_strides = np.array([s // gate_cx.itemsize for s in gate_cx.strides], dtype=np.int64)
+        for i in range(1, num_qubits):
+            cutn.state_apply_tensor_operator(
+                handle, state, 2, (i - 1, i), gate_cx.data.ptr, gate_cx_strides, 1, 0, 1)
+        return state, (gate_h, gate_cx)
+
+    @staticmethod
+    def _create_uniform_superposition_state(handle, num_qubits, dtype):
+        # Pure |+>^N: maximally entropic sampling distribution (2^N
+        # equiprobable bitstrings), so a non-deterministic re-draw has
+        # vanishing probability of producing the same sequence twice.
+        # Caller must keep gate_h alive (see _create_ghz_state for the
+        # cupy-pool lifetime caveat).
+        qubits_dims = np.asarray([2] * num_qubits, dtype=np.int64)
+        state = cutn.create_state(
+            handle, cutn.StatePurity.PURE, num_qubits, qubits_dims,
+            dtype_to_data_type[dtype])
+        gate_h = (2**-0.5 * cp.asarray([[1, 1], [1, -1]], dtype=dtype)).reshape(2, 2, order='F')
+        gate_h_strides = np.array([s // gate_h.itemsize for s in gate_h.strides], dtype=np.int64)
+        for i in range(num_qubits):
+            cutn.state_apply_tensor_operator(
+                handle, state, 1, (i,), gate_h.data.ptr, gate_h_strides, 1, 0, 1)
+        return state, (gate_h,)
+
+    @staticmethod
+    def _create_ghz_initial_mps_state(handle, num_qubits, dtype, chi=2):
+        # A bond-dimension-2 GHZ "delta" MPS (no gates applied) whose only
+        # nonzero amplitudes are |0...0> and |1...1>. The caller MUST keep the
+        # returned cupy tensors alive until sampling finishes --
+        # state_initialize_mps stores the device pointers lazily and
+        # dereferences them during prepare/sample.
+        qubits_dims = np.asarray([2] * num_qubits, dtype=np.int64)
+        state = cutn.create_state(
+            handle, cutn.StatePurity.PURE, num_qubits, qubits_dims,
+            dtype_to_data_type[dtype])
+
+        tensors = []
+        extents_in = []
+        strides_in = []
+        tensor_ptrs = []
+        for i in range(num_qubits):
+            if i == 0:
+                t = cp.zeros((2, chi), dtype=dtype)          # (state, right bond)
+                for s in range(2):
+                    t[s, s] = 1
+            elif i == num_qubits - 1:
+                t = cp.zeros((chi, 2), dtype=dtype)          # (left bond, state)
+                for s in range(2):
+                    t[s, s] = 1
+            else:
+                t = cp.zeros((chi, 2, chi), dtype=dtype)     # (left, state, right)
+                for s in range(2):
+                    t[s, s, s] = 1
+            tensors.append(t)
+            extents_in.append(t.shape)
+            strides_in.append([stride_bytes // t.itemsize for stride_bytes in t.strides])
+            tensor_ptrs.append(t.data.ptr)
+
+        cutn.state_initialize_mps(
+            handle, state, cutn.BoundaryCondition.OPEN,
+            extents_in, strides_in, tensor_ptrs)
+        return state, tensors
+
+    @staticmethod
+    def _prepare_sampler(handle, sampler, workspace, stream):
+        free_mem = cp.cuda.Device().mem_info[0]
+        cutn.sampler_prepare(handle, sampler, free_mem // 4, workspace, stream.ptr)
+        scratch_size = cutn.workspace_get_memory_size(
+            handle, workspace, cutn.WorksizePref.RECOMMENDED,
+            cutn.Memspace.DEVICE, cutn.WorkspaceKind.SCRATCH)
+        scratch = cp.cuda.alloc(scratch_size)
+        cutn.workspace_set_memory(
+            handle, workspace, cutn.Memspace.DEVICE, cutn.WorkspaceKind.SCRATCH,
+            scratch.ptr, scratch_size)
+        return scratch
+
+    @staticmethod
+    def _configure_seed_if_requested(handle, sampler, seed):
+        if seed is None:
+            return
+
+        seed_dtype = cutn.sampler_get_attribute_dtype(cutn.SamplerAttribute.CONFIG_DETERMINISTIC)
+        seed_value = np.asarray(seed, dtype=seed_dtype)
+        cutn.sampler_configure(
+            handle, sampler, cutn.SamplerAttribute.CONFIG_DETERMINISTIC,
+            seed_value.ctypes.data, seed_value.dtype.itemsize)
+
+    @pytest.mark.parametrize("seed", (None, 42), ids=("default-seed", "configured-seed"))
+    def test_repeated_single_shot_samples_advance_rng_state(self, seed):
+        num_qubits = 6
+        num_trials = 64
+        dtype = np.complex128
+        expected_outcomes = {('0',) * num_qubits, ('1',) * num_qubits}
+        stream = cp.cuda.Stream.null
+        handle = cutn.create()
+        state = sampler = workspace = None
+        _gate_refs = None  # retain cupy gate arrays until teardown
+        try:
+            state, _gate_refs = self._create_ghz_state(handle, num_qubits, dtype)
+            sampler = cutn.create_sampler(handle, state, num_qubits, 0)
+            workspace = cutn.create_workspace_descriptor(handle)
+            self._configure_seed_if_requested(handle, sampler, seed)
+
+            _scratch = self._prepare_sampler(handle, sampler, workspace, stream)
+            samples = np.empty((1, num_qubits), dtype=np.int64)
+            observed_outcomes = set()
+            for _ in range(num_trials):
+                cutn.sampler_sample(handle, sampler, 1, workspace, samples.ctypes.data, stream.ptr)
+                stream.synchronize()
+                observed_outcomes.add(tuple(str(bit) for bit in samples[0]))
+
+            assert observed_outcomes == expected_outcomes
+        finally:
+            if workspace is not None:
+                cutn.destroy_workspace_descriptor(workspace)
+            if sampler is not None:
+                cutn.destroy_sampler(sampler)
+            if state is not None:
+                cutn.destroy_state(state)
+            cutn.destroy(handle)
+            del _gate_refs
+
+    @pytest.mark.parametrize("nbatch", (1, 8, 64), ids=lambda n: f"nbatch={n}")
+    def test_deterministic_toggle_round_trip_reseeds_non_deterministic(self, nbatch):
+        # Exercises the public contract of CUTENSORNET_SAMPLER_CONFIG_DETERMINISTIC:
+        # a non-zero value seeds the internal PRNG so repeated draws reproduce,
+        # while a zero value re-randomizes the PRNG from std::random_device so a
+        # subsequent draw is statistically independent of any previous one.
+        #
+        # The driver loop is [seed=S -> sample -> seed=0 -> sample] x 2, where
+        # each "sample" block is K = num_samples / nbatch successive
+        # sampler_sample(nbatch) calls.  This parametrization probes both the
+        # within-call batched path (nbatch == num_samples) and the per-call
+        # PRNG-advance path (nbatch == 1: K back-to-back single-shot draws),
+        # each of which reseeds the per-call local PRNG from the long-lived
+        # rnd_generator_ and so depends on the configured deterministic state
+        # at block start.  With the contract honored we expect:
+        #   * the two seed=S blocks to match bit-for-bit (rnd_generator_ is
+        #     reseeded to S at the top of each block, so the K-long sequence
+        #     of per-call seeds it yields is identical), and
+        #   * the two seed=0 blocks to differ (rnd_generator_ is freshly
+        #     randomized from std::random_device at the top of each block).
+        #
+        # We use |+>^N (uniform superposition) so each shot is one of 2^N
+        # equiprobable bitstrings; for N=6 and num_samples=64 the probability
+        # that two independent length-num_samples sample sequences happen to
+        # coincide is (1/2^N)^num_samples = (1/64)^64 ~ 1e-115, which is well
+        # below any noise floor.
+        num_qubits = 6
+        num_samples = 64
+        assert num_samples % nbatch == 0
+        n_calls = num_samples // nbatch
+        dtype = np.complex128
+        seed = 42
+        stream = cp.cuda.Stream.null
+        handle = cutn.create()
+        state = sampler = workspace = None
+        _gate_refs = None  # retain cupy gate arrays until teardown
+        try:
+            state, _gate_refs = self._create_uniform_superposition_state(handle, num_qubits, dtype)
+            sampler = cutn.create_sampler(handle, state, num_qubits, 0)
+            workspace = cutn.create_workspace_descriptor(handle)
+            _scratch = self._prepare_sampler(handle, sampler, workspace, stream)
+
+            def draw(rng_seed):
+                # _configure_seed_if_requested is gated on `is None`, so an
+                # explicit 0 still issues the sampler_configure call that
+                # toggles deterministic mode off.
+                self._configure_seed_if_requested(handle, sampler, rng_seed)
+                chunks = []
+                for _ in range(n_calls):
+                    buf = np.empty((num_qubits, nbatch), dtype=np.int64, order='F')
+                    cutn.sampler_sample(handle, sampler, nbatch, workspace,
+                                        buf.ctypes.data, stream.ptr)
+                    stream.synchronize()
+                    chunks.append(buf)
+                return np.concatenate(chunks, axis=1)
+
+            det_a = draw(seed)
+            rand_a = draw(0)
+            det_b = draw(seed)
+            rand_b = draw(0)
+
+            np.testing.assert_array_equal(
+                det_a, det_b,
+                err_msg="deterministic-seed blocks must reproduce across the round trip",
+            )
+            assert not np.array_equal(rand_a, rand_b), (
+                "non-deterministic blocks must diverge across the round trip "
+                "(setting deterministic=0 should re-randomize the sampler PRNG)"
+            )
+        finally:
+            if workspace is not None:
+                cutn.destroy_workspace_descriptor(workspace)
+            if sampler is not None:
+                cutn.destroy_sampler(sampler)
+            if state is not None:
+                cutn.destroy_state(state)
+            cutn.destroy(handle)
+            del _gate_refs
+
+    def test_all_modes_shorthand_samples_initial_mps(self):
+        # Regression for the all-modes sampling shorthand. Calling create_sampler
+        # with modesToSample == nullptr (allowed only when numModesToSample ==
+        # nQudits) requests every mode and must sample an initial-MPS state
+        # correctly. This is the only way to exercise that shorthand: the
+        # high-level Python compute_sampling always expands modes=None to an
+        # explicit full tuple before reaching the C API.
+        #
+        # A sharp GHZ distribution gives the assertion teeth: every bitstring
+        # must be all-zeros or all-ones, and both must appear.
+        num_qubits = 6
+        dtype = np.complex128
+        num_samples = 4000
+        expected_outcomes = {('0',) * num_qubits, ('1',) * num_qubits}
+        stream = cp.cuda.Stream.null
+        handle = cutn.create()
+        state = sampler = workspace = None
+        _mps_refs = None  # retain cupy MPS tensors until teardown
+        try:
+            state, _mps_refs = self._create_ghz_initial_mps_state(handle, num_qubits, dtype)
+            # modesToSample == nullptr (0) with numModesToSample == num_qubits.
+            sampler = cutn.create_sampler(handle, state, num_qubits, 0)
+            workspace = cutn.create_workspace_descriptor(handle)
+            self._configure_seed_if_requested(handle, sampler, 42)
+            _scratch = self._prepare_sampler(handle, sampler, workspace, stream)
+
+            # sampler_sample writes (num_modes, num_samples) in F order, so each
+            # column is one shot's bitstring across all sampled modes.
+            samples = np.empty((num_qubits, num_samples), dtype=np.int64, order='F')
+            cutn.sampler_sample(handle, sampler, num_samples, workspace, samples.ctypes.data, stream.ptr)
+            stream.synchronize()
+
+            observed = {tuple(str(bit) for bit in samples[:, shot]) for shot in range(num_samples)}
+            assert observed.issubset(expected_outcomes), (
+                f"unexpected bitstrings from all-modes GHZ MPS sampling: {observed - expected_outcomes}")
+            assert observed == expected_outcomes, (
+                f"expected both all-zeros and all-ones in all-modes GHZ sampling, got: {observed}")
+        finally:
+            if workspace is not None:
+                cutn.destroy_workspace_descriptor(workspace)
+            if sampler is not None:
+                cutn.destroy_sampler(sampler)
+            if state is not None:
+                cutn.destroy_state(state)
+            cutn.destroy(handle)
+            del _mps_refs
+
+
+class TestExpectationGradient:
+
+    def test_repeated_prepare_preserves_gradient_path(self):
+        dtype = np.complex128
+        data_type = dtype_to_data_type[dtype]
+        stream = cp.cuda.Stream.null
+
+        handle = cutn.create()
+        state = hamiltonian = expectation = work_desc = None
+        try:
+            state_dims = np.asarray([2], dtype=np.int64)
+            state = cutn.create_state(handle, cutn.StatePurity.PURE, 1, state_dims, data_type)
+
+            gate = cp.asarray([[0.8 + 0.1j, 0.2 - 0.3j],
+                               [0.4 + 0.5j, 0.7 + 0.2j]], dtype=dtype, order="F")
+            grad = cp.zeros_like(gate, order="F")
+            cutn.state_apply_tensor_operator_with_gradient(
+                handle, state, 1, (0,), gate.data.ptr, 0,
+                0, 0, 0, grad.data.ptr, 0)
+
+            op_z = cp.asarray([[1.0, 0.0],
+                               [0.0, -1.0]], dtype=dtype, order="F")
+            hamiltonian = cutn.create_network_operator(handle, 1, state_dims, data_type)
+            cutn.network_operator_append_product(
+                handle, hamiltonian, np.complex128(1.0), 1,
+                (1,), [(0,)], 0, [op_z.data.ptr])
+
+            expectation = cutn.create_expectation(handle, state, hamiltonian)
+            work_desc = cutn.create_workspace_descriptor(handle)
+            max_workspace = cp.cuda.Device().mem_info[0] // 4
+
+            # Re-preparing must rebuild gradient preparation for the current contraction plan.
+            cutn.expectation_prepare(handle, expectation, max_workspace, work_desc, stream.ptr)
+            cutn.expectation_prepare(handle, expectation, max_workspace, work_desc, stream.ptr)
+
+            scratch_size = cutn.workspace_get_memory_size(
+                handle, work_desc, cutn.WorksizePref.MIN,
+                cutn.Memspace.DEVICE, cutn.WorkspaceKind.SCRATCH)
+            scratch = cp.cuda.alloc(int(scratch_size)) if scratch_size > 0 else None
+            if scratch_size > 0:
+                cutn.workspace_set_memory(
+                    handle, work_desc, cutn.Memspace.DEVICE, cutn.WorkspaceKind.SCRATCH,
+                    scratch.ptr, scratch_size)
+
+            expectation_value = np.zeros(1, dtype=dtype)
+            expectation_adjoint = np.asarray(1.0, dtype=dtype)
+            cutn.expectation_compute_with_gradients_backward(
+                handle, expectation, 0, expectation_adjoint.ctypes.data, 0,
+                work_desc, expectation_value.ctypes.data, 0, stream.ptr)
+            stream.synchronize()
+
+            assert cp.any(grad != 0).item(), "repeated prepare dropped the expectation gradient path"
+        finally:
+            if work_desc is not None:
+                cutn.destroy_workspace_descriptor(work_desc)
+            if expectation is not None:
+                cutn.destroy_expectation(expectation)
+            if hamiltonian is not None:
+                cutn.destroy_network_operator(hamiltonian)
+            if state is not None:
+                cutn.destroy_state(state)
+            cutn.destroy(handle)
+
+    @pytest.mark.parametrize("memory_order", ("F", "C"))
+    def test_expectation_backward_zeros_gate_gradient_buffer_before_write(self, memory_order):
+        """create 2 qubit state with Z*I observable: so gate on qubit 1 will be simplified and grad will be zeroed.
+
+        Covers both gradient storage layouts: Fortran column-major strides (1, 2) and C row-major (2, 1)
+        for complex128 2×2 gates.
+        """
+        dtype = np.complex128
+        data_type = dtype_to_data_type[dtype]
+        stream = cp.cuda.Stream.null
+
+        handle = cutn.create()
+        state = hamiltonian = expectation = work_desc = None
+        try:
+            state_dims = np.asarray([2, 2], dtype=np.int64)
+            state = cutn.create_state(handle, cutn.StatePurity.PURE, 2, state_dims, data_type)
+
+            def ry_matrix(theta):
+                c, s = np.cos(theta / 2), np.sin(theta / 2)
+                return np.array([[c, -s], [s, c]], dtype=dtype)
+
+            gate0 = cp.asarray(ry_matrix(np.pi / 5), dtype=dtype, order=memory_order)
+            gate1 = cp.asarray(ry_matrix(np.pi / 7), dtype=dtype, order=memory_order)
+            grad0 = cp.zeros_like(gate0, order=memory_order)
+            grad1 = cp.zeros_like(gate1, order=memory_order)
+            junk = np.complex128(1e4 + 2e4j)
+            grad1.fill(junk)
+
+            ts0 = np.asarray(
+                [st // gate0.dtype.itemsize for st in gate0.strides], dtype=np.int64)
+            ts1 = np.asarray(
+                [st // gate1.dtype.itemsize for st in gate1.strides], dtype=np.int64)
+            gsm0 = np.asarray(
+                [st // grad0.dtype.itemsize for st in grad0.strides], dtype=np.int64)
+            gsm1 = np.asarray(
+                [st // grad1.dtype.itemsize for st in grad1.strides], dtype=np.int64)
+
+            cutn.state_apply_tensor_operator_with_gradient(
+                handle, state, 1, (0,), gate0.data.ptr, ts0,
+                0, 0, 1, grad0.data.ptr, gsm0)
+            cutn.state_apply_tensor_operator_with_gradient(
+                handle, state, 1, (1,), gate1.data.ptr, ts1,
+                0, 0, 1, grad1.data.ptr, gsm1)
+
+            op_z = cp.asarray([[1.0, 0.0], [0.0, -1.0]], dtype=dtype, order=memory_order)
+            z_strides = np.asarray(
+                [st // op_z.dtype.itemsize for st in op_z.strides], dtype=np.int64)
+            hamiltonian = cutn.create_network_operator(handle, 2, state_dims, data_type)
+            cutn.network_operator_append_product(
+                handle, hamiltonian, np.complex128(1.0), 1,
+                (1,), [(0,)], [z_strides],
+                [op_z.data.ptr])
+
+            expectation = cutn.create_expectation(handle, state, hamiltonian)
+            work_desc = cutn.create_workspace_descriptor(handle)
+            max_workspace = cp.cuda.Device().mem_info[0] // 4
+            cutn.expectation_prepare(handle, expectation, max_workspace, work_desc, stream.ptr)
+
+            scratch_size = cutn.workspace_get_memory_size(
+                handle, work_desc, cutn.WorksizePref.MIN,
+                cutn.Memspace.DEVICE, cutn.WorkspaceKind.SCRATCH)
+            if scratch_size > 0:
+                scratch = cp.cuda.alloc(int(scratch_size))
+                cutn.workspace_set_memory(
+                    handle, work_desc, cutn.Memspace.DEVICE, cutn.WorkspaceKind.SCRATCH,
+                    scratch.ptr, scratch_size)
+
+            expectation_value = np.zeros(1, dtype=dtype)
+            expectation_adjoint = np.asarray(1.0, dtype=dtype)
+            cutn.expectation_compute_with_gradients_backward(
+                handle, expectation, 0, expectation_adjoint.ctypes.data, 0,
+                work_desc, expectation_value.ctypes.data, 0, stream.ptr)
+            stream.synchronize()
+
+            g0 = cp.asnumpy(grad0)
+            g1 = cp.asnumpy(grad1)
+            testing.assert_allclose(g1, 0.0, rtol=0, atol=1e-10)
+            assert np.linalg.norm(g0) > 1e-8, "sanity: qubit-0 gate should have non-trivial gradient"
+            
+        finally:
+            if work_desc is not None:
+                cutn.destroy_workspace_descriptor(work_desc)
+            if expectation is not None:
+                cutn.destroy_expectation(expectation)
+            if hamiltonian is not None:
+                cutn.destroy_network_operator(hamiltonian)
+            if state is not None:
+                cutn.destroy_state(state)
+            cutn.destroy(handle)
+
 
 class TestMPSOvercompleteExtentsSUGauge:
     """Regression: SU gauge with overcomplete (over-allocated) MPS tensor extents.

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated with version 26.03.1, generator version 0.3.1.dev1508+g784d12dd6.d20260402. Do not modify it directly.
+# This code was automatically generated with version 26.06.0, generator version 0.3.1.dev1663+gc4ecc6582.d20260605. Do not modify it directly.
 
 from libc.stdint cimport int32_t, int64_t, uint32_t, uint64_t
 from libc.stdio cimport FILE
@@ -79,16 +79,31 @@ ctypedef enum cudensitymatBoundaryCondition_t "cudensitymatBoundaryCondition_t":
 ctypedef enum cudensitymatTimePropagationScopeKind_t "cudensitymatTimePropagationScopeKind_t":
     CUDENSITYMAT_PROPAGATION_SCOPE_SPLIT "CUDENSITYMAT_PROPAGATION_SCOPE_SPLIT" = 1
 
+ctypedef enum cudensitymatEigenDecompositionScopeKind_t "cudensitymatEigenDecompositionScopeKind_t":
+    CUDENSITYMAT_EIGEN_SCOPE_FULL "CUDENSITYMAT_EIGEN_SCOPE_FULL" = 0
+    CUDENSITYMAT_EIGEN_SCOPE_SPLIT "CUDENSITYMAT_EIGEN_SCOPE_SPLIT" = 1
+
 ctypedef enum cudensitymatTimePropagationScopeSplitKind_t "cudensitymatTimePropagationScopeSplitKind_t":
     CUDENSITYMAT_PROPAGATION_SCOPE_SPLIT_TDVP "CUDENSITYMAT_PROPAGATION_SCOPE_SPLIT_TDVP" = 0
 
+ctypedef enum cudensitymatEigenDecompositionScopeSplitKind_t "cudensitymatEigenDecompositionScopeSplitKind_t":
+    CUDENSITYMAT_EIGEN_SCOPE_SPLIT_DMRG "CUDENSITYMAT_EIGEN_SCOPE_SPLIT_DMRG" = 0
+
 ctypedef enum cudensitymatTimePropagationApproachKind_t "cudensitymatTimePropagationApproachKind_t":
     CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV "CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV" = 0
+
+ctypedef enum cudensitymatEigenDecompositionApproachKind_t "cudensitymatEigenDecompositionApproachKind_t":
+    CUDENSITYMAT_EIGEN_APPROACH_KRYLOV "CUDENSITYMAT_EIGEN_APPROACH_KRYLOV" = 0
 
 ctypedef enum cudensitymatTimePropagationAttribute_t "cudensitymatTimePropagationAttribute_t":
     CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_KIND "CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_KIND" = 0
     CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_CONFIG "CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_CONFIG" = 3
     CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_CONFIG "CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_CONFIG" = 10
+
+ctypedef enum cudensitymatEigenDecompositionAttribute_t "cudensitymatEigenDecompositionAttribute_t":
+    CUDENSITYMAT_EIGEN_SPLIT_SCOPE_KIND "CUDENSITYMAT_EIGEN_SPLIT_SCOPE_KIND" = 0
+    CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_CONFIG "CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_CONFIG" = 3
+    CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_CONFIG "CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_CONFIG" = 10
 
 ctypedef enum cudensitymatTimePropagationApproachKrylovConfigAttribute_t "cudensitymatTimePropagationApproachKrylovConfigAttribute_t":
     CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_TOLERANCE "CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_TOLERANCE" = 0
@@ -96,8 +111,57 @@ ctypedef enum cudensitymatTimePropagationApproachKrylovConfigAttribute_t "cudens
     CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_MIN_BETA "CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_MIN_BETA" = 2
     CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_ADAPTIVE_STEP_SIZE "CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_ADAPTIVE_STEP_SIZE" = 3
 
+ctypedef enum cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t "cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t":
+    CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MAX_DIM "CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MAX_DIM" = 0
+    CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MAX_RESTARTS "CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MAX_RESTARTS" = 1
+    CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MIN_BLOCK_SIZE "CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_MIN_BLOCK_SIZE" = 2
+
 ctypedef enum cudensitymatTimePropagationScopeSplitTDVPConfigAttribute_t "cudensitymatTimePropagationScopeSplitTDVPConfigAttribute_t":
     CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_ORDER "CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_ORDER" = 0
+    CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_NUM_SITES "CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_NUM_SITES" = 1
+    CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_SVD_CONFIG "CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_TDVP_SVD_CONFIG" = 2
+
+ctypedef enum cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t "cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t":
+    CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_NUM_SITES "CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_NUM_SITES" = 0
+    CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_SVD_CONFIG "CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_SVD_CONFIG" = 1
+    CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_MAX_SWEEPS "CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_MAX_SWEEPS" = 2
+    CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_ENERGY_TOLERANCE "CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_ENERGY_TOLERANCE" = 3
+
+ctypedef enum cudensitymatStateFittingScopeKind_t "cudensitymatStateFittingScopeKind_t":
+    CUDENSITYMAT_FITTING_SCOPE_FULL "CUDENSITYMAT_FITTING_SCOPE_FULL" = 0
+    CUDENSITYMAT_FITTING_SCOPE_SPLIT "CUDENSITYMAT_FITTING_SCOPE_SPLIT" = 1
+
+ctypedef enum cudensitymatStateFittingScopeSplitKind_t "cudensitymatStateFittingScopeSplitKind_t":
+    CUDENSITYMAT_FITTING_SCOPE_SPLIT_ALS "CUDENSITYMAT_FITTING_SCOPE_SPLIT_ALS" = 0
+
+ctypedef enum cudensitymatStateFittingApproachKind_t "cudensitymatStateFittingApproachKind_t":
+    CUDENSITYMAT_FITTING_APPROACH_LINSOLVE "CUDENSITYMAT_FITTING_APPROACH_LINSOLVE" = 0
+
+ctypedef enum cudensitymatStateFittingAttribute_t "cudensitymatStateFittingAttribute_t":
+    CUDENSITYMAT_FITTING_SPLIT_SCOPE_KIND "CUDENSITYMAT_FITTING_SPLIT_SCOPE_KIND" = 0
+    CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_CONFIG "CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_CONFIG" = 3
+    CUDENSITYMAT_FITTING_APPROACH_LINSOLVE_CONFIG "CUDENSITYMAT_FITTING_APPROACH_LINSOLVE_CONFIG" = 10
+
+ctypedef enum cudensitymatStateFittingScopeSplitALSConfigAttribute_t "cudensitymatStateFittingScopeSplitALSConfigAttribute_t":
+    CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_NUM_SITES "CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_NUM_SITES" = 0
+    CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_SVD_CONFIG "CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_SVD_CONFIG" = 1
+    CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_MAX_SWEEPS "CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_MAX_SWEEPS" = 2
+    CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_TOLERANCE "CUDENSITYMAT_FITTING_SPLIT_SCOPE_ALS_TOLERANCE" = 3
+
+ctypedef enum cudensitymatStateFittingApproachLinSolveConfigAttribute_t "cudensitymatStateFittingApproachLinSolveConfigAttribute_t":
+    CUDENSITYMAT_FITTING_APPROACH_LINSOLVE_TOLERANCE "CUDENSITYMAT_FITTING_APPROACH_LINSOLVE_TOLERANCE" = 0
+
+ctypedef enum cudensitymatSVDConfigAttribute_t "cudensitymatSVDConfigAttribute_t":
+    CUDENSITYMAT_SVD_CONFIG_ABS_CUTOFF "CUDENSITYMAT_SVD_CONFIG_ABS_CUTOFF" = 0
+    CUDENSITYMAT_SVD_CONFIG_REL_CUTOFF "CUDENSITYMAT_SVD_CONFIG_REL_CUTOFF" = 1
+    CUDENSITYMAT_SVD_CONFIG_DISCARDED_WEIGHT_CUTOFF "CUDENSITYMAT_SVD_CONFIG_DISCARDED_WEIGHT_CUTOFF" = 2
+    CUDENSITYMAT_SVD_CONFIG_MAX_EXTENT "CUDENSITYMAT_SVD_CONFIG_MAX_EXTENT" = 3
+
+ctypedef enum cudensitymatEigenDecompositionSpectrumKind_t "cudensitymatEigenDecompositionSpectrumKind_t":
+    CUDENSITYMAT_EIGEN_SPECTRUM_LARGEST "CUDENSITYMAT_EIGEN_SPECTRUM_LARGEST" = 0
+    CUDENSITYMAT_EIGEN_SPECTRUM_SMALLEST "CUDENSITYMAT_EIGEN_SPECTRUM_SMALLEST" = 1
+    CUDENSITYMAT_EIGEN_SPECTRUM_LARGEST_REAL "CUDENSITYMAT_EIGEN_SPECTRUM_LARGEST_REAL" = 2
+    CUDENSITYMAT_EIGEN_SPECTRUM_SMALLEST_REAL "CUDENSITYMAT_EIGEN_SPECTRUM_SMALLEST_REAL" = 3
 
 ctypedef enum cudensitymatMemspace_t "cudensitymatMemspace_t":
     CUDENSITYMAT_MEMSPACE_DEVICE "CUDENSITYMAT_MEMSPACE_DEVICE" = 0
@@ -135,26 +199,46 @@ cdef extern from *:
 
 # types
 ctypedef void* cudensitymatHandle_t 'cudensitymatHandle_t'
+
 ctypedef void* cudensitymatState_t 'cudensitymatState_t'
+
 ctypedef void* cudensitymatElementaryOperator_t 'cudensitymatElementaryOperator_t'
+
 ctypedef void* cudensitymatMatrixOperator_t 'cudensitymatMatrixOperator_t'
+
 ctypedef void* cudensitymatMatrixProductOperator_t 'cudensitymatMatrixProductOperator_t'
+
 ctypedef void* cudensitymatOperatorTerm_t 'cudensitymatOperatorTerm_t'
+
 ctypedef void* cudensitymatOperator_t 'cudensitymatOperator_t'
+
 ctypedef void* cudensitymatOperatorAction_t 'cudensitymatOperatorAction_t'
+
 ctypedef void* cudensitymatExpectation_t 'cudensitymatExpectation_t'
+
 ctypedef void* cudensitymatOperatorSpectrum_t 'cudensitymatOperatorSpectrum_t'
+
 ctypedef void* cudensitymatWorkspaceDescriptor_t 'cudensitymatWorkspaceDescriptor_t'
+
 ctypedef void* cudensitymatTimePropagation_t 'cudensitymatTimePropagation_t'
+
+ctypedef void* cudensitymatEigenDecomposition_t 'cudensitymatEigenDecomposition_t'
+
 ctypedef void* cudensitymatTimePropagationApproachKrylovConfig_t 'cudensitymatTimePropagationApproachKrylovConfig_t'
+
+ctypedef void* cudensitymatEigenDecompositionApproachKrylovConfig_t 'cudensitymatEigenDecompositionApproachKrylovConfig_t'
+
 ctypedef void* cudensitymatTimePropagationScopeSplitTDVPConfig_t 'cudensitymatTimePropagationScopeSplitTDVPConfig_t'
+
+ctypedef void* cudensitymatEigenDecompositionScopeSplitDMRGConfig_t 'cudensitymatEigenDecompositionScopeSplitDMRGConfig_t'
+
+ctypedef void* cudensitymatStateFittingScopeSplitALSConfig_t 'cudensitymatStateFittingScopeSplitALSConfig_t'
+
+ctypedef void* cudensitymatStateFittingApproachLinSolveConfig_t 'cudensitymatStateFittingApproachLinSolveConfig_t'
+
+ctypedef void* cudensitymatSVDConfig_t 'cudensitymatSVDConfig_t'
+
 ctypedef void* cudensitymatDistributedRequest_t 'cudensitymatDistributedRequest_t'
-ctypedef struct cudensitymatTimeRange_t 'cudensitymatTimeRange_t':
-    double timeStart
-    double timeFinish
-    double timeStep
-    int64_t numPoints
-    double* points
 
 ctypedef struct cudensitymatDistributedCommunicator_t 'cudensitymatDistributedCommunicator_t':
     void* commPtr
@@ -169,6 +253,7 @@ ctypedef int32_t (*cudensitymatScalarCallback_t 'cudensitymatScalarCallback_t')(
     void* scalarStorage,
     cudaStream_t stream
 )
+
 ctypedef int32_t (*cudensitymatTensorCallback_t 'cudensitymatTensorCallback_t')(
     cudensitymatElementaryOperatorSparsity_t sparsity,
     int32_t numModes,
@@ -182,6 +267,7 @@ ctypedef int32_t (*cudensitymatTensorCallback_t 'cudensitymatTensorCallback_t')(
     void* tensorStorage,
     cudaStream_t stream
 )
+
 ctypedef int32_t (*cudensitymatScalarGradientCallback_t 'cudensitymatScalarGradientCallback_t')(
     double time,
     int64_t batchSize,
@@ -192,6 +278,7 @@ ctypedef int32_t (*cudensitymatScalarGradientCallback_t 'cudensitymatScalarGradi
     double* paramsGrad,
     cudaStream_t stream
 )
+
 ctypedef int32_t (*cudensitymatTensorGradientCallback_t 'cudensitymatTensorGradientCallback_t')(
     cudensitymatElementaryOperatorSparsity_t sparsity,
     int32_t numModes,
@@ -206,6 +293,7 @@ ctypedef int32_t (*cudensitymatTensorGradientCallback_t 'cudensitymatTensorGradi
     double* paramsGrad,
     cudaStream_t stream
 )
+
 ctypedef struct cudensitymatDistributedInterface_t 'cudensitymatDistributedInterface_t':
     int version
     int (*getNumRanks)(const cudensitymatDistributedCommunicator_t*, int32_t*)
@@ -234,12 +322,14 @@ ctypedef void (*cudensitymatLoggerCallback_t 'cudensitymatLoggerCallback_t')(
     const char* functionName,
     const char* message
 )
+
 ctypedef void (*cudensitymatLoggerCallbackData_t 'cudensitymatLoggerCallbackData_t')(
     int32_t logLevel,
     const char* functionName,
     const char* message,
     void* userData
 )
+
 ctypedef struct cudensitymatWrappedScalarCallback_t 'cudensitymatWrappedScalarCallback_t':
     cudensitymatScalarCallback_t callback
     cudensitymatCallbackDevice_t device
@@ -260,8 +350,7 @@ ctypedef struct cudensitymatWrappedTensorGradientCallback_t 'cudensitymatWrapped
     cudensitymatTensorGradientCallback_t callback
     cudensitymatCallbackDevice_t device
     void* wrapper
-    cudensitymatDifferentiationDir_t direction
-    
+    cudensitymatDifferentiationDir_t direction    
 
 
 ###############################################################################
@@ -277,6 +366,8 @@ cdef cudensitymatStatus_t cudensitymatGetProcRank(const cudensitymatHandle_t han
 cdef cudensitymatStatus_t cudensitymatResetRandomSeed(cudensitymatHandle_t handle, int32_t randomSeed) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatCreateState(const cudensitymatHandle_t handle, cudensitymatStatePurity_t purity, int32_t numSpaceModes, const int64_t spaceModeExtents[], int64_t batchSize, cudaDataType_t dataType, cudensitymatState_t* state) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatCreateStateMPS(const cudensitymatHandle_t handle, cudensitymatStatePurity_t purity, int32_t numSpaceModes, const int64_t spaceModeExtents[], cudensitymatBoundaryCondition_t boundaryCondition, const int64_t bondExtents[], cudaDataType_t dataType, int64_t batchSize, cudensitymatState_t* state) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatStateMPSSetCurrentBondExtents(const cudensitymatHandle_t handle, cudensitymatState_t state, const int64_t bondExtents[]) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatStateMPSGetCurrentBondExtents(const cudensitymatHandle_t handle, const cudensitymatState_t state, int64_t bondExtents[]) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatDestroyState(cudensitymatState_t state) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatStateGetNumComponents(const cudensitymatHandle_t handle, const cudensitymatState_t state, int32_t* numStateComponents) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatStateGetComponentStorageSize(const cudensitymatHandle_t handle, const cudensitymatState_t state, int32_t numStateComponents, size_t componentBufferSize[]) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
@@ -309,13 +400,21 @@ cdef cudensitymatStatus_t cudensitymatDestroyOperator(cudensitymatOperator_t sup
 cdef cudensitymatStatus_t cudensitymatOperatorAppendTerm(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, cudensitymatOperatorTerm_t operatorTerm, int32_t duality, cuDoubleComplex coefficient, cudensitymatWrappedScalarCallback_t coefficientCallback, cudensitymatWrappedScalarGradientCallback_t coefficientGradientCallback) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatOperatorAppendTermBatch(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, cudensitymatOperatorTerm_t operatorTerm, int32_t duality, int64_t batchSize, const cuDoubleComplex staticCoefficients[], cuDoubleComplex totalCoefficients[], cudensitymatWrappedScalarCallback_t coefficientCallback, cudensitymatWrappedScalarGradientCallback_t coefficientGradientCallback) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatAttachBatchedCoefficients(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, int32_t numOperatorTermBatchedCoeffs, void* operatorTermBatchedCoeffsTmp[], void* operatorTermBatchedCoeffs[], int32_t numOperatorProductBatchedCoeffs, void* operatorProductBatchedCoeffsTmp[], void* operatorProductBatchedCoeffs[]) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
-cdef cudensitymatStatus_t cudensitymatOperatorConfigureAction(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, const cudensitymatState_t stateIn, const cudensitymatState_t stateOut, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatCreateStateFittingScopeSplitALSConfig(const cudensitymatHandle_t handle, cudensitymatStateFittingScopeSplitALSConfig_t* config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatDestroyStateFittingScopeSplitALSConfig(cudensitymatStateFittingScopeSplitALSConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatStateFittingScopeSplitALSConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatStateFittingScopeSplitALSConfig_t config, cudensitymatStateFittingScopeSplitALSConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatStateFittingScopeSplitALSConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatStateFittingScopeSplitALSConfig_t config, cudensitymatStateFittingScopeSplitALSConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatCreateStateFittingApproachLinSolveConfig(const cudensitymatHandle_t handle, cudensitymatStateFittingApproachLinSolveConfig_t* config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatDestroyStateFittingApproachLinSolveConfig(cudensitymatStateFittingApproachLinSolveConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatStateFittingApproachLinSolveConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatStateFittingApproachLinSolveConfig_t config, cudensitymatStateFittingApproachLinSolveConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatStateFittingApproachLinSolveConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatStateFittingApproachLinSolveConfig_t config, cudensitymatStateFittingApproachLinSolveConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatOperatorPrepareAction(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, const cudensitymatState_t stateIn, const cudensitymatState_t stateOut, cudensitymatComputeType_t computeType, size_t workspaceSizeLimit, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatOperatorComputeAction(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, double time, int64_t batchSize, int32_t numParams, const double* params, const cudensitymatState_t stateIn, cudensitymatState_t stateOut, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatOperatorPrepareActionBackwardDiff(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, const cudensitymatState_t stateIn, const cudensitymatState_t stateOutAdj, cudensitymatComputeType_t computeType, size_t workspaceSizeLimit, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatOperatorComputeActionBackwardDiff(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, double time, int64_t batchSize, int32_t numParams, const double* params, const cudensitymatState_t stateIn, const cudensitymatState_t stateOutAdj, cudensitymatState_t stateInAdj, double* paramsGrad, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
-cdef cudensitymatStatus_t cudensitymatCreateOperatorAction(const cudensitymatHandle_t handle, int32_t numOperators, cudensitymatOperator_t operators[], cudensitymatOperatorAction_t* operatorAction) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatCreateOperatorAction(const cudensitymatHandle_t handle, int32_t numOperators, cudensitymatOperator_t operators[], cudensitymatStateFittingScopeKind_t scopeKind, cudensitymatStateFittingApproachKind_t approachKind, cudensitymatOperatorAction_t* operatorAction) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatDestroyOperatorAction(cudensitymatOperatorAction_t operatorAction) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatOperatorActionConfigure(const cudensitymatHandle_t handle, cudensitymatOperatorAction_t operatorAction, cudensitymatStateFittingAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatOperatorActionPrepare(const cudensitymatHandle_t handle, cudensitymatOperatorAction_t operatorAction, const cudensitymatState_t stateIn[], const cudensitymatState_t stateOut, cudensitymatComputeType_t computeType, size_t workspaceSizeLimit, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatOperatorActionCompute(const cudensitymatHandle_t handle, cudensitymatOperatorAction_t operatorAction, double time, int64_t batchSize, int32_t numParams, const double* params, const cudensitymatState_t stateIn[], cudensitymatState_t stateOut, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatCreateExpectation(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, cudensitymatExpectation_t* expectation) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
@@ -340,6 +439,23 @@ cdef cudensitymatStatus_t cudensitymatDestroyTimePropagation(cudensitymatTimePro
 cdef cudensitymatStatus_t cudensitymatTimePropagationConfigure(const cudensitymatHandle_t handle, cudensitymatTimePropagation_t timePropagation, cudensitymatTimePropagationAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatTimePropagationPrepare(const cudensitymatHandle_t handle, cudensitymatTimePropagation_t timePropagation, const cudensitymatState_t stateIn, const cudensitymatState_t stateOut, cudensitymatComputeType_t computeType, size_t workspaceSizeLimit, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatTimePropagationCompute(const cudensitymatHandle_t handle, cudensitymatTimePropagation_t timePropagation, double timeStepReal, double timeStepImag, double time, int64_t batchSize, int32_t numParams, const double* params, const cudensitymatState_t stateIn, cudensitymatState_t stateOut, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatCreateSVDConfig(const cudensitymatHandle_t handle, cudensitymatSVDConfig_t* config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatDestroySVDConfig(cudensitymatSVDConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatSVDConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatSVDConfig_t config, cudensitymatSVDConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatSVDConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatSVDConfig_t config, cudensitymatSVDConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionScopeSplitDMRGConfig_t* config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig(cudensitymatEigenDecompositionScopeSplitDMRGConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionScopeSplitDMRGConfig_t config, cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatEigenDecompositionScopeSplitDMRGConfig_t config, cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatCreateEigenDecompositionApproachKrylovConfig(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionApproachKrylovConfig_t* config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatDestroyEigenDecompositionApproachKrylovConfig(cudensitymatEigenDecompositionApproachKrylovConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionApproachKrylovConfig_t config, cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatEigenDecompositionApproachKrylovConfig_t config, cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatCreateEigenDecomposition(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, int32_t isHermitian, cudensitymatEigenDecompositionSpectrumKind_t spectrumKind, cudensitymatEigenDecompositionScopeKind_t scopeKind, cudensitymatEigenDecompositionApproachKind_t approachKind, cudensitymatEigenDecomposition_t* eigenDecomposition) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatDestroyEigenDecomposition(cudensitymatEigenDecomposition_t eigenDecomposition) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatEigenDecompositionConfigure(const cudensitymatHandle_t handle, cudensitymatEigenDecomposition_t eigenDecomposition, cudensitymatEigenDecompositionAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatEigenDecompositionPrepare(const cudensitymatHandle_t handle, cudensitymatEigenDecomposition_t eigenDecomposition, int32_t maxEigenStates, const cudensitymatState_t state, cudensitymatComputeType_t computeType, size_t workspaceSizeLimit, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatEigenDecompositionCompute(const cudensitymatHandle_t handle, cudensitymatEigenDecomposition_t eigenDecomposition, double time, int64_t batchSize, int32_t numParams, const double* params, int32_t numEigenStates, cudensitymatState_t eigenstates[], void* eigenvalues, double* tolerances, cudensitymatWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatCreateWorkspace(const cudensitymatHandle_t handle, cudensitymatWorkspaceDescriptor_t* workspaceDescr) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatDestroyWorkspace(cudensitymatWorkspaceDescriptor_t workspaceDescr) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatWorkspaceGetMemorySize(const cudensitymatHandle_t handle, const cudensitymatWorkspaceDescriptor_t workspaceDescr, cudensitymatMemspace_t memSpace, cudensitymatWorkspaceKind_t workspaceKind, size_t* memoryBufferSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil

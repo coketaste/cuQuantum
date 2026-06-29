@@ -36,11 +36,11 @@ install_requires = [
     'numpy>=1.21, <3.0',  # ">=1.21,<3"
     'nvmath-python>=0.7.0, <1.0.0',  # ">=0.7.0,<1.0.0"
     # 'torch', # <-- PyTorch is optional; also, the PyPI version does not support GPU...
-    f'custatevec-cu{utils.cuda_major_ver}>=1.13.1, <2',  # ">=1.13.1,<2"
-    f'cutensornet-cu{utils.cuda_major_ver}>=2.12.2, <3',  # ">=2.12.2,<3"
-    f'cudensitymat-cu{utils.cuda_major_ver}>=0.5.2, <0.6',  # ">=0.5.1,<0.6.0"
-    f'cupauliprop-cu{utils.cuda_major_ver}>=0.3.2, <0.4',  # ">=0.3.2,<0.4.0"
-    f'custabilizer-cu{utils.cuda_major_ver}>=0.3.0, <0.4',  # ">=0.3.0,<0.4.0"
+    f'custatevec-cu{utils.cuda_major_ver}>=1.14.0, <2',  # ">=1.14.0,<2"
+    f'cutensornet-cu{utils.cuda_major_ver}>=2.13.0, <3',  # ">=2.13.0,<3"
+    f'cudensitymat-cu{utils.cuda_major_ver}>=0.6.0, <0.7',  # ">=0.6.0,<0.7.0"
+    f'cupauliprop-cu{utils.cuda_major_ver}>=0.4.0, <0.5',  # ">=0.4.0,<0.5.0"
+    f'custabilizer-cu{utils.cuda_major_ver}>=0.4.0, <0.5',  # ">=0.4.0,<0.5.0"
 ]
 if utils.cuda_major_ver == '12':
     install_requires.append('cupy-cuda12x>=13.0')  # no ambiguity
@@ -206,6 +206,7 @@ setup(
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
         "Programming Language :: Python :: Implementation :: CPython",
         "Environment :: GPU :: NVIDIA CUDA",
     ] + cuda_classifier,

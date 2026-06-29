@@ -7,7 +7,7 @@ import numpy as np
 from typing import Mapping
 
 from nvmath.internal import formatters
-from nvmath.internal.utils import Value, create_empty_tensor
+from nvmath.internal.utils import Value
 
 torch_asarray = None
 AUTO_BACKEND = None
@@ -16,7 +16,10 @@ def _get_backend_asarray_func(backend):
     if backend.__name__ == 'torch':
         global torch_asarray
         if torch_asarray is None:
-            torch_asarray = functools.partial(backend.tensor, device='cuda')
+            # Use as_tensor (not tensor) so existing tensors are accepted without copying or
+            # emitting torch's "To copy construct from a tensor ..." UserWarning. For
+            # list/numpy inputs this behaves like torch.tensor (new cuda tensor).
+            torch_asarray = functools.partial(backend.as_tensor, device='cuda')
         return torch_asarray
     else:
         return backend.asarray
@@ -113,7 +116,7 @@ def create_output_tensor(cls, output, size_dict, device_id, stream_holder, data_
     modes = tuple(m for m in output)
     extents = tuple(size_dict[m] for m in output)
 
-    output = create_empty_tensor(cls, extents, data_type, device_id, stream_holder, False)
+    output = cls.empty(extents, device_id=device_id, dtype=data_type, stream_holder=stream_holder)
     output_event = stream_holder.obj.record() if stream_holder is not None else None
 
     strides = output.strides

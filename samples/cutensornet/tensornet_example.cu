@@ -16,12 +16,19 @@
 #include <cuda_runtime.h>
 #include <cutensornet.h>
 
+// cutensornetGetErrorString() returns the enum-name form of the status code,
+// while cutensornetGetLastError() returns a human-readable description of the
+// most recent error captured on the calling thread (when available). Print
+// both to give the user maximally actionable feedback on failure.
 #define HANDLE_ERROR(x)                                                                 \
     do {                                                                                \
         const auto err = x;                                                             \
         if (err != CUTENSORNET_STATUS_SUCCESS)                                          \
         {                                                                               \
             printf("Error: %s in line %d\n", cutensornetGetErrorString(err), __LINE__); \
+            const char* details = cutensornetGetLastError();                            \
+            if (details != nullptr && details[0] != '\0')                               \
+                printf("Details: %s\n", details);                                       \
             fflush(stdout);                                                             \
             exit(EXIT_FAILURE);                                                         \
         }                                                                               \

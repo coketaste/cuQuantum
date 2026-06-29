@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.03.1, generator version 0.3.1.dev1503+gab711511a.d20260402. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1733+g9725189ff.d20260608. Do not modify it directly.
 # This layer exposes the C header to Cython as-is.
 
 from libc.stdint cimport int32_t, int64_t, uint32_t, uint64_t
@@ -126,13 +126,21 @@ cdef extern from *:
 
 # types
 ctypedef int64_t custatevecIndex_t 'custatevecIndex_t'
+
 ctypedef void* custatevecHandle_t 'custatevecHandle_t'
+
 ctypedef void* custatevecSamplerDescriptor_t 'custatevecSamplerDescriptor_t'
+
 ctypedef void* custatevecAccessorDescriptor_t 'custatevecAccessorDescriptor_t'
+
 ctypedef void* custatevecCommunicatorDescriptor_t 'custatevecCommunicatorDescriptor_t'
+
 ctypedef void* custatevecDistIndexBitSwapSchedulerDescriptor_t 'custatevecDistIndexBitSwapSchedulerDescriptor_t'
+
 ctypedef void* custatevecSVSwapWorkerDescriptor_t 'custatevecSVSwapWorkerDescriptor_t'
+
 ctypedef void* custatevecSubSVMigratorDescriptor_t 'custatevecSubSVMigratorDescriptor_t'
+
 ctypedef struct custatevecDeviceMemHandler_t 'custatevecDeviceMemHandler_t':
     void* ctx
     int (*device_alloc)(void*, void**, size_t, cudaStream_t)
@@ -144,12 +152,14 @@ ctypedef void (*custatevecLoggerCallback_t 'custatevecLoggerCallback_t')(
     const char* functionName,
     const char* message
 )
+
 ctypedef void (*custatevecLoggerCallbackData_t 'custatevecLoggerCallbackData_t')(
     int32_t logLevel,
     const char* functionName,
     const char* message,
     void* userData
 )
+
 ctypedef struct custatevecSVSwapParameters_t 'custatevecSVSwapParameters_t':
     int32_t swapBatchIndex
     int32_t orgSubSVIndex
@@ -161,7 +171,6 @@ ctypedef struct custatevecSVSwapParameters_t 'custatevecSVSwapParameters_t':
     uint32_t nSegmentBits
     custatevecDataTransferType_t dataTransferType
     custatevecIndex_t transferSize
-
 
 
 ###############################################################################
@@ -236,9 +245,9 @@ cdef custatevecStatus_t custatevecAbs2SumArrayBatched(custatevecHandle_t handle,
 cdef custatevecStatus_t custatevecCollapseByBitStringBatchedGetWorkspaceSize(custatevecHandle_t handle, const uint32_t nSVs, const custatevecIndex_t* bitStrings, const double* norms, size_t* extraWorkspaceSizeInBytes) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef custatevecStatus_t custatevecCollapseByBitStringBatched(custatevecHandle_t handle, void* batchedSv, cudaDataType_t svDataType, const uint32_t nIndexBits, const uint32_t nSVs, const custatevecIndex_t svStride, const custatevecIndex_t* bitStrings, const int32_t* bitOrdering, const uint32_t bitStringLen, const double* norms, void* extraWorkspace, size_t extraWorkspaceSizeInBytes) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef custatevecStatus_t custatevecMeasureBatched(custatevecHandle_t handle, void* batchedSv, cudaDataType_t svDataType, const uint32_t nIndexBits, const uint32_t nSVs, const custatevecIndex_t svStride, custatevecIndex_t* bitStrings, const int32_t* bitOrdering, const uint32_t bitStringLen, const double* randnums, custatevecCollapseOp_t collapse) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
-cdef custatevecStatus_t custatevecSubSVMigratorCreate(custatevecHandle_t handle, custatevecSubSVMigratorDescriptor_t* migrator, void* deviceSlots, cudaDataType_t svDataType, int nDeviceSlots, int nLocalIndexBits) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef custatevecStatus_t custatevecSubSVMigratorCreate(custatevecHandle_t handle, custatevecSubSVMigratorDescriptor_t* migrator, void* deviceSlices, cudaDataType_t svDataType, int nDeviceSlices, int nSliceLocalIndexBits) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef custatevecStatus_t custatevecSubSVMigratorDestroy(custatevecHandle_t handle, custatevecSubSVMigratorDescriptor_t migrator) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
-cdef custatevecStatus_t custatevecSubSVMigratorMigrate(custatevecHandle_t handle, custatevecSubSVMigratorDescriptor_t migrator, int deviceSlotIndex, const void* srcSubSV, void* dstSubSV, custatevecIndex_t begin, custatevecIndex_t end) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef custatevecStatus_t custatevecSubSVMigratorMigrate(custatevecHandle_t handle, custatevecSubSVMigratorDescriptor_t migrator, int deviceSliceIndex, const void* srcSubSVSlice, void* dstSubSVSlice, custatevecIndex_t begin, custatevecIndex_t end) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef custatevecStatus_t custatevecComputeExpectationBatchedGetWorkspaceSize(custatevecHandle_t handle, cudaDataType_t svDataType, const uint32_t nIndexBits, const uint32_t nSVs, const custatevecIndex_t svStride, const void* matrices, cudaDataType_t matrixDataType, custatevecMatrixLayout_t layout, const uint32_t nMatrices, const uint32_t nBasisBits, custatevecComputeType_t computeType, size_t* extraWorkspaceSizeInBytes) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef custatevecStatus_t custatevecComputeExpectationBatched(custatevecHandle_t handle, const void* batchedSv, cudaDataType_t svDataType, const uint32_t nIndexBits, const uint32_t nSVs, custatevecIndex_t svStride, double2* expectationValues, const void* matrices, cudaDataType_t matrixDataType, custatevecMatrixLayout_t layout, const uint32_t nMatrices, const int32_t* basisBits, const uint32_t nBasisBits, custatevecComputeType_t computeType, void* extraWorkspace, size_t extraWorkspaceSizeInBytes) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef custatevecStatus_t custatevecSetMathMode(custatevecHandle_t handle, custatevecMathMode_t mode) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil

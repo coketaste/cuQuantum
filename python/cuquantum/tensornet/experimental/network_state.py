@@ -4,6 +4,7 @@
 
 __all__ = ['NetworkState']
 
+import collections.abc
 import logging
 
 import numpy as np
@@ -17,18 +18,21 @@ from nvmath.internal.typemaps import NAME_TO_DATA_TYPE
 from .configuration import MPSConfig, TNConfig
 from .network_operator import NetworkOperator
 from ._internal.network_state_utils import (
-    EXACT_MPS_EXTENT_LIMIT, 
-    STATE_DEFAULT_DTYPE, 
-    check_dtype_supported, 
-    get_mps_key, 
-    state_operands_wrapper, 
-    state_result_wrapper, 
+    EXACT_MPS_EXTENT_LIMIT,
+    STATE_DEFAULT_DTYPE,
+    check_dtype_supported,
+    check_expectation_with_gradients_norm_args,
+    get_mps_key,
+    host_scalar_to_holder,
+    unwrap_output_tensor,
+    state_operands_wrapper,
+    state_result_wrapper,
     state_labels_wrapper,
 )
 from ..tensor_network import Network
 from ..circuit_converter import CircuitToEinsum
 from ..configuration import NetworkOptions
-from .._internal.circuit_converter_utils import EMPTY_DICT
+from .._internal.circuit_converter_utils import EMPTY_DICT, split_mixed_fixed, split_mixed_bitstring
 from .._internal.decomposition_utils import update_tensor_extents_strides
 from nvmath.internal.tensor_wrapper import infer_tensor_package
 import importlib
@@ -46,7 +50,10 @@ class NetworkState:
             - ``'float64'``
             - ``'complex64'``
             - ``'complex128'`` (default)
-        
+
+        pure_state : Whether the state is pure. ``True`` (default) selects pure-state simulation;
+            ``False`` selects mixed-state (density matrix) simulation.
+
         config : The simulation configuration for the state. It can be:
 
             - A :class:`TNConfig` object for contraction based tensor network simulation (default).
@@ -63,7 +70,7 @@ class NetworkState:
     
     Notes:
         - Currently :class:`NetworkState` only supports pure state representation.
-        - If users wish to use a different device than the default current device, it must be explicitly specified via :attr:`NetworkOptions.device_id`.
+        - The state is placed on CUDA device 0 by default. To use a different device, specify it explicitly via :attr:`NetworkOptions.device_id`, and ensure that all input operands reside on that same device.
         - For MPS simulation, currently only open boundary condition is supported.
     
     Examples:
@@ -121,7 +128,7 @@ class NetworkState:
         Alternatively, simulations can leverage exact or approximate matrix product state (MPS) method by specifing ``options`` as an :class:`MPSConfig` instance.
         More detailed examples can be found in our `NetworkState examples directory <https://github.com/NVIDIA/cuQuantum/blob/main/python/samples/tensornet/experimental/network_state/>`_.
     """
-    def __init__(self, state_mode_extents, *, dtype=STATE_DEFAULT_DTYPE, config=None, state_labels=None, options=None):
+    def __init__(self, state_mode_extents, *, dtype=STATE_DEFAULT_DTYPE, pure_state=True, config=None, state_labels=None, options=None):
 
         options = nvmath_utils.check_or_create_options(NetworkOptions, options, "network options")
         self.options = options
@@ -152,6 +159,10 @@ class NetworkState:
         check_dtype_supported(dtype)
         self.dtype = dtype
         self.cuda_dtype = NAME_TO_DATA_TYPE[dtype]
+
+        if not isinstance(pure_state, bool):
+            raise TypeError(f"pure_state must be a bool, got {type(pure_state)}")
+        self.is_pure = pure_state
 
         # internal setup to be determined later
         self.allocator = options.allocator # This may be None at this time
@@ -191,7 +202,8 @@ class NetworkState:
         
         # Create the state object
         self.state = cutn.create_state(self.handle, 
-            cutn.StatePurity.PURE, self.n, state_mode_extents, self.cuda_dtype)
+            cutn.StatePurity.PURE if self.is_pure else cutn.StatePurity.MIXED,
+            self.n, state_mode_extents, self.cuda_dtype)
         
         # Workspace attributes.
         self.workspace_desc = cutn.create_workspace_descriptor(self.handle)
@@ -222,13 +234,15 @@ class NetworkState:
         self.contains_stochastic_channels = False
         self.logger.info("The network state has been created.")
         self.prev_state_key = None
-    
-    
+
+        #: Pauli observable memo: :meth:`_pauli_expectation_observable_cache_key` -> :class:`NetworkOperator`
+        self._pauli_network_operator_cache = {}
+
     def _check_backend_setup(self, *args, **kwargs):
         what = kwargs['what']
         if not self.backend_setup:
             raise RuntimeError(f"{what} cannot be performed before operands or NetworkOperator has been applied.")
-    
+
     def _setup_backend(self, operand):
         # backend setup should only be performed once
         assert not self.backend_setup, "Internal Error"
@@ -251,7 +265,57 @@ class NetworkState:
         """Map logical task name to cutensornet API base name (e.g. expectation_with_gradients -> expectation)."""
         if task == 'expectation_with_gradients':
             return 'expectation'
+        if task == 'marginal_diagonal':
+            # MarginalDiagonal shares the same cutensornetStateMarginal_t handle, so prepare/compute/destroy/get_info/configure all use the marginal_* family; only the create function differs.
+            return 'marginal'
         return task
+
+    @staticmethod
+    def _coefficient_key_for_expectation_cache(coefficient):
+        """Hashable real/imag pair; always complex128 (CUTN uses ``cuDoubleComplex`` for term coefficients)."""
+        scalar = np.asarray(coefficient, dtype=np.complex128).reshape(-1)[0]
+        return (float(np.real(scalar)), float(np.imag(scalar)))
+
+    def _clear_pauli_network_operator_cache(self):
+        """Drop memoized Pauli-derived :class:`NetworkOperator` objects (does not mutate CUTN expectation cache dict)."""
+        self._pauli_network_operator_cache.clear()
+
+    def _pauli_expectation_observable_cache_key(self, pauli_dict):
+        """Sort-and-normalized Pauli (term, coefficient) pairs; memo matches :meth:`NetworkOperator.from_pauli_strings` defaults (including ``remove_identity='auto'``)."""
+        # Order by Pauli string only so dict key order does not change the cache entry.
+        pairs_sorted_by_term = sorted(pauli_dict.items(), key=lambda item: item[0])
+        return tuple(
+            (term, self._coefficient_key_for_expectation_cache(coef))
+            for term, coef in pairs_sorted_by_term
+        )
+
+    def _get_or_build_cached_pauli_network_operator(self, pauli_dict, *, stream=None):
+        """
+        Return a memoized Pauli-derived :class:`NetworkOperator` for repeated convenience inputs.
+
+        Validates Pauli-string keys like :meth:`compute_expectation`; invalid states are unreachable here because
+        expectation entry points require backend setup beforehand.
+        Builds via :meth:`NetworkOperator.from_pauli_strings` with defaults (including ``remove_identity='auto'``).
+        """
+        for term in pauli_dict:
+            if len(term) != self.n or (not set(term).issubset(set("IXYZ"))):
+                raise ValueError(
+                    "For pauli expectation computation, each dict key must be a string made of "
+                    f"IXYZ of length {self.n}, got {term!r}."
+                )
+        cache_key = self._pauli_expectation_observable_cache_key(pauli_dict)
+        cached = self._pauli_network_operator_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        op = NetworkOperator.from_pauli_strings(
+            pauli_dict,
+            backend=self.backend,
+            dtype=self.dtype,
+            options=self.options,
+            stream=stream,
+        )
+        self._pauli_network_operator_cache[cache_key] = op
+        return op
 
     def _free_task_object_resources(self, exception=None):
         """
@@ -284,6 +348,7 @@ class NetworkState:
                 self.last_compute_event = None
             
             self._free_task_object_resources()
+            self._clear_pauli_network_operator_cache()
             self.owned_network_operators = {}
             self.non_owned_network_operators = {}            
 
@@ -398,7 +463,7 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
     # classmethod for one-step initialization #
     ###########################################
     @classmethod
-    def from_circuit(cls, circuit, *, dtype=STATE_DEFAULT_DTYPE, backend="auto", config=None, options=None, stream=None):
+    def from_circuit(cls, circuit, *, dtype=STATE_DEFAULT_DTYPE, backend="auto", pure_state=True, config=None, options=None, stream=None):
         """
         Create a state object from the given circuit.
 
@@ -410,6 +475,8 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
                 - ``'complex128'`` (default)
             
             backend : The backend for all output tensor operands. If not specified, ``cupy`` is used when it is available, otherwise ``numpy`` is used.
+            pure_state : Whether the state is pure. ``True`` (default) for pure-state simulation;
+                ``False`` for mixed-state (density matrix) simulation.
             config : The simulation configuration for the state. It can be:
 
                 - A :class:`TNConfig` object for contraction based tensor network simulation (default).
@@ -434,17 +501,21 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
             # cirq.Circuit does not support decompose_gates option
             parser_options = {'check_diagonal': True}
         with nvmath_utils.device_ctx(options.device_id):
+            # CircuitToEinsum auto-detects channels; NetworkState purity (including trajectory
+            # simulation of a noisy circuit as a pure state) is controlled by ``pure_state`` here.
             converter = CircuitToEinsum(circuit, dtype=dtype, backend=backend, options=parser_options)
-        return cls.from_converter(converter, config=config, options=options, stream=stream)
+        return cls.from_converter(converter, pure_state=pure_state, config=config, options=options, stream=stream)
     
     
     @classmethod
-    def from_converter(cls, converter, *, config=None, options=None, stream=None):
+    def from_converter(cls, converter, *, pure_state=True, config=None, options=None, stream=None):
         """
         Create a :class:`NetworkState` object from the given :class:`cuquantum.tensornet.CircuitToEinsum` converter.
 
         Args:
             converter : A :class:`cuquantum.tensornet.CircuitToEinsum` object.
+            pure_state : Whether the state is pure. ``True`` (default) for pure-state simulation;
+                ``False`` for mixed-state (density matrix) simulation.
             config : The simulation configuration for the state simulator. It can be:
 
                 - A :class:`TNConfig` object for contraction based tensor network simulation (default).
@@ -461,19 +532,25 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
         """
         dtype = getattr(converter.dtype, '__name__', str(converter.dtype).split('.')[-1])
         state_mode_extents = (2, ) * len(converter.qubits)
-        simulator = cls(state_mode_extents, dtype=dtype, config=config, options=options, state_labels=converter.qubits)
-        gates = converter.gates
-        gates_are_diagonal = converter._gates_are_diagonal
-        
-        for (operand, qubits), is_diagonal in zip(gates, gates_are_diagonal):
-            if is_diagonal:  
-                if operand.ndim == 2:
-                    operand = operand.diagonal()
-                else:
-                    ndim = operand.ndim
-                    operand = operand.reshape(2**(ndim//2), 2**(ndim//2)).diagonal().reshape((2,)*(ndim//2))
-                simulator.logger.debug("The operand is diagonal, and is converted to a diagonal tensor.")
-            simulator.apply_tensor_operator(qubits, operand, diagonal=is_diagonal, unitary=True, stream=stream)
+        simulator = cls(state_mode_extents, dtype=dtype, pure_state=pure_state, config=config, options=options, state_labels=converter.qubits)
+
+        for entry in converter._gate_entries:
+            if entry.kind == 'unitary_channel':
+                simulator.apply_unitary_tensor_channel(
+                    entry.qubits, entry.operand, list(entry.probabilities), stream=stream)
+            elif entry.kind == 'general_channel':
+                simulator.apply_general_tensor_channel(entry.qubits, entry.operand, stream=stream)
+            else:
+                operand = entry.operand
+                if entry.is_diagonal:
+                    if operand.ndim == 2:
+                        operand = operand.diagonal()
+                    else:
+                        ndim = operand.ndim
+                        operand = operand.reshape(2**(ndim//2), 2**(ndim//2)).diagonal().reshape((2,)*(ndim//2))
+                    simulator.logger.debug("The operand is diagonal, and is converted to a diagonal tensor.")
+                simulator.apply_tensor_operator(
+                    entry.qubits, operand, diagonal=entry.is_diagonal, unitary=True, stream=stream)
         return simulator
 
     def _mark_updated(self, structural=True):
@@ -492,6 +569,7 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
             if self.last_compute_event is not None:
                 self.workspace_stream.wait(self.last_compute_event)
                 self.last_compute_event = None
+            self._clear_pauli_network_operator_cache()
             self._free_task_object_resources()
     
     ###########################################
@@ -540,7 +618,7 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
     # operand indices (b, a, B, A) required for modes a, b
     @state_operands_wrapper(operands_arg_index=2, is_single_operand=True, transpose=True)
     @nvmath_utils.precondition(_check_valid_network)
-    def apply_tensor_operator(self, modes, operand, *, control_modes=None, control_values=None, immutable=False, adjoint=False, unitary=False, diagonal=False, gradient=False, stream=None):
+    def apply_tensor_operator(self, modes, operand, *, control_modes=None, control_values=None, immutable=False, adjoint=False, unitary=False, diagonal=False, gradient=None, stream=None):
         """
         Apply a tensor operator to the network state.
 
@@ -558,7 +636,10 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
             adjoint : Whether the operator should be applied in its adjoint form (default `False`).
             unitary : Whether the operator is unitary (default `False`).
             diagonal : Whether the operator is diagonal (default `False`).
-            gradient : If ``True``, register this operator for gradient computation.
+            gradient : Whether to register this operator for expectation gradients.
+                If ``None`` (default), for PyTorch operands the choice follows ``operand.tensor.requires_grad``;
+                for other backends, gradient registration is disabled unless ``gradient`` is explicitly ``True``.
+                Use ``True`` / ``False`` to force registration on or off regardless of ``requires_grad``.
             stream : Provide the CUDA stream to use for applying the tensor operator (this is used to copy the operands to the GPU if they are provided on the CPU). 
                 Acceptable inputs include ``cudaStream_t`` (as Python :class:`int`), :class:`cuda.core.Stream` for NumPy operands, 
                 :class:`cupy.cuda.Stream` for CuPy operands, and :class:`torch.cuda.Stream` for PyTorch operands. 
@@ -572,14 +653,24 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
         """
         if isinstance(self.config, MPSConfig) and len(operand.shape) > 4:
             raise ValueError(f"MPS simulation only supports one-body and two-body operators, found operator dimension ({len(operand.shape)})")
-        if gradient and (control_modes is not None or diagonal):
-            raise ValueError("gradient=True is only supported for non-controlled, non-diagonal apply_tensor_operator.")
+        if gradient is None:
+            if self.backend == "torch":
+                use_gradient = operand.tensor.requires_grad
+            else:
+                use_gradient = False
+        else:
+            assert isinstance(gradient, bool)
+            use_gradient = gradient
+        if use_gradient and (control_modes is not None or diagonal):
+            raise ValueError(
+                "Gradient registration is only supported for non-controlled, non-diagonal apply_tensor_operator."
+            )
         if control_modes is None:
             if diagonal:
                 tensor_id = cutn.state_apply_diagonal_tensor_operator(self.handle, self.state, len(modes), 
                     modes, operand.data_ptr, operand.strides, immutable, adjoint, unitary)
                 self.logger.debug(f"The diagonal tensor operand has been applied to the state with an ID ({tensor_id}).")
-            elif gradient:
+            elif use_gradient:
                 # Gradient uses same shape/strides as operand.
                 tensor_id = cutn.state_apply_tensor_operator_with_gradient(
                     self.handle, self.state, len(modes), modes,
@@ -606,7 +697,19 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
         # reset norm / state vector
         self._mark_updated()
         return tensor_id
-    
+
+    def gradient_tensor_ids(self):
+        """
+        Tensor operator IDs registered for gradient computation via
+        :meth:`apply_tensor_operator`.
+
+        Returns:
+            A tuple of integers in ascending ``tensor_id`` order. When the library
+            assigns monotonically increasing IDs (the usual case), this matches the
+            order of :meth:`apply_tensor_operator` calls that registered gradients.
+        """
+        return tuple(sorted(self._gradient_tensor_ids))
+
     @state_labels_wrapper(marker_index=1, marker_type='seq')
     # operand indices (b, a, B, A) required for modes a, b
     @state_operands_wrapper(operands_arg_index=2, is_single_operand=False, transpose=True)
@@ -655,7 +758,7 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
     @nvmath_utils.precondition(_check_valid_network)
     def apply_general_tensor_channel(self, modes, operands, *, stream=None):
         """
-        Apply a noise channel to the MPS network state. The noise operators may be non-unitary.
+        Apply a noise channel to the network state. The noise operators may be non-unitary.
         For a more efficient unitary tensor channel application, see
         :meth:`NetworkState.apply_unitary_tensor_channel`.
 
@@ -676,15 +779,16 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
         Notes:
             - This method requires the input channel to be trace-preserving.
               Supplying a non-trace-preserving channel may lead to unexpected results.
-            - As of cuTensorNet v2.7.0, this method only supports MPS simulation
-              configured with ``gauge_option="free"`` (default).
+            - For pure states with TNConfig, general channels are not supported. Use MPSConfig
+              or switch to mixed state simulation (``pure_state=False``).
             - For MPS simulation, the size of ``modes`` shall be restricted to no larger than 2 (two-body operator).
             - The ``channel_id`` cannot be used to update the channel using
               :meth:`NetworkState.update_tensor_operator`.
         """
         # operand indices (b, a, B, A) required for modes a, b
-        if isinstance(self.config, TNConfig):
-            raise ValueError(f"Noise simulation using general channel is only supported for MPS simulation. Set NetworkState config to MPSConfig to enable MPS simulatino")
+        if isinstance(self.config, TNConfig) and self.is_pure:
+            raise ValueError(f"Noise simulation using general channel with TNConfig is only supported for mixed states. "
+                             f"Set pure_state=False or use MPSConfig for pure state noise simulation.")
         tensor_data = [o.data_ptr for o in operands]
         tensor_mode_strides = [o.strides for o in operands]
         if not all(strides == tensor_mode_strides[0] for strides in tensor_mode_strides):
@@ -849,7 +953,8 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
                 else:
                     extents = (max_extents[i-1], self.state_mode_extents[i], max_extents[i])
 
-                tensor = nvmath_utils.create_empty_tensor(self.intermediate_class, extents, self.dtype, self.device_id, stream_holder, False)
+                tensor = self.intermediate_class.empty(
+                    extents, device_id=self.device_id, dtype=self.dtype, stream_holder=stream_holder)
                 self.mps_tensors.append(tensor)
                 output_mps_extents.append(extents)
                 output_mps_strides.append(tensor.strides) 
@@ -885,8 +990,8 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
     def _compute_target(self, task, create_args, execute_args, stream, release_workspace, *, config_args=None, caller_name=None, task_key=None):
         if caller_name is None:
             caller_name = task
-        if task not in ('marginal', 'expectation', 'accessor', 'state', 'sampler', 'expectation_with_gradients'):
-            raise ValueError("only supports marginal, sampler, accessor, expectation, expectation_with_gradients and state")
+        if task not in ('marginal', 'marginal_diagonal', 'expectation', 'accessor', 'state', 'sampler', 'expectation_with_gradients'):
+            raise ValueError("only supports marginal, marginal_diagonal, sampler, accessor, expectation, expectation_with_gradients and state")
 
         cutn_task = self._get_cutn_task_name(task)
 
@@ -896,7 +1001,10 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
             # avoid going into infinite loops
             if not self._maybe_compute_state(stream, release_workspace):
                 raise ValueError
-            create_func = getattr(cutn, f'create_{cutn_task}')
+            if task == 'marginal_diagonal':
+                create_func = cutn.create_marginal_diagonal
+            else:
+                create_func = getattr(cutn, f'create_{cutn_task}')
         # Allocate device memory (in stream context) if needed.
         stream_holder = nvmath_utils.get_or_create_stream(self.device_id, stream, self.internal_package)
         prepare_func = getattr(cutn, f'{cutn_task}_prepare')
@@ -964,10 +1072,12 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
                 equivalent_callers_set = {'batched_amplitudes', 'state vector', 'amplitude'}
                 assert caller_name in equivalent_callers_set
                 num_fixed_modes = create_args[0]
+                # For mixed states the projection space is [0, 2N) (independent ket/bra).
+                full_projection = self.n if self.is_pure else 2 * self.n
                 if num_fixed_modes == 0:
                     # state vector & batched_amplitudes both support computing the full state vector
                     equivalent_callers_set.remove('amplitude')
-                elif num_fixed_modes == self.n:
+                elif num_fixed_modes == full_projection:
                     # amplitude & batched_amplitudes both support computing the amplitude
                     equivalent_callers_set.remove('state vector')
                 else:
@@ -1008,47 +1118,115 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
         # for task == 'state', output is a tuple, otherwise None
         return output
     
+    def _translate_label_dict(self, d):
+        """Translate a possibly-labelled dict (state-label keys) into integer-keyed form."""
+        if not d:
+            return {}
+        if self.state_labels is None:
+            return dict(d)
+        if all(isinstance(k, int) for k in d.keys()):
+            return dict(d)
+        return {self.state_labels.index(k): v for k, v in d.items()}
 
-    def _run_state_accessor(self, caller_name, return_norm, *, fixed_modes=None, stream=None, release_workspace=False):
-        if fixed_modes:
-            # compute batched amplitudes
-            shape = [self.state_mode_extents[q] for q in range(self.n) if q not in fixed_modes]
-            num_fixed_modes = len(fixed_modes)
-            fixed_modes, fixed_values = zip(*sorted(fixed_modes.items())) 
-            fixed_modes = tuple(fixed_modes)
-            fixed_values = tuple([int(i) for i in fixed_values])
+    def _translate_label_seq(self, seq):
+        """Translate a possibly-labelled sequence of mode labels into integer indices."""
+        if seq is None:
+            return None
+        if self.state_labels is None or all(isinstance(item, int) for item in seq):
+            return list(seq)
+        return [self.state_labels.index(item) for item in seq]
+
+    def _build_accessor_projection(self, fixed_ket, fixed_bra=None):
+        """Translate user-facing ket/bra projection dicts into the C-side projection list and output shape.
+
+        For pure states only ``fixed_ket`` is consulted; the projection space is ``[0, N)``.
+        For mixed states both are consulted; the projection space is ``[0, 2N)`` with ``[0, N)``
+        indexing ket modes and ``[N, 2N)`` indexing bra modes.
+
+        Output mode order is ket-open-asc followed by bra-open-asc (matching the C contract for the mixed-state Accessor).
+
+        Returns:
+            (num_projected, projected_modes, projected_values, output_shape)
+        """
+        n = self.n
+        fixed_ket = dict(fixed_ket) if fixed_ket else {}
+        for k in fixed_ket:
+            if not (isinstance(k, int) and 0 <= k < n):
+                raise ValueError(f"ket projection key {k!r} out of range [0, {n})")
+        if not self.is_pure:
+            fixed_bra = dict(fixed_bra) if fixed_bra else {}
+            for k in fixed_bra:
+                if not (isinstance(k, int) and 0 <= k < n):
+                    raise ValueError(f"bra projection key {k!r} out of range [0, {n})")
+            combined = {k: int(v) for k, v in fixed_ket.items()}
+            combined.update({k + n: int(v) for k, v in fixed_bra.items()})
+            open_ket = [q for q in range(n) if q not in fixed_ket]
+            open_bra = [q for q in range(n) if q not in fixed_bra]
+            output_shape = ([self.state_mode_extents[q] for q in open_ket]
+                            + [self.state_mode_extents[q] for q in open_bra])
         else:
-            # compute full state vector
-            shape = self.state_mode_extents
-            num_fixed_modes = fixed_modes = fixed_values = 0
-        
+            if fixed_bra:
+                raise TypeError("fixed_bra is only supported for pure_state=False")
+            combined = {k: int(v) for k, v in fixed_ket.items()}
+            open_modes = [q for q in range(n) if q not in fixed_ket]
+            output_shape = [self.state_mode_extents[q] for q in open_modes]
+
+        if combined:
+            sorted_modes, sorted_values = zip(*sorted(combined.items()))
+            num_projected = len(sorted_modes)
+            projected_modes = tuple(sorted_modes)
+            projected_values = tuple(sorted_values)
+        else:
+            num_projected = 0
+            projected_modes = 0
+            projected_values = 0
+        return num_projected, projected_modes, projected_values, output_shape
+
+    def _run_state_accessor(self, caller_name, return_norm, *, fixed_modes=None, fixed_bra=None, stream=None, release_workspace=False):
+        num_projected, projected_modes, projected_values, shape = self._build_accessor_projection(
+            fixed_modes, fixed_bra)
+
         stream_holder = nvmath_utils.get_or_create_stream(self.device_id, stream, self.internal_package)
-        amplitudes = nvmath_utils.create_empty_tensor(self.intermediate_class, shape, self.dtype, self.device_id, stream_holder, False)
+        amplitudes = self.intermediate_class.empty(
+            shape, device_id=self.device_id, dtype=self.dtype, stream_holder=stream_holder)
 
-        norm = np.empty(1, dtype=self.dtype)
+        norm = np.empty((), dtype=self.dtype)
 
-        create_args = (num_fixed_modes, fixed_modes, tuple(amplitudes.strides))
+        create_args = (num_projected, projected_modes, tuple(amplitudes.strides))
         if return_norm:
-            execute_args = (fixed_values, self.workspace_desc, amplitudes.data_ptr, norm.ctypes.data)
+            execute_args = (projected_values, self.workspace_desc, amplitudes.data_ptr, norm.ctypes.data)
         else:
-            execute_args = (fixed_values, self.workspace_desc, amplitudes.data_ptr, 0)
+            execute_args = (projected_values, self.workspace_desc, amplitudes.data_ptr, 0)
         self._compute_target('accessor', create_args, execute_args, stream, release_workspace, caller_name=caller_name)
         if return_norm:
-            return amplitudes, norm.real.item()
-        else:
-            return amplitudes
-
+            norm_out = host_scalar_to_holder(
+                self.output_class, self.device_id, self.dtype, norm, stream_holder
+            )
+            return amplitudes, norm_out
+        return amplitudes
     
-    @state_result_wrapper(is_scalar=True)
+    @state_result_wrapper()
     @nvmath_utils.precondition(_maybe_setup_recompute)
     @nvmath_utils.precondition(_check_valid_network)
     @nvmath_utils.precondition(_check_backend_setup, "Amplitude computation")
     def compute_amplitude(self, bitstring, *, return_norm=False, stream=None, release_workspace=False):
         """
-        Compute the probability amplitude of a bitstring.
+        Compute a single element of the underlying state tensor.
+
+        For pure states, returns the complex amplitude :math:`\\langle \\text{bitstring} | \\psi \\rangle`.
+        For mixed states, returns the density-matrix element
+        :math:`\\langle \\text{ket\\_bitstring} | \\rho | \\text{bra\\_bitstring} \\rangle`.
 
         Args:
-            bitstring : A sequence of integers specifying the desired measured state dimension. 
+            bitstring : 
+                * For pure states, a length-``N`` sequence of integers specifying the desired
+                  basis state.
+                * For mixed states, either a single length-``N`` sequence -- interpreted
+                  symmetrically as ``ket == bra`` to extract a diagonal element (probability) --
+                  or a 2-tuple ``(ket_bitstring, bra_bitstring)`` of length-``N`` sequences
+                  specifying the row (ket) and column (bra) indices of the density matrix element
+                  to compute.
+
             return_norm : If true, the squared norm of the state will also be returned.
             stream : Provide the CUDA stream to use for the computation. 
                 Acceptable inputs include ``cudaStream_t`` (as Python :class:`int`), :class:`cuda.core.Stream` for NumPy operands, 
@@ -1063,28 +1241,78 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
                 The default is `False`.
         
         Returns:
-            If ``return_norm`` is `False`, a scalar for the bitstring amplitude; otherwise, a 2-tuple consisting of the bitstring of the amplitude 
-            and a scalar for the squared norm of the state, i.e, inner product of bra and ket state.
+            If ``return_norm`` is ``False``, a 0-D tensor for the bitstring amplitude on the
+            state's backend (the density-matrix element
+            :math:`\\langle \\text{ket} | \\rho | \\text{bra} \\rangle` for mixed states).
+            If ``return_norm`` is ``True``, a 2-tuple ``(amplitude, norm)`` where ``norm`` is a
+            0-D tensor for the squared state norm :math:`\\mathrm{Tr}(\\rho)` (equal to
+            :math:`\\langle \\psi | \\psi \\rangle` for pure states).
         """
-        if len(bitstring) != self.n:
-            raise ValueError(f"Length of bitstring is expected to match the dimension of the underlying state ({self.n}), found ({len(bitstring)})")
-        fixed_modes = {}
-        for i, bit in enumerate(bitstring):
-            fixed_modes[i] = int(bit)
-        return self._run_state_accessor('amplitude', return_norm, fixed_modes=fixed_modes, stream=stream, release_workspace=release_workspace)
+        n = self.n
+        fixed_ket, fixed_bra = self._parse_bitstring_argument(bitstring, n)
+        return self._run_state_accessor('amplitude', return_norm,
+                                        fixed_modes=fixed_ket, fixed_bra=fixed_bra,
+                                        stream=stream, release_workspace=release_workspace)
+
+    def _parse_bitstring_argument(self, bitstring, n):
+        """Parse a ``bitstring`` argument into (fixed_ket, fixed_bra) projection dicts.
+
+        For pure states ``bitstring`` must be a length-N sequence of bits; ``fixed_bra`` is ``None``.
+        For mixed states ``bitstring`` is either a single length-N sequence (symmetric ``ket == bra``,
+        a diagonal element) or a 2-tuple of length-N sequences ``(ket, bra)`` for an off-diagonal
+        element, mirroring the underlying mixed-state Accessor C contract.
+        """
+        if not self.is_pure:
+            bs_ket, bs_bra = split_mixed_bitstring(bitstring, n)
+            for label, bs in (("ket_bitstring", bs_ket), ("bra_bitstring", bs_bra)):
+                if not isinstance(bs, collections.abc.Sequence):
+                    raise TypeError(f"`{label}` must be a sequence of bits (e.g. a str or tuple/list)")
+                if len(bs) != n:
+                    raise ValueError(f"`{label}` must have length {n}, got {len(bs)}")
+            fixed_ket = {i: int(b) for i, b in enumerate(bs_ket)}
+            fixed_bra = {i: int(b) for i, b in enumerate(bs_bra)}
+            return fixed_ket, fixed_bra
+        # pure
+        if isinstance(bitstring, tuple) and len(bitstring) == 2 and all(
+                isinstance(x, collections.abc.Sequence) and not isinstance(x, (str, bytes)) for x in bitstring):
+            raise TypeError("the (ket_bitstring, bra_bitstring) tuple form is only valid for "
+                            "pure_state=False; pass a single length-N bitstring for pure states")
+        if len(bitstring) != n:
+            raise ValueError(f"Length of bitstring is expected to match the dimension of the "
+                             f"underlying state ({n}), found ({len(bitstring)})")
+        fixed_ket = {i: int(b) for i, b in enumerate(bitstring)}
+        return fixed_ket, None
     
     @state_labels_wrapper(marker_index=1, marker_type='dict')
-    @state_result_wrapper(is_scalar=False)
+    @state_result_wrapper()
     @nvmath_utils.precondition(_maybe_setup_recompute)
     @nvmath_utils.precondition(_check_valid_network)
     @nvmath_utils.precondition(_check_backend_setup, "Batched amplitude computation")
     def compute_batched_amplitudes(self, fixed, *, return_norm=False, stream=None, release_workspace=False):
         """
-        Compute the batched amplitudes for a given slice.
+        Compute a slice of the underlying state tensor.
+
+        For pure states, returns a slice of the state vector:
+        :math:`\\langle \\text{bs} | \\psi \\rangle` over open ket modes.
+
+        For mixed states, returns a slice of the density matrix with the requested ket and bra
+        modes projected independently. Output modes are ordered as
+        ``(open_ket_modes_asc, open_bra_modes_asc)`` to match the underlying mixed-state Accessor.
 
         Args:    
-            fixed : A dictionary mapping a subset of state dimensions to correponding fixed states. 
-                If ``state_labels`` has been provided during initialization, ``fixed`` can also be provided as a dictionary mapping a subset of labels to corresponding fixed states. 
+            fixed : A dictionary mapping a subset of mode indices ``[0, N)`` to fixed values; modes
+                absent from the dictionary are left open. If ``state_labels`` has been provided
+                during initialization, keys may also be provided as labels.
+
+                * For pure states, each value is a single fixed index.
+                * For mixed states, each value selects the ket and bra index for that mode and may
+                  be either
+
+                  - a single index -- shorthand for fixing the ket and bra to the same value (a
+                    diagonal/symmetric projection), or
+                  - a 2-tuple ``(ket, bra)`` where each entry is an index or ``None``; ``None``
+                    leaves that side open, enabling independent ket/bra projection
+                    (e.g. ``(0, None)`` fixes only the ket).
             return_norm : If true, the squared norm of the state will also be returned.
             stream : Provide the CUDA stream to use for the computation. 
                 Acceptable inputs include ``cudaStream_t`` (as Python :class:`int`), :class:`cuda.core.Stream` for NumPy operands, 
@@ -1099,14 +1327,43 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
                 The default is `False`.
         
         Returns:
-            If ``return_norm`` is `False`, An ndarray-like object as batched amplitudes. The package and storage location of the ndarray will be the same as 
-            the operands provided in :meth:`apply_tensor_operator`, :meth:`apply_mpo` and :meth:`set_initial_mps`; otherwise, a 2-tuple consisting of the batched amplitudes 
-            and a scalar for the squared norm of the state, i.e, inner product of bra and ket state.
+            If ``return_norm`` is `False`, an ndarray-like slice of the state tensor. The package and
+            storage location of the ndarray will be the same as the operands provided in
+            :meth:`apply_tensor_operator`, :meth:`apply_mpo` and :meth:`set_initial_mps`. Otherwise, a
+            2-tuple consisting of the slice and a scalar for the squared norm of the state
+            :math:`\\mathrm{Tr}(\\rho)` (equal to :math:`\\langle \\psi | \\psi \\rangle` for pure states).
         """
-        return self._run_state_accessor('batched_amplitudes', return_norm, fixed_modes=fixed, stream=stream, release_workspace=release_workspace)
-    
+        fixed_ket, fixed_bra = self._parse_fixed_argument(fixed)
+        return self._run_state_accessor('batched_amplitudes', return_norm,
+                                        fixed_modes=fixed_ket, fixed_bra=fixed_bra,
+                                        stream=stream, release_workspace=release_workspace)
 
-    @state_result_wrapper(is_scalar=False)
+    def _parse_fixed_argument(self, fixed):
+        """Parse a ``fixed`` argument into (fixed_ket, fixed_bra) projection dicts.
+
+        For pure states ``fixed`` must be a dict (possibly with labelled keys) mapping modes to a
+        single fixed value; ``fixed_bra`` is ``None``.
+
+        For mixed states ``fixed`` is a single dict whose values select the ket and bra index for
+        each mode: a scalar fixes both sides to the same value (diagonal projection), while a
+        2-tuple ``(ket, bra)`` projects the two sides independently (``None`` leaves that side
+        open). This is translated into the ``(fixed_ket, fixed_bra)`` dicts that mirror the
+        underlying mixed-state Accessor C contract.
+        """
+        if not self.is_pure:
+            if not isinstance(fixed, collections.abc.Mapping):
+                raise TypeError("for pure_state=False, `fixed` must be a dict mapping mode indices "
+                                "(or labels) to a single value or a (ket, bra) 2-tuple")
+            fixed_ket_in, fixed_bra_in = split_mixed_fixed(fixed)
+            return self._translate_label_dict(fixed_ket_in), self._translate_label_dict(fixed_bra_in)
+        if isinstance(fixed, tuple):
+            raise TypeError("the (fixed_ket, fixed_bra) tuple form is no longer used; pass a single "
+                            "dict (pure states accept only scalar values)")
+        if not isinstance(fixed, collections.abc.Mapping):
+            raise TypeError("`fixed` must be a dict mapping mode indices (or labels) to fixed values")
+        return self._translate_label_dict(fixed), None
+    
+    @state_result_wrapper()
     @nvmath_utils.precondition(_maybe_setup_recompute)
     @nvmath_utils.precondition(_check_valid_network)
     @nvmath_utils.precondition(_check_backend_setup, "State vector computation")
@@ -1114,6 +1371,9 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
         """
         Compute the state vector.
 
+        This method is only valid for pure states. For mixed states, use
+        :meth:`compute_density_matrix` to obtain the full density matrix.
+
         Args:
             return_norm : If true, the squared norm of the state will also be returned.
             stream : Provide the CUDA stream to use for the computation. 
@@ -1129,27 +1389,65 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
                 The default is `False`.
 
         Returns:
-            If ``return_norm`` is `False`, An ndarray-like object as the state vector. The package and storage location of the ndarray will be the same as 
-            the operands provided in :meth:`apply_tensor_operator`, :meth:`apply_mpo` and :meth:`set_initial_mps`; otherwise, a 2-tuple consisting of the state vector 
-            and a scalar for the squared norm of the state, i.e, inner product of bra and ket state.
+            If ``return_norm`` is ``False``, an ndarray-like state vector on the state's backend. The package and storage location of the ndarray will be the same as 
+            the operands provided in :meth:`apply_tensor_operator`, :meth:`apply_mpo` and :meth:`set_initial_mps`. If ``return_norm`` is ``True``, a 2-tuple
+            ``(state_vector, norm)`` where ``norm`` is a 0-D tensor for the squared state
+            2-norm.
         """
+        if not self.is_pure:
+            raise TypeError(
+                "compute_state_vector() is not defined for mixed states; use "
+                "compute_density_matrix() to obtain the full density matrix.")
         return self._run_state_accessor('state vector', return_norm, fixed_modes={}, stream=stream, release_workspace=release_workspace)
+
+    def compute_density_matrix(self, *, stream=None, release_workspace=False):
+        """
+        Compute the full density matrix.
+
+        This is supported for both pure and mixed states. For a pure state this returns
+        :math:`\\rho = |\\psi\\rangle\\langle\\psi|`; :meth:`compute_state_vector` is the cheaper
+        rank-N alternative in that case.
+
+        Args:
+            stream : Provide the CUDA stream to use for the computation. 
+                Acceptable inputs include ``cudaStream_t`` (as Python :class:`int`), :class:`cuda.core.Stream` for NumPy operands, 
+                :class:`cupy.cuda.Stream` for CuPy operands, and :class:`torch.cuda.Stream` for PyTorch operands. 
+                If a stream is not provided, the current stream will be used.
+            release_workspace : A value of `True` specifies that the state object should release workspace memory back to
+                the package memory pool on function return, while a value of `False` specifies that the state object
+                should retain the memory. This option may be set to `True` if the application performs other operations that consume
+                a lot of memory between successive calls to the (same or different) execution API such as :meth:`compute_sampling`,
+                :meth:`compute_reduced_density_matrix`, :meth:`compute_amplitude`, :meth:`compute_batched_amplitudes`, or :meth:`compute_expectation`, 
+                but incurs a small overhead due to obtaining and releasing workspace memory from and to the package memory pool on every call. 
+                The default is `False`.
+
+        Returns:
+            An ndarray-like density matrix of shape ``(d_0, ..., d_{N-1}, d_0, ..., d_{N-1})`` where the
+            first N modes are ket (row) indices and the last N modes are bra (column) indices.
+        """
+        return self.compute_reduced_density_matrix(
+            tuple(range(self.n)), stream=stream, release_workspace=release_workspace)
 
     @state_labels_wrapper(marker_index=1, marker_type='seq')
     @state_labels_wrapper(key='fixed', marker_type='dict')
-    @state_result_wrapper(is_scalar=False)
+    @state_result_wrapper()
     @nvmath_utils.precondition(_maybe_setup_recompute)
     @nvmath_utils.precondition(_check_valid_network)
     @nvmath_utils.precondition(_check_backend_setup, "Reduced density matrix computation")
-    def compute_reduced_density_matrix(self, where, *, fixed=EMPTY_DICT, stream=None, release_workspace=False):
-        """
-        Compute the reduced density matrix for the given marginal and fixed modes.
+    def compute_reduced_density_matrix(self, where, *, fixed=EMPTY_DICT, diagonal=False, stream=None, release_workspace=False):
+        r"""
+        Compute the reduced density matrix (or, optionally, only its diagonal) for the given marginal and fixed modes.
 
         Args:
             where : A sequence of integers for the target modes. 
                 If ``state_labels`` has been provided during initialization, ``where`` can also be provided as a sequence of labels. 
             fixed : A dictionary mapping a subset of fixed modes to the fixed value. 
                 If ``state_labels`` has been provided during initialization, ``fixed`` can also be provided as a dictionary mapping labels to the corresponding fixed values. 
+            diagonal : If ``False`` (default), the full reduced density matrix is returned as a rank-``2 * len(where)`` tensor.
+                If ``True``, only its diagonal is returned as a rank-``len(where)`` tensor, which avoids materializing the full
+                reduced density matrix (backed by ``cutensornetCreateMarginalDiagonal``). These are the bare diagonal entries
+                :math:`\rho_{\text{where}}[\text{bs}, \text{bs}]` of the (projected) reduced density matrix; like the full
+                reduced density matrix, they are not renormalized.
             stream : Provide the CUDA stream to use for the computation. 
                 Acceptable inputs include ``cudaStream_t`` (as Python :class:`int`), :class:`cuda.core.Stream` for NumPy operands, 
                 :class:`cupy.cuda.Stream` for CuPy operands, and :class:`torch.cuda.Stream` for PyTorch operands. 
@@ -1163,9 +1461,14 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
                 The default is `False`.
         
         Returns:
-            An ndarray-like object as the reduced density matrix. 
-            The tensor will follow the modes of ``AB...ab...`` where ``AB...`` and ``ab...`` represents the corresponding output and input marginal modes.
+            An ndarray-like object. By default, the reduced density matrix following the modes ``AB...ab...`` where ``AB...`` and
+            ``ab...`` represent the corresponding output and input marginal modes. If ``diagonal=True``, the rank-``len(where)``
+            diagonal of the reduced density matrix following the modes ``AB...``.
         """
+        if fixed and not set(fixed).isdisjoint(where):
+            raise ValueError(
+                "`fixed` modes must be disjoint from the `where` modes; got overlapping "
+                f"modes {sorted(set(fixed).intersection(where))}.")
         n_marginal_modes = len(where)
         if fixed:
             n_projected_modes = len(fixed)
@@ -1174,15 +1477,18 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
             projected_mode_values = tuple([int(i) for i in projected_mode_values])
         else:
             n_projected_modes = projected_modes = projected_mode_values = 0
-        rdm_shape = [self.state_mode_extents[q] for q in where] * 2
+        out_shape = [self.state_mode_extents[q] for q in where]
+        if not diagonal:
+            out_shape = out_shape * 2
 
         stream_holder = nvmath_utils.get_or_create_stream(self.device_id, stream, self.internal_package)
-        rdm = nvmath_utils.create_empty_tensor(self.intermediate_class, rdm_shape, self.dtype, self.device_id, stream_holder, False)
-        create_args = (n_marginal_modes, tuple(where), n_projected_modes, projected_modes, tuple(rdm.strides))
-        execute_args = (projected_mode_values, self.workspace_desc, rdm.data_ptr)
-        self._compute_target('marginal', create_args, execute_args, stream, release_workspace)
-        return rdm
-    
+        out = self.intermediate_class.empty(
+            out_shape, device_id=self.device_id, dtype=self.dtype, stream_holder=stream_holder)
+        create_args = (n_marginal_modes, tuple(where), n_projected_modes, projected_modes, tuple(out.strides))
+        execute_args = (projected_mode_values, self.workspace_desc, out.data_ptr)
+        self._compute_target('marginal_diagonal' if diagonal else 'marginal', create_args, execute_args, stream, release_workspace)
+        return out
+
     @nvmath_utils.precondition(_maybe_setup_recompute)
     @nvmath_utils.precondition(_check_valid_network)
     @nvmath_utils.precondition(_check_backend_setup, "Output state")
@@ -1208,9 +1514,10 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
                 Thus passing ``release_operators=True`` can be used to reset the underlying :class:`NetworkState` object.
     
         Returns:
-            When MPS simulation when is specified using the ``options`` argument during object initialization, a sequence of operands representing the underlying 
-            MPS state will be returned. The modes of each MPS operand are expected to follow the order of ``pkn`` where ``p`` denotes the mode connecting to the previous MPS tensor, 
-            ``k`` denotes the ket mode and ``n`` denotes the mode connecting to the next MPS tensor. Note that ``p`` and ``n`` mode should not be present in the first and last MPS tensor respectively. 
+            For MPS simulation (``MPSConfig`` in ``options``), a sequence of ndarray-like MPS tensors on
+            the state's backend (respecting ``output_location``). Each tensor uses mode order ``pkn``:
+            ``p`` (left bond), ``k`` (ket), ``n`` (right bond); the first and last tensors omit ``p``
+            and ``n`` respectively.
         """
         if isinstance(self.config, TNConfig):
             raise ValueError("For network contraction based state simulation, no explicit state representation is formed, use compute_state_vector for full state vector computation")
@@ -1224,9 +1531,8 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
             if release_operators:
                 # event synchronization
                 if self.last_compute_event is not None:
-                    if stream is None: 
-                        stream = nvmath_utils.get_or_create_stream(self.device_id, stream, self.internal_package).obj
-                    stream.wait(self.last_compute_event)
+                    stream_holder = nvmath_utils.get_or_create_stream(self.device_id, stream, self.internal_package)
+                    stream_holder.obj.wait(self.last_compute_event)
                     self.last_compute_event = None
                 # release reference to underlying operators and NetworkOperator
                 cutn.state_capture_mps(self.handle, self.state)
@@ -1290,8 +1596,9 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
             config_args = (attr, val.ctypes.data, val.dtype.itemsize)
         self._compute_target('sampler', create_args, execute_args, stream, release_workspace, config_args=config_args)
         sampling = {}
-        for bitstring, n_sampling in zip(*np.unique(samples, axis=0, return_counts=True)):
-            bitstring = np.array2string(bitstring, separator='')[1:-1]
+        for sample, n_sampling in zip(*np.unique(samples, axis=0, return_counts=True)):
+            width = max((len(str(int(bit))) for bit in sample), default=1)
+            bitstring = ''.join(str(int(bit)).rjust(width) for bit in sample)
             sampling[bitstring] = n_sampling
         return sampling
     
@@ -1323,15 +1630,92 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
                 The default is `False`.
             
         Returns:
-            If ``return_norm`` is `False`, a scalar for the total expectation value; otherwise, a 2-tuple consisting of the total expectation value
-            and a scalar for the squared norm of the state, i.e, inner product of bra and ket state.
+            If ``return_norm`` is ``False``, a 0-D tensor for the expectation value on the state's
+            backend. If ``return_norm`` is ``True``, a 2-tuple
+            ``(expectation, norm)`` of 0-D tensors, where ``norm`` is the squared state norm
+            :math:`\\mathrm{Tr}(\\rho)` (equal to :math:`\\langle \\psi | \\psi \\rangle` for pure
+            states). On the PyTorch backend, outputs participate in the autograd graph when
+            gradient-registered gate tensors have ``requires_grad=True``; otherwise forward-only
+            0-D tensors are returned.
         
         Note:
-            - If user wishes to perform expectation value computation on the same operator multiple times, it is recommended to explicitly provide a :class:`NetworkOperator` object 
-              for optimal performance. For detailed examples, please see or `variational expectation example <https://github.com/NVIDIA/cuQuantum/blob/main/python/samples/tensornet/experimental/network_state/generic_states/example04_variational_expectation.py>`_.
+            - Repeated calls with the same Pauli convenience input (same string keys and coefficients given the state's
+              dtype) reuse a memoized :class:`NetworkOperator` so CUTN expectation ``prepare`` can be amortized
+              similarly to explicitly reusing one operator instance. The memo is invalidated when the state's cached
+              property objects are invalidated (see :meth:`_mark_updated`) and when :meth:`free` runs.
+            - For workloads that assemble :class:`NetworkOperator` outside the convenience path,
+              see the `variational expectation example <https://github.com/NVIDIA/cuQuantum/blob/main/python/samples/tensornet/experimental/network_state/generic_states/example04_variational_expectation.py>`_.
+            - For Pauli workloads that mutate coefficients every call, constructing a fresh :class:`NetworkOperator` may remain appropriate.
             - For pauli operator expectation value computations, this method does not take advantage of lightcone simplification optimization. 
               If user wishes to compute the expectation value on a pauli string operator with many identities in it, consider either using the :meth:`compute_reduced_density_matrix` method or 
               explicitly construct the :class:`NetworkOperator` object with :meth:`NetworkOperator.append_product` for optimal performance.
+        """
+        if self.backend == "torch":
+            from ._internal.grad_torch import _TorchExpectation
+
+            tensor_ids = self.gradient_tensor_ids()
+            trainable_tensors = tuple(self._gradient_tensor_ids[tid].tensor for tid in tensor_ids)
+            operators = self._ensure_network_operator(operators, stream)
+            return _TorchExpectation.apply(
+                self,
+                operators,
+                stream,
+                release_workspace,
+                return_norm,
+                tensor_ids,
+                *trainable_tensors,
+            )
+        return self._compute_expectation(
+            operators,
+            return_norm=return_norm,
+            stream=stream,
+            release_workspace=release_workspace,
+        )
+
+    @state_result_wrapper()
+    @nvmath_utils.precondition(_maybe_setup_recompute)
+    @nvmath_utils.precondition(_check_valid_network)
+    @nvmath_utils.precondition(_check_backend_setup, "Expectation computation")
+    def _compute_expectation(
+        self, operators, *, return_norm=False, stream=None, release_workspace=False
+    ):
+        """Run CUTN expectation; returns backend 0-D tensor(s)."""
+        stream_holder = nvmath_utils.get_or_create_stream(
+            self.device_id, stream, self.internal_package
+        )
+        operators = self._ensure_network_operator(operators, stream)
+        expectation_value = np.empty((), dtype=self.dtype)
+        norm = np.empty((), dtype=self.dtype)
+        create_args = (operators.network_operator,)
+        if return_norm:
+            execute_args = (self.workspace_desc, expectation_value.ctypes.data, norm.ctypes.data)
+        else:
+            execute_args = (self.workspace_desc, expectation_value.ctypes.data, 0)
+        task_key = ("expectation", operators._get_key())
+        self._compute_target(
+            "expectation",
+            create_args,
+            execute_args,
+            stream,
+            release_workspace,
+            task_key=task_key,
+        )
+        if return_norm:
+            return (
+                host_scalar_to_holder(
+                    self.output_class, self.device_id, self.dtype, expectation_value, stream_holder
+                ),
+                host_scalar_to_holder(
+                    self.output_class, self.device_id, self.dtype, norm, stream_holder
+                ),
+            )
+        return host_scalar_to_holder(
+            self.output_class, self.device_id, self.dtype, expectation_value, stream_holder
+        )
+
+    def _ensure_network_operator(self, operators, stream):
+        """
+        Ensure ``operators`` is a :class:`NetworkOperator` (Pauli string / dict / object).
         """
         if set(self.state_mode_extents) != set([2]):
             assert isinstance(operators, NetworkOperator), f"Pauli operator expectation only supported when all state dimensions equal 2, found ({self.state_mode_extents})."
@@ -1342,27 +1726,12 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
             operators = {operators: 1}
         own_network_operators = isinstance(operators, dict)
         if own_network_operators:
-            # a pauli string dictionary
-            operators = NetworkOperator.from_pauli_strings(operators, backend=self.backend, dtype=self.dtype, options=self.options, stream=stream)
+            operators = self._get_or_build_cached_pauli_network_operator(operators, stream=stream)
             self.owned_network_operators[None] = operators
         assert isinstance(operators, NetworkOperator)
         if tuple(self.state_mode_extents) != tuple(operators.state_mode_extents):
             raise ValueError(f"The dimension for the state ({self.state_mode_extents}) not matching that of the network operator ({operators.state_mode_extents})")
-        expectation_value = np.empty(1, dtype=self.dtype)
-        norm = np.empty(1, dtype=self.dtype)
-        create_args = (operators.network_operator, )
-        # only compute and cache norm when it's has not been computed
-        if return_norm:
-            execute_args = (self.workspace_desc, expectation_value.ctypes.data, norm.ctypes.data)
-        else:
-            execute_args = (self.workspace_desc, expectation_value.ctypes.data, 0)
-        task_key = ('expectation', operators._get_key())
-        self._compute_target('expectation', create_args, execute_args, stream, release_workspace, task_key=task_key)
-        output = expectation_value.item()
-        if return_norm:
-            return output, norm.real.item()
-        else:
-            return output
+        return operators
 
     def _execute_expectation_with_gradients(self, stream_holder, task_obj):
         """
@@ -1375,18 +1744,20 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
         gradients_out = {}
         # Allocate gradient tensors with same shape/strides as operands.
         if self.internal_package == "cuda":
-            for tensor_id, operand in self._gradient_tensor_ids.items():
+            for tensor_id in self.gradient_tensor_ids():
+                operand = self._gradient_tensor_ids[tensor_id]
                 ext, strides = operand.shape, operand.strides
-                grad = nvmath_utils.create_empty_tensor(
-                    tensor_wrapper._TENSOR_TYPES["numpy"], ext, self.dtype, "cpu", None, False, strides=strides)
+                grad = tensor_wrapper._TENSOR_TYPES["numpy"].empty(
+                    ext, device_id="cpu", dtype=self.dtype, stream_holder=None, strides=strides)
                 grad.tensor[:] = 0.0
                 grad = grad.to(self.device_id, stream_holder)
                 gradients_out[tensor_id] = grad
         else:
-            for tensor_id, operand in self._gradient_tensor_ids.items():
+            for tensor_id in self.gradient_tensor_ids():
+                operand = self._gradient_tensor_ids[tensor_id]
                 ext, strides = operand.shape, operand.strides
-                grad = nvmath_utils.create_empty_tensor(
-                    self.intermediate_class, ext, self.dtype, self.device_id, stream_holder, False, strides=strides)
+                grad = self.intermediate_class.empty(
+                    ext, device_id=self.device_id, dtype=self.dtype, stream_holder=stream_holder, strides=strides)
                 gradients_out[tensor_id] = grad
             with nvmath_utils.cuda_call_ctx(stream_holder, False, False):
                 for grad in gradients_out.values():
@@ -1414,48 +1785,39 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
     @nvmath_utils.precondition(_maybe_setup_recompute)
     @nvmath_utils.precondition(_check_valid_network)
     @nvmath_utils.precondition(_check_backend_setup, "Expectation with gradients computation")
-    def compute_expectation_with_gradients(self, operators, expectation_value_adjoint, *, return_norm=False, state_norm_adjoint=None, stream=None, release_workspace=False):
+    def compute_expectation_with_gradients(
+        self, operators, expectation_value_adjoint, *, return_norm=False, state_norm_adjoint=None, stream=None, release_workspace=False
+    ):
         """
         Compute the expectation value of the given operator(s) and gradients with respect to tensor operators
-        that were applied with ``gradient=True`` in :meth:`apply_tensor_operator`.
+        that were registered for gradients in :meth:`apply_tensor_operator` (PyTorch: typically when the
+        operand had ``requires_grad=True``, or when ``gradient=True`` was passed explicitly).
 
         Args:
             operators : Pauli string, dict of pauli strings, or :class:`NetworkOperator`.
             return_norm : If ``True``, the squared norm of the state is also computed and returned (see :meth:`compute_expectation`).
+                Must be ``True`` together with a non-``None`` ``state_norm_adjoint``, or ``False`` together with
+                ``state_norm_adjoint=None``.
             expectation_value_adjoint : Scalar adjoint for the expectation value (e.g. 1.0 for d/d(expectation)).
-            state_norm_adjoint : Upstream gradient for state norm in chain rule. Must be ``None`` in this release.
+            state_norm_adjoint : Upstream gradient for the squared state 2-norm (scalar in ``self.dtype``).
+                Must be non-``None`` exactly when ``return_norm`` is ``True``, and ``None`` when ``return_norm`` is ``False``.
             stream : Execution stream (see :meth:`compute_expectation`).
             release_workspace : Whether to release workspace memory on return (see :meth:`compute_expectation`).
 
         Returns:
-            A tuple ``(expectation_value, norm, gradients)`` where ``norm`` is the squared 2-norm of the state
-            (``None`` if ``return_norm`` is ``False``), ``expectation_value`` is a scalar, and ``gradients`` is a
-            dict mapping tensor_id (int) to the gradient array.
-            Requires that at least one tensor operator was applied with ``gradient=True``.
+            If ``return_norm`` is ``False``, ``(expectation_value, gradients)`` where
+            ``expectation_value`` is a 0-D tensor on the state's backend. If ``return_norm`` is ``True``, ``(expectation_value, norm,
+            gradients)`` where ``norm`` is a 0-D tensor for the squared state 2-norm in the same
+            form. ``gradients`` maps each ``tensor_id`` from :meth:`gradient_tensor_ids` to a
+            tensor with the same shape, dtype as the corresponding registered operand.
+            If no operators were registered for gradients, ``gradients`` is empty.
         """
-        if not self._gradient_tensor_ids:
-            raise ValueError("compute_expectation_with_gradients requires at least one tensor operator applied with gradient=True")
-        if state_norm_adjoint is not None:
-            raise NotImplementedError("state_norm_adjoint is not supported in this release; pass None")
-        if return_norm is not False:
-            raise NotImplementedError("return_norm is not supported in this release; pass None")
-        if set(self.state_mode_extents) != set([2]):
-            assert isinstance(operators, NetworkOperator), "Pauli operator expectation only supported when all state dimensions equal 2."
-        if isinstance(operators, str):
-            if len(operators) != self.n or (not set(operators).issubset(set('IXYZ'))):
-                raise ValueError("For pauli expectation computation, operators must be a string of IXYZ of length equal to state dimensions.")
-            operators = {operators: 1}
-        own_network_operators = isinstance(operators, dict)
-        if own_network_operators:
-            operators = NetworkOperator.from_pauli_strings(operators, backend=self.backend, dtype=self.dtype, options=self.options, stream=stream)
-            self.owned_network_operators[None] = operators
-        assert isinstance(operators, NetworkOperator)
-        if tuple(self.state_mode_extents) != tuple(operators.state_mode_extents):
-            raise ValueError("State dimension does not match network operator dimension.")
-        expectation_value = np.empty(1, dtype=self.dtype)
+        check_expectation_with_gradients_norm_args(return_norm, state_norm_adjoint)
+        operators = self._ensure_network_operator(operators, stream)
+        expectation_value = np.empty((), dtype=self.dtype)
         expectation_value_adjoint_arr = np.asarray(expectation_value_adjoint, dtype=self.dtype)
         state_norm_adjoint_arr = np.asarray(state_norm_adjoint, dtype=self.dtype) if state_norm_adjoint is not None else None
-        norm = np.empty(1, dtype=self.dtype) if return_norm else None
+        norm = np.empty((), dtype=self.dtype) if return_norm else None
         self._expectation_grad_run_context = (expectation_value, expectation_value_adjoint_arr, return_norm, norm, state_norm_adjoint_arr)
         try:
             create_args = (operators.network_operator,)
@@ -1470,6 +1832,24 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
             )
         finally:
             del self._expectation_grad_run_context
-        norm_out = norm.real.item() if return_norm else None
-        return expectation_value.item(), norm_out, gradients_out
+        stream_holder = nvmath_utils.get_or_create_stream(
+            self.device_id, stream, self.internal_package
+        )
+        exp_out = unwrap_output_tensor(
+            self,
+            host_scalar_to_holder(
+                self.output_class, self.device_id, self.dtype, expectation_value, stream_holder
+            ),
+            stream_holder,
+        )
+        if return_norm:
+            norm_out = unwrap_output_tensor(
+                self,
+                host_scalar_to_holder(
+                    self.output_class, self.device_id, self.dtype, norm, stream_holder
+                ),
+                stream_holder,
+            )
+            return exp_out, norm_out, gradients_out
+        return exp_out, gradients_out
 
