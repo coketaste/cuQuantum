@@ -9,8 +9,8 @@
     "custatevec": 11301,
     "cutensornet": 21202
   },
-  "captured_at": "2026-06-03T21:31:12Z",
-  "n_records": 18,
+  "captured_at": "2026-07-06T16:26:04Z",
+  "n_records": 39,
   "records": [
     {
       "library": "custatevec",
@@ -40,6 +40,29 @@
       "api": "apply_matrix",
       "kind": "api",
       "n_qubits": 20,
+      "precision": "double",
+      "config": {
+        "targets": [
+          0
+        ],
+        "controls": [],
+        "layout": "row",
+        "location": "device",
+        "adjoint": false,
+        "flush_cache": false
+      },
+      "gpu_time_s": 1.352e-05,
+      "cpu_time_s": 3.59546e-06,
+      "n_warmups": 2,
+      "n_repeats": 10,
+      "library_version": 11400,
+      "record_key": "custatevec.apply_matrix.n=20.prec=double.adjoint=False.controls=.flush_cache=False.layout=row.location=device.targets=0"
+    },
+    {
+      "library": "custatevec",
+      "api": "apply_matrix",
+      "kind": "api",
+      "n_qubits": 20,
       "precision": "single",
       "config": {
         "targets": [
@@ -56,6 +79,29 @@
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 11301,
+      "record_key": "custatevec.apply_matrix.n=20.prec=single.adjoint=False.controls=.flush_cache=False.layout=row.location=device.targets=0"
+    },
+    {
+      "library": "custatevec",
+      "api": "apply_matrix",
+      "kind": "api",
+      "n_qubits": 20,
+      "precision": "single",
+      "config": {
+        "targets": [
+          0
+        ],
+        "controls": [],
+        "layout": "row",
+        "location": "device",
+        "adjoint": false,
+        "flush_cache": false
+      },
+      "gpu_time_s": 1.1968e-05,
+      "cpu_time_s": 3.66345e-06,
+      "n_warmups": 2,
+      "n_repeats": 10,
+      "library_version": 11400,
       "record_key": "custatevec.apply_matrix.n=20.prec=single.adjoint=False.controls=.flush_cache=False.layout=row.location=device.targets=0"
     },
     {
@@ -89,6 +135,33 @@
       "library": "custatevec",
       "api": "apply_matrix",
       "kind": "api",
+      "n_qubits": 22,
+      "precision": "single",
+      "config": {
+        "targets": [
+          0,
+          1
+        ],
+        "controls": [
+          2,
+          3
+        ],
+        "layout": "row",
+        "location": "device",
+        "adjoint": false,
+        "flush_cache": false
+      },
+      "gpu_time_s": 1.42176e-05,
+      "cpu_time_s": 3.76105e-06,
+      "n_warmups": 2,
+      "n_repeats": 10,
+      "library_version": 11400,
+      "record_key": "custatevec.apply_matrix.n=22.prec=single.adjoint=False.controls=2,3.flush_cache=False.layout=row.location=device.targets=0,1"
+    },
+    {
+      "library": "custatevec",
+      "api": "apply_matrix",
+      "kind": "api",
       "n_qubits": 24,
       "precision": "double",
       "config": {
@@ -113,6 +186,29 @@
       "api": "apply_matrix",
       "kind": "api",
       "n_qubits": 24,
+      "precision": "double",
+      "config": {
+        "targets": [
+          0
+        ],
+        "controls": [],
+        "layout": "row",
+        "location": "device",
+        "adjoint": false,
+        "flush_cache": false
+      },
+      "gpu_time_s": 0.000301568,
+      "cpu_time_s": 4.15649e-06,
+      "n_warmups": 2,
+      "n_repeats": 10,
+      "library_version": 11400,
+      "record_key": "custatevec.apply_matrix.n=24.prec=double.adjoint=False.controls=.flush_cache=False.layout=row.location=device.targets=0"
+    },
+    {
+      "library": "custatevec",
+      "api": "apply_matrix",
+      "kind": "api",
+      "n_qubits": 24,
       "precision": "single",
       "config": {
         "targets": [
@@ -129,6 +225,29 @@
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 11301,
+      "record_key": "custatevec.apply_matrix.n=24.prec=single.adjoint=False.controls=.flush_cache=False.layout=row.location=device.targets=0"
+    },
+    {
+      "library": "custatevec",
+      "api": "apply_matrix",
+      "kind": "api",
+      "n_qubits": 24,
+      "precision": "single",
+      "config": {
+        "targets": [
+          0
+        ],
+        "controls": [],
+        "layout": "row",
+        "location": "device",
+        "adjoint": false,
+        "flush_cache": false
+      },
+      "gpu_time_s": 0.000154899,
+      "cpu_time_s": 4.04492e-06,
+      "n_warmups": 2,
+      "n_repeats": 10,
+      "library_version": 11400,
       "record_key": "custatevec.apply_matrix.n=24.prec=single.adjoint=False.controls=.flush_cache=False.layout=row.location=device.targets=0"
     },
     {
@@ -162,6 +281,33 @@
       "library": "custatevec",
       "api": "apply_matrix",
       "kind": "api",
+      "n_qubits": 26,
+      "precision": "single",
+      "config": {
+        "targets": [
+          0,
+          1
+        ],
+        "controls": [
+          2,
+          3
+        ],
+        "layout": "row",
+        "location": "device",
+        "adjoint": false,
+        "flush_cache": false
+      },
+      "gpu_time_s": 0.000297181,
+      "cpu_time_s": 4.22802e-06,
+      "n_warmups": 2,
+      "n_repeats": 10,
+      "library_version": 11400,
+      "record_key": "custatevec.apply_matrix.n=26.prec=single.adjoint=False.controls=2,3.flush_cache=False.layout=row.location=device.targets=0,1"
+    },
+    {
+      "library": "custatevec",
+      "api": "apply_matrix",
+      "kind": "api",
       "n_qubits": 28,
       "precision": "double",
       "config": {
@@ -186,6 +332,29 @@
       "api": "apply_matrix",
       "kind": "api",
       "n_qubits": 28,
+      "precision": "double",
+      "config": {
+        "targets": [
+          0
+        ],
+        "controls": [],
+        "layout": "row",
+        "location": "device",
+        "adjoint": false,
+        "flush_cache": false
+      },
+      "gpu_time_s": 0.00470565,
+      "cpu_time_s": 7.99689e-06,
+      "n_warmups": 2,
+      "n_repeats": 10,
+      "library_version": 11400,
+      "record_key": "custatevec.apply_matrix.n=28.prec=double.adjoint=False.controls=.flush_cache=False.layout=row.location=device.targets=0"
+    },
+    {
+      "library": "custatevec",
+      "api": "apply_matrix",
+      "kind": "api",
+      "n_qubits": 28,
       "precision": "single",
       "config": {
         "targets": [
@@ -203,6 +372,75 @@
       "n_repeats": 10,
       "library_version": 11301,
       "record_key": "custatevec.apply_matrix.n=28.prec=single.adjoint=False.controls=.flush_cache=False.layout=row.location=device.targets=0"
+    },
+    {
+      "library": "custatevec",
+      "api": "apply_matrix",
+      "kind": "api",
+      "n_qubits": 28,
+      "precision": "single",
+      "config": {
+        "targets": [
+          0
+        ],
+        "controls": [],
+        "layout": "row",
+        "location": "device",
+        "adjoint": false,
+        "flush_cache": false
+      },
+      "gpu_time_s": 0.00235143,
+      "cpu_time_s": 6.22459e-06,
+      "n_warmups": 2,
+      "n_repeats": 10,
+      "library_version": 11400,
+      "record_key": "custatevec.apply_matrix.n=28.prec=single.adjoint=False.controls=.flush_cache=False.layout=row.location=device.targets=0"
+    },
+    {
+      "library": "custatevec",
+      "api": "apply_matrix",
+      "kind": "api",
+      "n_qubits": 30,
+      "precision": "double",
+      "config": {
+        "targets": [
+          0
+        ],
+        "controls": [],
+        "layout": "row",
+        "location": "device",
+        "adjoint": false,
+        "flush_cache": false
+      },
+      "gpu_time_s": 0.0187905,
+      "cpu_time_s": 1.60305e-05,
+      "n_warmups": 2,
+      "n_repeats": 10,
+      "library_version": 11400,
+      "record_key": "custatevec.apply_matrix.n=30.prec=double.adjoint=False.controls=.flush_cache=False.layout=row.location=device.targets=0"
+    },
+    {
+      "library": "custatevec",
+      "api": "apply_matrix",
+      "kind": "api",
+      "n_qubits": 30,
+      "precision": "single",
+      "config": {
+        "targets": [
+          0
+        ],
+        "controls": [],
+        "layout": "row",
+        "location": "device",
+        "adjoint": false,
+        "flush_cache": false
+      },
+      "gpu_time_s": 0.00937618,
+      "cpu_time_s": 1.0881e-05,
+      "n_warmups": 2,
+      "n_repeats": 10,
+      "library_version": 11400,
+      "record_key": "custatevec.apply_matrix.n=30.prec=single.adjoint=False.controls=.flush_cache=False.layout=row.location=device.targets=0"
     },
     {
       "library": "custatevec",
@@ -250,6 +488,45 @@
       "n_qubits": 20,
       "precision": "single",
       "config": {
+        "nshots": 1000,
+        "bit_ordering": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ],
+        "output_order": "ascending"
+      },
+      "gpu_time_s": 7.1792e-05,
+      "cpu_time_s": 6.32446e-05,
+      "n_warmups": 2,
+      "n_repeats": 6,
+      "library_version": 11400,
+      "record_key": "custatevec.cusv_sampler.n=20.prec=single.bit_ordering=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19.nshots=1000.output_order=ascending"
+    },
+    {
+      "library": "custatevec",
+      "api": "cusv_sampler",
+      "kind": "api",
+      "n_qubits": 20,
+      "precision": "single",
+      "config": {
         "nshots": 100000,
         "bit_ordering": [
           0,
@@ -280,6 +557,45 @@
       "n_warmups": 2,
       "n_repeats": 6,
       "library_version": 11301,
+      "record_key": "custatevec.cusv_sampler.n=20.prec=single.bit_ordering=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19.nshots=100000.output_order=ascending"
+    },
+    {
+      "library": "custatevec",
+      "api": "cusv_sampler",
+      "kind": "api",
+      "n_qubits": 20,
+      "precision": "single",
+      "config": {
+        "nshots": 100000,
+        "bit_ordering": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ],
+        "output_order": "ascending"
+      },
+      "gpu_time_s": 0.000413403,
+      "cpu_time_s": 0.000403848,
+      "n_warmups": 2,
+      "n_repeats": 6,
+      "library_version": 11400,
       "record_key": "custatevec.cusv_sampler.n=20.prec=single.bit_ordering=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19.nshots=100000.output_order=ascending"
     },
     {
@@ -332,6 +648,49 @@
       "n_qubits": 24,
       "precision": "single",
       "config": {
+        "nshots": 1000,
+        "bit_ordering": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "output_order": "ascending"
+      },
+      "gpu_time_s": 0.000150683,
+      "cpu_time_s": 6.8871e-05,
+      "n_warmups": 2,
+      "n_repeats": 6,
+      "library_version": 11400,
+      "record_key": "custatevec.cusv_sampler.n=24.prec=single.bit_ordering=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23.nshots=1000.output_order=ascending"
+    },
+    {
+      "library": "custatevec",
+      "api": "cusv_sampler",
+      "kind": "api",
+      "n_qubits": 24,
+      "precision": "single",
+      "config": {
         "nshots": 100000,
         "bit_ordering": [
           0,
@@ -369,6 +728,69 @@
       "record_key": "custatevec.cusv_sampler.n=24.prec=single.bit_ordering=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23.nshots=100000.output_order=ascending"
     },
     {
+      "library": "custatevec",
+      "api": "cusv_sampler",
+      "kind": "api",
+      "n_qubits": 24,
+      "precision": "single",
+      "config": {
+        "nshots": 100000,
+        "bit_ordering": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "output_order": "ascending"
+      },
+      "gpu_time_s": 0.000656315,
+      "cpu_time_s": 0.000572996,
+      "n_warmups": 2,
+      "n_repeats": 6,
+      "library_version": 11400,
+      "record_key": "custatevec.cusv_sampler.n=24.prec=single.bit_ordering=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23.nshots=100000.output_order=ascending"
+    },
+    {
+      "library": "cutensornet",
+      "api": "qft",
+      "kind": "circuit",
+      "n_qubits": 10,
+      "precision": "single",
+      "config": {
+        "frontend": "qiskit",
+        "backend": "cutn",
+        "compute_mode": "statevector",
+        "nshots": 0,
+        "ngpus": 1,
+        "ncputhreads": 128,
+        "nhypersamples": 32
+      },
+      "gpu_time_s": 0.000304469,
+      "cpu_time_s": 0.000231637,
+      "library_version": 21202,
+      "record_key": "cutensornet.qft.n=10.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
+    },
+    {
       "library": "cutensornet",
       "api": "qft",
       "kind": "circuit",
@@ -383,10 +805,50 @@
         "ncputhreads": 128,
         "nhypersamples": 32
       },
-      "gpu_time_s": 0.000398101,
-      "cpu_time_s": 0.000314949,
+      "gpu_time_s": 0.000403509,
+      "cpu_time_s": 0.000320995,
       "library_version": 21202,
       "record_key": "cutensornet.qft.n=12.prec=single.backend=cutn.compute_mode=amplitude.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
+    },
+    {
+      "library": "cutensornet",
+      "api": "qft",
+      "kind": "circuit",
+      "n_qubits": 12,
+      "precision": "single",
+      "config": {
+        "frontend": "qiskit",
+        "backend": "cutn",
+        "compute_mode": "statevector",
+        "nshots": 0,
+        "ngpus": 1,
+        "ncputhreads": 128,
+        "nhypersamples": 32
+      },
+      "gpu_time_s": 0.000401472,
+      "cpu_time_s": 0.000293744,
+      "library_version": 21202,
+      "record_key": "cutensornet.qft.n=12.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
+    },
+    {
+      "library": "cutensornet",
+      "api": "qft",
+      "kind": "circuit",
+      "n_qubits": 14,
+      "precision": "single",
+      "config": {
+        "frontend": "qiskit",
+        "backend": "cutn",
+        "compute_mode": "statevector",
+        "nshots": 0,
+        "ngpus": 1,
+        "ncputhreads": 128,
+        "nhypersamples": 32
+      },
+      "gpu_time_s": 0.000543467,
+      "cpu_time_s": 0.000396123,
+      "library_version": 21202,
+      "record_key": "cutensornet.qft.n=14.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
     },
     {
       "library": "cutensornet",
@@ -403,10 +865,50 @@
         "ncputhreads": 128,
         "nhypersamples": 32
       },
-      "gpu_time_s": 0.000695168,
-      "cpu_time_s": 0.000525327,
+      "gpu_time_s": 0.000696032,
+      "cpu_time_s": 0.000505064,
       "library_version": 21202,
       "record_key": "cutensornet.qft.n=16.prec=single.backend=cutn.compute_mode=amplitude.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
+    },
+    {
+      "library": "cutensornet",
+      "api": "qft",
+      "kind": "circuit",
+      "n_qubits": 16,
+      "precision": "single",
+      "config": {
+        "frontend": "qiskit",
+        "backend": "cutn",
+        "compute_mode": "statevector",
+        "nshots": 0,
+        "ngpus": 1,
+        "ncputhreads": 128,
+        "nhypersamples": 32
+      },
+      "gpu_time_s": 0.000687424,
+      "cpu_time_s": 0.000470448,
+      "library_version": 21202,
+      "record_key": "cutensornet.qft.n=16.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
+    },
+    {
+      "library": "cutensornet",
+      "api": "qft",
+      "kind": "circuit",
+      "n_qubits": 18,
+      "precision": "single",
+      "config": {
+        "frontend": "qiskit",
+        "backend": "cutn",
+        "compute_mode": "statevector",
+        "nshots": 0,
+        "ngpus": 1,
+        "ncputhreads": 128,
+        "nhypersamples": 32
+      },
+      "gpu_time_s": 0.000970912,
+      "cpu_time_s": 0.000572678,
+      "library_version": 21202,
+      "record_key": "cutensornet.qft.n=18.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
     },
     {
       "library": "cutensornet",
@@ -423,10 +925,50 @@
         "ncputhreads": 128,
         "nhypersamples": 32
       },
-      "gpu_time_s": 0.00168592,
-      "cpu_time_s": 0.000757221,
+      "gpu_time_s": 0.00168313,
+      "cpu_time_s": 0.000753563,
       "library_version": 21202,
       "record_key": "cutensornet.qft.n=20.prec=single.backend=cutn.compute_mode=amplitude.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
+    },
+    {
+      "library": "cutensornet",
+      "api": "qft",
+      "kind": "circuit",
+      "n_qubits": 20,
+      "precision": "single",
+      "config": {
+        "frontend": "qiskit",
+        "backend": "cutn",
+        "compute_mode": "statevector",
+        "nshots": 0,
+        "ngpus": 1,
+        "ncputhreads": 128,
+        "nhypersamples": 32
+      },
+      "gpu_time_s": 0.0247797,
+      "cpu_time_s": 0.000827354,
+      "library_version": 21202,
+      "record_key": "cutensornet.qft.n=20.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
+    },
+    {
+      "library": "cutensornet",
+      "api": "qft",
+      "kind": "circuit",
+      "n_qubits": 8,
+      "precision": "single",
+      "config": {
+        "frontend": "qiskit",
+        "backend": "cutn",
+        "compute_mode": "statevector",
+        "nshots": 0,
+        "ngpus": 1,
+        "ncputhreads": 128,
+        "nhypersamples": 32
+      },
+      "gpu_time_s": 0.000215445,
+      "cpu_time_s": 0.000176392,
+      "library_version": 21202,
+      "record_key": "cutensornet.qft.n=8.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
     },
     {
       "library": "cutensornet",
@@ -445,8 +987,8 @@
         "algorithm": "gesvd",
         "check_reference": false
       },
-      "gpu_time_s": 0.108243,
-      "cpu_time_s": 0.108226,
+      "gpu_time_s": 0.107784,
+      "cpu_time_s": 0.107767,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 21202,
@@ -469,8 +1011,8 @@
         "algorithm": "gesvd",
         "check_reference": false
       },
-      "gpu_time_s": 0.0159743,
-      "cpu_time_s": 0.0159661,
+      "gpu_time_s": 0.0159117,
+      "cpu_time_s": 0.0159029,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 21202,
@@ -493,8 +1035,8 @@
         "algorithm": "gesvd",
         "check_reference": false
       },
-      "gpu_time_s": 0.0397614,
-      "cpu_time_s": 0.0397503,
+      "gpu_time_s": 0.0396869,
+      "cpu_time_s": 0.0396754,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 21202,
