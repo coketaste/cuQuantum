@@ -31,18 +31,24 @@ H100 baseline — you don't need to ship raw JSON around.
 |       28 | single    |    6.203e-06 |    2.352e-03 |
 |       28 | double    |    8.613e-06 |    4.705e-03 |
 
-GPU reads *slower* than CPU across this whole range — at n<=28 the state
-vector is <=4.3 GB (double), small enough that fixed GPU kernel-launch/sync
-overhead dominates over actual memory-bandwidth-bound work, so this is
-expected, not a regression. `h100_runner.sh` now also sweeps n=30 (8.6/17.2
-GB single/double) by default via `APPLY_MATRIX_NQUBITS` — see the header
-comment in that script — to check whether GPU's HBM bandwidth advantage
-(H100: ~3.35 TB/s vs a typical host's few-hundred-GB/s DRAM) starts winning
-once the transferred data is large enough to matter. If CPU time still
-looks flat/microsecond-scale at n=30 while the state vector supposedly grew
-4x, that's a sign `nv-quantum-benchmarks`'s CPU reference path for
-`apply_matrix` isn't touching the full state (worth checking its source
-before trusting a "CPU wins" conclusion at any qubit count).
+**"CPU" and "GPU" here are not two competing execution paths** — there is no
+separate host implementation of `apply_matrix`. Per
+`nv_quantum_benchmarks/benchmarks/apply_matrix.py`, both timings come from
+`cupyx.profiler.benchmark()` wrapping a single call to `cusv.apply_matrix()`
+(an asynchronous kernel launch): `cpu_time` is host-side dispatch latency
+(the Python/host thread issuing the async launch and returning immediately,
+before the kernel runs), and `gpu_time` is the actual device-side kernel
+execution time measured via CUDA events. So "GPU slower than CPU" only ever
+means *kernel dispatch latency is smaller than kernel execution time* — true
+of essentially any GPU kernel launch, and expected at every qubit count, not
+just small ones. There is no crossover to look for: `gpu_time` is the real,
+`O(2^n)`-scaling, memory-bandwidth-bound number (see it grow ~4x per +2
+qubits below); `cpu_time` stays ~flat by construction, since dispatching a
+kernel call costs roughly the same regardless of how much data the kernel
+will touch. `h100_runner.sh`'s `APPLY_MATRIX_NQUBITS` sweep (n=30 by
+default, see the script's header comment) is useful for confirming `gpu_time`
+keeps scaling correctly at larger state sizes, not for finding a "GPU wins"
+threshold against `cpu_time`.
 
 ## custatevec.apply_matrix with controls (targets=0,1; controls=2,3; single)
 

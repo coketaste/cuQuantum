@@ -18,19 +18,25 @@
 #   NWARMUPS       (default 2)              --nwarmups passed to every invocation
 #   CUDA_VISIBLE_DEVICES                    pinned to "0" if unset, to keep numbers stable
 #   APPLY_MATRIX_NQUBITS (default "20 24 28 30")
-#       qubit counts for the custatevec.apply_matrix sweep. At n<=28 the
-#       state vector (<=4.3 GB double) is small enough that GPU kernel-launch/
-#       sync overhead dominates over actual memory-bandwidth-bound work,
-#       which is why GPU can look *slower* than the CPU reference path in
-#       that regime -- this is expected, not a regression (see
-#       METHODOLOGY.md-equivalent bandwidth discussion in rocQuantum). n=30
-#       (8.6/17.2 GB single/double) is added by default so the sweep crosses
-#       into the regime where GPU HBM bandwidth should start winning over
-#       host DRAM bandwidth. Add "32" (34.4/68.7 GB) yourself if your host
-#       RAM and the H100's HBM (80 GB on PCIe cards) both have headroom --
-#       double precision at n=32 needs ~69 GB resident on each side
-#       simultaneously (state + a working copy for CPU verification), which
-#       exceeds many single-GPU/single-node configurations.
+#       qubit counts for the custatevec.apply_matrix sweep. NOTE: the [CPU]
+#       and [GPU] numbers this benchmark reports are NOT two competing
+#       execution paths -- there is no separate host implementation of
+#       apply_matrix. Per nv_quantum_benchmarks/benchmarks/apply_matrix.py,
+#       both come from cupyx.profiler.benchmark() wrapping one call to
+#       cusv.apply_matrix() (an async kernel launch): [CPU] is host-side
+#       dispatch latency (issuing the launch and returning immediately,
+#       before the kernel runs) and [GPU] is the real device-side kernel
+#       execution time via CUDA events. [GPU] > [CPU] at every qubit count is
+#       therefore expected, not a regression -- it just means kernel
+#       execution takes longer than dispatching it, true of essentially any
+#       GPU kernel. [GPU] is the number that matters; it should scale as
+#       ~O(2^n) (memory-bandwidth-bound), which n=30 in the default sweep
+#       lets you confirm against n=28. [CPU] stays ~flat by construction and
+#       is not a "does the CPU win" signal. Add "32" (34.4/68.7 GB
+#       single/double) yourself if the H100's HBM (80 GB on PCIe cards) has
+#       headroom -- double precision at n=32 needs the full state vector
+#       (~69 GB) plus workspace resident on the GPU simultaneously, which
+#       exceeds some single-GPU configurations.
 
 set -euo pipefail
 
