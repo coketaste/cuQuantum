@@ -31,6 +31,19 @@ H100 baseline — you don't need to ship raw JSON around.
 |       28 | single    |    6.203e-06 |    2.352e-03 |
 |       28 | double    |    8.613e-06 |    4.705e-03 |
 
+GPU reads *slower* than CPU across this whole range — at n<=28 the state
+vector is <=4.3 GB (double), small enough that fixed GPU kernel-launch/sync
+overhead dominates over actual memory-bandwidth-bound work, so this is
+expected, not a regression. `h100_runner.sh` now also sweeps n=30 (8.6/17.2
+GB single/double) by default via `APPLY_MATRIX_NQUBITS` — see the header
+comment in that script — to check whether GPU's HBM bandwidth advantage
+(H100: ~3.35 TB/s vs a typical host's few-hundred-GB/s DRAM) starts winning
+once the transferred data is large enough to matter. If CPU time still
+looks flat/microsecond-scale at n=30 while the state vector supposedly grew
+4x, that's a sign `nv-quantum-benchmarks`'s CPU reference path for
+`apply_matrix` isn't touching the full state (worth checking its source
+before trusting a "CPU wins" conclusion at any qubit count).
+
 ## custatevec.apply_matrix with controls (targets=0,1; controls=2,3; single)
 
 | n_qubits | CPU time (s) | GPU time (s) |

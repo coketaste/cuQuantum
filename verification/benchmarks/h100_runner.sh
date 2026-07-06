@@ -14,9 +14,23 @@
 #     circuits/                  pickled circuit fixtures cached by the suite
 #
 # Environment overrides:
-#   NREPEATS   (default 10)    --nrepeats passed to every invocation
-#   NWARMUPS   (default 2)     --nwarmups passed to every invocation
-#   CUDA_VISIBLE_DEVICES       pinned to "0" if unset, to keep numbers stable
+#   NREPEATS       (default 10)             --nrepeats passed to every invocation
+#   NWARMUPS       (default 2)              --nwarmups passed to every invocation
+#   CUDA_VISIBLE_DEVICES                    pinned to "0" if unset, to keep numbers stable
+#   APPLY_MATRIX_NQUBITS (default "20 24 28 30")
+#       qubit counts for the custatevec.apply_matrix sweep. At n<=28 the
+#       state vector (<=4.3 GB double) is small enough that GPU kernel-launch/
+#       sync overhead dominates over actual memory-bandwidth-bound work,
+#       which is why GPU can look *slower* than the CPU reference path in
+#       that regime -- this is expected, not a regression (see
+#       METHODOLOGY.md-equivalent bandwidth discussion in rocQuantum). n=30
+#       (8.6/17.2 GB single/double) is added by default so the sweep crosses
+#       into the regime where GPU HBM bandwidth should start winning over
+#       host DRAM bandwidth. Add "32" (34.4/68.7 GB) yourself if your host
+#       RAM and the H100's HBM (80 GB on PCIe cards) both have headroom --
+#       double precision at n=32 needs ~69 GB resident on each side
+#       simultaneously (state + a working copy for CPU verification), which
+#       exceeds many single-GPU/single-node configurations.
 
 set -euo pipefail
 
@@ -26,6 +40,7 @@ LOG="$OUT_DIR/sweep.log"
 
 NREPEATS="${NREPEATS:-10}"
 NWARMUPS="${NWARMUPS:-2}"
+APPLY_MATRIX_NQUBITS="${APPLY_MATRIX_NQUBITS:-20 24 28 30}"
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
 # Resolve --cachedir to an absolute path so nv-quantum-benchmarks writes
@@ -68,7 +83,7 @@ run() {
 
   echo
   echo "===== custatevec.apply_matrix (--ntargets 1, layout=row, device) ====="
-  for N in 20 24 28; do
+  for N in $APPLY_MATRIX_NQUBITS; do
     for PREC in single double; do
       run "nqubits=$N prec=$PREC" \
         nv-quantum-benchmarks api --benchmark apply_matrix \
