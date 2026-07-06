@@ -128,6 +128,27 @@ run() {
   done
 
   echo
+  echo "===== circuit qft + qiskit/cutn, statevector mode (for rocTensorNet MPS comparison) ====="
+  # --compute-mode statevector (not amplitude, as in the block above) so the
+  # full evolved state is materialized, matching what roctnMpsToStateVector
+  # gives on the AMD side. Swept over the same qubit range as
+  # bench_tensornet_qft's default sweep (rocQuantum/benchmarks) so
+  # normalize_rocquantum.py's records line up n-for-n against this block once
+  # both are fed to compare_perf.py. Recorded under cuTensorNet's normal
+  # "cutensornet"/"qft" key — the AMD side intentionally uses the distinct
+  # "cutensornet_mps_approx"/"qft_mps" key so compare_perf.py keeps the two
+  # algorithms in separate table sections instead of joining them as if they
+  # were the same measurement (see bench_tensornet_qft.cpp's header comment).
+  for NQ in 8 10 12 14 16 18 20; do
+    run "nqubits=$NQ" \
+      nv-quantum-benchmarks circuit --benchmark qft \
+          --frontend qiskit --backend cutn --nqubits "$NQ" --ngpus 1 \
+          --compute-mode statevector \
+          --nwarmups 1 --nrepeats 3 \
+          --cachedir "$CACHE_DIR"
+  done
+
+  echo
   echo "================================================================"
   echo " sweep complete -> $LOG"
   echo " raw JSON       -> $CACHE_DIR/data/*.json"

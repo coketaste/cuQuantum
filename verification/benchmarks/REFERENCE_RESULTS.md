@@ -63,6 +63,15 @@ H100 baseline — you don't need to ship raw JSON around.
 |       16 |    5.072e-04 |    6.967e-04 |
 |       20 |    7.752e-04 |    1.689e-03 |
 
+## circuit qft + qiskit/cutn (compute-mode=statevector, single)
+
+`h100_runner.sh` also sweeps `--compute-mode statevector` (full evolved
+state materialized, not just one amplitude) over n=8..20 — this is the
+side of the cross-platform QFT comparison that lines up against
+rocQuantum's `bench_tensornet_qft` sweep (see "Cross-platform rocTensorNet
+vs cuTensorNet comparison" below). Not yet captured on this H100 baseline
+run; re-run `h100_runner.sh` to populate it.
+
 ## Reproducing on H100
 
 ```bash
@@ -101,3 +110,55 @@ records that only exist on one side (`L---` reference-only, `---R`
 comparand-only). The AMD-side `mi300.json` is **not** committed here —
 that lives in the rocQuantum repo — but the comparator works the same
 way regardless of which file lives where.
+
+## Cross-platform rocTensorNet vs cuTensorNet comparison
+
+Two workloads have a directly comparable counterpart on the other
+platform: `tensor_decompose` (SVD) and `qft`/`qft_mps` (QFT, approximate —
+whole-network contraction on NVIDIA vs MPS+SVD-truncation on AMD; see the
+caveat in rocQuantum's `benchmarks/bench_tensornet_qft.cpp` header). Each
+side runs independently, on its own hardware, with no cross-machine
+access required:
+
+**NVIDIA operator** (this repo, on the H100/GPU node):
+
+```bash
+bash verification/benchmarks/h100_runner.sh
+python verification/benchmarks/normalize_results.py \
+    --in  verification/benchmarks/results/h100/data \
+    --out verification/benchmarks/reference/h100.json \
+    --csv verification/benchmarks/reference/h100.csv
+```
+
+**AMD operator** (rocQuantum checkout, on the MI300X/GPU node) — build the
+tensornet benchmarks first (see rocQuantum's `CLAUDE.md`), then run the
+self-contained driver, which builds, runs, and normalizes in one step
+(it shells out to `normalize_rocquantum.py` itself — no separate
+normalize command needed):
+
+```bash
+cmake -S . -B build -DROCQ_BUILD_TESTS=ON -DROCQ_ENABLE_COMPAT=OFF \
+      -DROCQ_BUILD_BENCHMARKS=ON
+cmake --build build -j --target bench_tensornet_decompose bench_tensornet_qft
+
+ROCQ_BUILD_DIR=build \
+  /path/to/cuQuantum/verification/benchmarks/mi300_runner.sh /tmp/mi300_results
+```
+
+This writes `/tmp/mi300_results/reference/mi300.json` — copy it (or the
+whole `reference/` dir) to wherever `compare_perf.py` will run, e.g. next
+to `reference/h100.json` in this repo:
+
+```bash
+python verification/benchmarks/compare_perf.py \
+    --reference verification/benchmarks/reference/h100.json \
+    --comparand /tmp/mi300_results/reference/mi300.json
+```
+
+`tensor_decompose` records won't match across platforms unless precision
+is aligned (rocTensorNet runs complex128 by default; the H100 baseline
+above uses single/real fp32) — that shows as reference-only /
+comparand-only rows, not a bug. `qft_mps` (AMD) and `qft` (NVIDIA,
+statevector mode) sit in separate library groups (`cutensornet_mps_approx`
+vs `cutensornet`) by design and are meant to be read side-by-side, not
+joined as a literal speedup ratio.
