@@ -45,8 +45,9 @@ run() {
   set -e
   if [[ $status -ne 0 ]]; then
     local last_err
-    last_err="$(echo "$raw" | grep -E 'Error|Assertion|Traceback' | tail -1)"
+    last_err="$(echo "$raw" | grep -E 'Error|Assertion|Traceback' | tail -1 || true)"
     echo "  $label : FAILED (exit=$status) ${last_err}"
+    echo "$raw" | tail -20 | sed 's/^/    | /'
     return 0
   fi
   out="$(echo "$raw" | grep -E '\[(CPU|GPU)\] Averaged' | sed 's/.*INFO\s*-\s*//' || true)"
