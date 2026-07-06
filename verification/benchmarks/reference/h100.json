@@ -9,7 +9,7 @@
     "custatevec": 11301,
     "cutensornet": 21202
   },
-  "captured_at": "2026-07-06T16:26:04Z",
+  "captured_at": "2026-07-06T20:31:47Z",
   "n_records": 39,
   "records": [
     {
@@ -51,8 +51,8 @@
         "adjoint": false,
         "flush_cache": false
       },
-      "gpu_time_s": 1.352e-05,
-      "cpu_time_s": 3.59546e-06,
+      "gpu_time_s": 1.344e-05,
+      "cpu_time_s": 3.55225e-06,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 11400,
@@ -97,8 +97,8 @@
         "adjoint": false,
         "flush_cache": false
       },
-      "gpu_time_s": 1.1968e-05,
-      "cpu_time_s": 3.66345e-06,
+      "gpu_time_s": 1.20032e-05,
+      "cpu_time_s": 3.63551e-06,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 11400,
@@ -151,8 +151,8 @@
         "adjoint": false,
         "flush_cache": false
       },
-      "gpu_time_s": 1.42176e-05,
-      "cpu_time_s": 3.76105e-06,
+      "gpu_time_s": 1.42528e-05,
+      "cpu_time_s": 3.80035e-06,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 11400,
@@ -197,8 +197,8 @@
         "adjoint": false,
         "flush_cache": false
       },
-      "gpu_time_s": 0.000301568,
-      "cpu_time_s": 4.15649e-06,
+      "gpu_time_s": 0.000302589,
+      "cpu_time_s": 5.32735e-06,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 11400,
@@ -243,8 +243,8 @@
         "adjoint": false,
         "flush_cache": false
       },
-      "gpu_time_s": 0.000154899,
-      "cpu_time_s": 4.04492e-06,
+      "gpu_time_s": 0.000154934,
+      "cpu_time_s": 3.88678e-06,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 11400,
@@ -297,8 +297,8 @@
         "adjoint": false,
         "flush_cache": false
       },
-      "gpu_time_s": 0.000297181,
-      "cpu_time_s": 4.22802e-06,
+      "gpu_time_s": 0.000297565,
+      "cpu_time_s": 3.97097e-06,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 11400,
@@ -343,8 +343,8 @@
         "adjoint": false,
         "flush_cache": false
       },
-      "gpu_time_s": 0.00470565,
-      "cpu_time_s": 7.99689e-06,
+      "gpu_time_s": 0.00470537,
+      "cpu_time_s": 7.8341e-06,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 11400,
@@ -389,8 +389,8 @@
         "adjoint": false,
         "flush_cache": false
       },
-      "gpu_time_s": 0.00235143,
-      "cpu_time_s": 6.22459e-06,
+      "gpu_time_s": 0.00235061,
+      "cpu_time_s": 5.87534e-06,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 11400,
@@ -412,8 +412,8 @@
         "adjoint": false,
         "flush_cache": false
       },
-      "gpu_time_s": 0.0187905,
-      "cpu_time_s": 1.60305e-05,
+      "gpu_time_s": 0.0187944,
+      "cpu_time_s": 1.62032e-05,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 11400,
@@ -435,8 +435,8 @@
         "adjoint": false,
         "flush_cache": false
       },
-      "gpu_time_s": 0.00937618,
-      "cpu_time_s": 1.0881e-05,
+      "gpu_time_s": 0.00937623,
+      "cpu_time_s": 1.17091e-05,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 11400,
@@ -513,8 +513,8 @@
         ],
         "output_order": "ascending"
       },
-      "gpu_time_s": 7.1792e-05,
-      "cpu_time_s": 6.32446e-05,
+      "gpu_time_s": 7.37973e-05,
+      "cpu_time_s": 6.51432e-05,
       "n_warmups": 2,
       "n_repeats": 6,
       "library_version": 11400,
@@ -591,8 +591,8 @@
         ],
         "output_order": "ascending"
       },
-      "gpu_time_s": 0.000413403,
-      "cpu_time_s": 0.000403848,
+      "gpu_time_s": 0.000417051,
+      "cpu_time_s": 0.000407845,
       "n_warmups": 2,
       "n_repeats": 6,
       "library_version": 11400,
@@ -677,8 +677,8 @@
         ],
         "output_order": "ascending"
       },
-      "gpu_time_s": 0.000150683,
-      "cpu_time_s": 6.8871e-05,
+      "gpu_time_s": 0.000148992,
+      "cpu_time_s": 6.73992e-05,
       "n_warmups": 2,
       "n_repeats": 6,
       "library_version": 11400,
@@ -763,8 +763,8 @@
         ],
         "output_order": "ascending"
       },
-      "gpu_time_s": 0.000656315,
-      "cpu_time_s": 0.000572996,
+      "gpu_time_s": 0.000654384,
+      "cpu_time_s": 0.000571502,
       "n_warmups": 2,
       "n_repeats": 6,
       "library_version": 11400,
@@ -785,8 +785,8 @@
         "ncputhreads": 128,
         "nhypersamples": 32
       },
-      "gpu_time_s": 0.000304469,
-      "cpu_time_s": 0.000231637,
+      "gpu_time_s": 0.000309675,
+      "cpu_time_s": 0.000241117,
       "library_version": 21202,
       "record_key": "cutensornet.qft.n=10.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
     },
@@ -805,8 +805,8 @@
         "ncputhreads": 128,
         "nhypersamples": 32
       },
-      "gpu_time_s": 0.000403509,
-      "cpu_time_s": 0.000320995,
+      "gpu_time_s": 0.000399733,
+      "cpu_time_s": 0.00031408,
       "library_version": 21202,
       "record_key": "cutensornet.qft.n=12.prec=single.backend=cutn.compute_mode=amplitude.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
     },
@@ -825,8 +825,8 @@
         "ncputhreads": 128,
         "nhypersamples": 32
       },
-      "gpu_time_s": 0.000401472,
-      "cpu_time_s": 0.000293744,
+      "gpu_time_s": 0.000419243,
+      "cpu_time_s": 0.000295144,
       "library_version": 21202,
       "record_key": "cutensornet.qft.n=12.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
     },
@@ -845,8 +845,8 @@
         "ncputhreads": 128,
         "nhypersamples": 32
       },
-      "gpu_time_s": 0.000543467,
-      "cpu_time_s": 0.000396123,
+      "gpu_time_s": 0.000566165,
+      "cpu_time_s": 0.000387927,
       "library_version": 21202,
       "record_key": "cutensornet.qft.n=14.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
     },
@@ -865,8 +865,8 @@
         "ncputhreads": 128,
         "nhypersamples": 32
       },
-      "gpu_time_s": 0.000696032,
-      "cpu_time_s": 0.000505064,
+      "gpu_time_s": 0.000697493,
+      "cpu_time_s": 0.000506308,
       "library_version": 21202,
       "record_key": "cutensornet.qft.n=16.prec=single.backend=cutn.compute_mode=amplitude.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
     },
@@ -885,8 +885,8 @@
         "ncputhreads": 128,
         "nhypersamples": 32
       },
-      "gpu_time_s": 0.000687424,
-      "cpu_time_s": 0.000470448,
+      "gpu_time_s": 0.000712096,
+      "cpu_time_s": 0.000487865,
       "library_version": 21202,
       "record_key": "cutensornet.qft.n=16.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
     },
@@ -905,8 +905,8 @@
         "ncputhreads": 128,
         "nhypersamples": 32
       },
-      "gpu_time_s": 0.000970912,
-      "cpu_time_s": 0.000572678,
+      "gpu_time_s": 0.00100738,
+      "cpu_time_s": 0.000578924,
       "library_version": 21202,
       "record_key": "cutensornet.qft.n=18.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
     },
@@ -925,8 +925,8 @@
         "ncputhreads": 128,
         "nhypersamples": 32
       },
-      "gpu_time_s": 0.00168313,
-      "cpu_time_s": 0.000753563,
+      "gpu_time_s": 0.00168478,
+      "cpu_time_s": 0.000764567,
       "library_version": 21202,
       "record_key": "cutensornet.qft.n=20.prec=single.backend=cutn.compute_mode=amplitude.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
     },
@@ -945,8 +945,8 @@
         "ncputhreads": 128,
         "nhypersamples": 32
       },
-      "gpu_time_s": 0.0247797,
-      "cpu_time_s": 0.000827354,
+      "gpu_time_s": 0.0248085,
+      "cpu_time_s": 0.000839739,
       "library_version": 21202,
       "record_key": "cutensornet.qft.n=20.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
     },
@@ -965,8 +965,8 @@
         "ncputhreads": 128,
         "nhypersamples": 32
       },
-      "gpu_time_s": 0.000215445,
-      "cpu_time_s": 0.000176392,
+      "gpu_time_s": 0.000214912,
+      "cpu_time_s": 0.000171339,
       "library_version": 21202,
       "record_key": "cutensornet.qft.n=8.prec=single.backend=cutn.compute_mode=statevector.frontend=qiskit.ncputhreads=128.ngpus=1.nhypersamples=32.nshots=0"
     },
@@ -987,8 +987,8 @@
         "algorithm": "gesvd",
         "check_reference": false
       },
-      "gpu_time_s": 0.107784,
-      "cpu_time_s": 0.107767,
+      "gpu_time_s": 0.107889,
+      "cpu_time_s": 0.107872,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 21202,
@@ -1011,8 +1011,8 @@
         "algorithm": "gesvd",
         "check_reference": false
       },
-      "gpu_time_s": 0.0159117,
-      "cpu_time_s": 0.0159029,
+      "gpu_time_s": 0.0159315,
+      "cpu_time_s": 0.0159232,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 21202,
@@ -1035,8 +1035,8 @@
         "algorithm": "gesvd",
         "check_reference": false
       },
-      "gpu_time_s": 0.0396869,
-      "cpu_time_s": 0.0396754,
+      "gpu_time_s": 0.0397813,
+      "cpu_time_s": 0.0397697,
       "n_warmups": 2,
       "n_repeats": 10,
       "library_version": 21202,
