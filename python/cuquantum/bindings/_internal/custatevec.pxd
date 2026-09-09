@@ -2,7 +2,18 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1733+g9725189ff.d20260608. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.09.0. Do not modify it directly.
+
+
+# <<<< PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport (
+    int32_t,
+    uint32_t,
+)
+
+
+# <<<< END OF PREAMBLE CONTENT >>>>
 
 from ..cycustatevec cimport *
 
@@ -21,7 +32,9 @@ cdef custatevecStatus_t _custatevecGetProperty(libraryPropertyType type, int32_t
 cdef size_t _custatevecGetVersion() except?0 nogil
 cdef custatevecStatus_t _custatevecSetStream(custatevecHandle_t handle, cudaStream_t streamId) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef custatevecStatus_t _custatevecGetStream(custatevecHandle_t handle, cudaStream_t* streamId) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef custatevecStatus_t _custatevecLoggerSetCallback(custatevecLoggerCallback_t callback) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef custatevecStatus_t _custatevecLoggerSetCallbackData(custatevecLoggerCallbackData_t callback, void* userData) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef custatevecStatus_t _custatevecLoggerSetFile(FILE* file) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef custatevecStatus_t _custatevecLoggerOpenFile(const char* logFile) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef custatevecStatus_t _custatevecLoggerSetLevel(int32_t level) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef custatevecStatus_t _custatevecLoggerSetMask(int32_t mask) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
@@ -86,3 +99,5 @@ cdef custatevecStatus_t _custatevecComputeExpectationBatchedGetWorkspaceSize(cus
 cdef custatevecStatus_t _custatevecComputeExpectationBatched(custatevecHandle_t handle, const void* batchedSv, cudaDataType_t svDataType, const uint32_t nIndexBits, const uint32_t nSVs, custatevecIndex_t svStride, double2* expectationValues, const void* matrices, cudaDataType_t matrixDataType, custatevecMatrixLayout_t layout, const uint32_t nMatrices, const int32_t* basisBits, const uint32_t nBasisBits, custatevecComputeType_t computeType, void* extraWorkspace, size_t extraWorkspaceSizeInBytes) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef custatevecStatus_t _custatevecSetMathMode(custatevecHandle_t handle, custatevecMathMode_t mode) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef custatevecStatus_t _custatevecGetMathMode(custatevecHandle_t handle, custatevecMathMode_t* mode) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef custatevecStatus_t _custatevecSVSwapWorkerCreateWithSemaphore(custatevecHandle_t handle, custatevecSVSwapWorkerDescriptor_t* svSwapWorker, custatevecCommunicatorDescriptor_t communicator, void* orgSubSV, int32_t orgSubSVIndex, void* orgSemaphore, cudaDataType_t svDataType, cudaStream_t stream, size_t* extraWorkspaceSizeInBytes, size_t* minTransferWorkspaceSizeInBytes) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef custatevecStatus_t _custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores(custatevecHandle_t handle, custatevecSVSwapWorkerDescriptor_t svSwapWorker, void** dstSubSVsP2P, const int32_t* dstSubSVIndicesP2P, void** dstSemaphores, const uint32_t nDstSubSVsP2P) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil

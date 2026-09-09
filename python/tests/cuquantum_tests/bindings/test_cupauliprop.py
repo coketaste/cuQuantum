@@ -1036,10 +1036,14 @@ class TestEnums:
     def test_status_enum(self):
         assert hasattr(cupp.Status, 'SUCCESS')
         assert hasattr(cupp.Status, 'INVALID_VALUE')
-    
-    def test_compute_type_enum(self):
-        assert hasattr(cupp.ComputeType, 'COMPUTE_32F')
-        assert hasattr(cupp.ComputeType, 'COMPUTE_64F')
+        assert hasattr(cupp.Status, 'FATAL_DISTRIBUTED_FAILURE')
+        assert not hasattr(cupp.Status, 'DISTRIBUTED_FAILURE')
+        assert int(cupp.Status.FATAL_DISTRIBUTED_FAILURE) == 6
+
+    def test_distributed_provider_enum(self):
+        assert hasattr(cupp.DistributedProvider, 'NONE')
+        assert hasattr(cupp.DistributedProvider, 'MPI')
+        assert hasattr(cupp.DistributedProvider, 'NCCL')
     
     def test_memspace_enum(self):
         assert hasattr(cupp.Memspace, 'DEVICE')

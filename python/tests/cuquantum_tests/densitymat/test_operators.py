@@ -11,6 +11,7 @@ from cuquantum.densitymat import (
     DenseOperator,
     MultidiagonalOperator,
     Operator,
+    OperatorTerm,
     OperatorAction,
     WorkStream,
     CPUCallback,
@@ -44,6 +45,30 @@ def get_dense_example(hilbert_space_dims, batch_size_ops = (1,1), batch_size_ter
 
 
 class TestOperators:
+
+    def test_operator_term_append_empty_scalar_product(self):
+        matrix_term = OperatorTerm(dtype="complex128")
+        matrix_term.append_matrix_product([], [], [], coeff=2.0)
+        assert matrix_term.terms == [[]]
+        assert matrix_term.modes == [[]]
+        assert matrix_term.duals == [[]]
+        assert matrix_term._conjugations == [[]]
+
+        elementary_term = OperatorTerm(dtype="complex128")
+        elementary_term.append_elementary_product([], None, [], coeff=3.0)
+        assert elementary_term.terms == [[]]
+        assert elementary_term.modes == [[]]
+        assert elementary_term.duals == [[]]
+        assert elementary_term._conjugations == [[]]
+
+    def test_operator_term_rejects_mismatched_append_dtype(self):
+        term = OperatorTerm(dtype="complex128")
+        complex_op = DenseOperator(np.eye(2, dtype=np.complex128))
+        float_op = DenseOperator(np.eye(2, dtype=np.float64))
+
+        term.append_elementary_product([complex_op], [(0,)], [(False,)])
+        with pytest.raises(TypeError, match="same data type"):
+            term.append_elementary_product([float_op], [(1,)], [(False,)])
 
     @pytest.mark.parametrize("hilbert_space_dims", [(4, 5, 2, 6, 3, 7)])
     @pytest.mark.parametrize("batch_sizes", ([(1,1),(1,1),1,1],

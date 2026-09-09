@@ -124,7 +124,7 @@ The exact library paths depends on how cuTENSOR and the CUDA toolkit were instal
 
 * [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads) or higher and compatible driver
 (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
-* cuTENSOR 2.5.0+.
+* cuTENSOR 2.8.0+.
 * CMake 3.22+ if using `cmake`.
 * A CUDA-aware MPI library (e.g., OpenMPI, MPICH, MVAPICH) for the MPI and NCCL examples.
 * NCCL for the NCCL example.

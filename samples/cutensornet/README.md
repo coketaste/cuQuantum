@@ -66,7 +66,7 @@ The cuTENSOR library path would depend on the CUDA major version. Please refer t
 ## Prerequisites
 
 * [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads) and compatible driver r450+ (see [CUDA Driver Release Notes](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#cuda-major-component-versions)).
-* cuTENSOR 2.5.0+.
+* cuTENSOR 2.8.0+.
 * GNU OpenMP (GOMP) runtime.
 * CMake 3.17+ if using `cmake`.
 
@@ -181,3 +181,24 @@ This sample demonstrates how to:
 * Provide a cache workspace to the contraction plan which will be used to hold intermediate data needed for gradient computation. It shows how to query the required cache memory size using `cutensornetWorkspaceGetMemorySize` with a `CUTENSORNET_WORKSPACE_CACHE` workspace-kind, and how to the provide the workspace memory using `cutensornetWorkspaceSetMemory`.
 * Call `cutensornetNetworkPrepareGradientsBackward` and `cutensornetNetworkComputeGradientsBackward` to perform the gradient computation.
 * Call `cutensornetWorkspacePurgeCache` to clean up the cache and prepare for the next gradient calculation.
+
+### 10. Distributed truncated SVD (`approxTN/decompose_example_mpi_nccl.cu`)
+
+This parallel MPI sample demonstrates distributed truncated SVD on distributed tensors using
+`cutensornetCreateDistributedTensorDescriptor` and `cutensornetTensorSVD`. It performs a bond-swapping
+step from the anisotropic tensor renormalization group (ATRG), where a six-mode tensor is decomposed
+across multiple GPUs with independent block-cyclic distributions for the input and output factors.
+
+This sample consists of:
+* MPI and CUDA setup with one GPU per process, followed by `cutensornetDistributedResetConfiguration`.
+* Creating distributed tensor descriptors with per-mode process grids and block-cyclic (or slab) layouts.
+* Scattering host data into rank-local compact Fortran-order shards and uploading to the device.
+* Querying workspace and performing a collective truncated SVD via `cutensornetTensorSVD`.
+* Verifying the reconstruction against the reported discarded weight.
+
+To execute:
+```
+export CUTENSORNET_COMM_LIB=<path_to_libcutensornet_distributed_interface_mpi.so>
+mpirun -n 4 ./decompose_example_mpi_nccl
+```
+Use one GPU per process. NCCL and cuSOLVERMp are loaded lazily at first use.

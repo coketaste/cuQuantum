@@ -61,7 +61,7 @@
 // LIBRARY VERSION
 
 #define CUSTABILIZER_MAJOR 0 //!< cuStabilizer major version.
-#define CUSTABILIZER_MINOR 4 //!< cuStabilizer minor version.
+#define CUSTABILIZER_MINOR 5 //!< cuStabilizer minor version.
 #define CUSTABILIZER_PATCH 0 //!< cuStabilizer patch version.
 #define CUSTABILIZER_VERSION \
   (CUSTABILIZER_MAJOR * 10000 + CUSTABILIZER_MINOR * 100 + CUSTABILIZER_PATCH) //!< cuStabilizer version
@@ -123,6 +123,13 @@ typedef void* custabilizerCircuit_t;
  *
  */
 typedef void* custabilizerFrameSimulator_t;
+
+/**
+ * \ingroup LeakageFrameSimulator
+ * \brief Opaque data structure holding the leakage-aware simulator state.
+ *
+ */
+typedef void* custabilizerLeakageFrameSimulator_t;
 
 /**
  * \brief Opaque data structure holding the library context.
@@ -238,6 +245,65 @@ custabilizerStatus_t custabilizerCreateCircuitFromString(const custabilizerHandl
 custabilizerStatus_t custabilizerDestroyCircuit(custabilizerCircuit_t circuit);
 
 /** \} */
+
+/**
+ * \brief Read-only structural attributes of a \ref custabilizerCircuit_t.
+ *
+ * Each attribute is written into a caller-owned host buffer whose size must
+ * match the attribute's value type. Current attributes use a host \c int64_t
+ * (booleans as 0 or 1).
+ */
+typedef enum {
+  /** Number of qubits = max qubit index + 1 (0 for an empty circuit). */
+  CUSTABILIZER_CIRCUIT_NUM_QUBITS = 0,
+  /** Number of M/MX/MY/MR* gates. */
+  CUSTABILIZER_CIRCUIT_NUM_MEASUREMENT_GATES = 1,
+  /** Number of DETECTOR instructions (one per instruction). */
+  CUSTABILIZER_CIRCUIT_NUM_DETECTORS = 2,
+  /** Number of REPEAT blocks across all nesting levels. */
+  CUSTABILIZER_CIRCUIT_NUM_REPEAT_BLOCKS = 3,
+  /** Total reset operations, per target. */
+  CUSTABILIZER_CIRCUIT_NUM_RESETS = 4,
+  /** Number of single-qubit Clifford gates (one per target). */
+  CUSTABILIZER_CIRCUIT_NUM_1Q_GATES = 5,
+  /** Number of two-qubit Clifford gates (one per control-target pair). */
+  CUSTABILIZER_CIRCUIT_NUM_2Q_GATES = 6,
+  /** 1 if any noise/error or leakage instruction is present, else 0. */
+  CUSTABILIZER_CIRCUIT_HAS_NOISE = 7,
+  /** Total leakage instructions across all blocks. */
+  CUSTABILIZER_CIRCUIT_NUM_LEAKAGE_INSTRUCTIONS = 8,
+  /** Number of herald leakage readouts (HERALD_LEAKAGE_EVENT targets). */
+  CUSTABILIZER_CIRCUIT_NUM_LEAKAGE_READOUTS = 9,
+  /** Measurement bits per shot = M/MX/MY/MR* targets + HERALD_LEAKAGE_EVENT targets;
+   *  pass this as `numMeasurements` when creating any FrameSimulator. */
+  CUSTABILIZER_CIRCUIT_NUM_MEASUREMENT_BITS = 10,
+} custabilizerCircuitAttributes_t;
+
+/**
+ * \ingroup Circuit
+ * \brief Read a single structural attribute of a \ref custabilizerCircuit_t.
+ *
+ * Writes the attribute value into \p buffer. Boolean attributes use 0 or 1.
+ * \p sizeInBytes must be large enough for the attribute's value type.
+ *
+ * See \ref custabilizerCircuitAttributes_t.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] circuit Circuit returned by \ref custabilizerCreateCircuitFromString.
+ * \param[in] attribute Value from \ref custabilizerCircuitAttributes_t.
+ * \param[out] buffer Caller-owned host buffer receiving the attribute value.
+ * \param[in] sizeInBytes Size of \p buffer in bytes; must be large enough for the
+ *            attribute's value type.
+ * \return custabilizerStatus_t. Returns \ref CUSTABILIZER_STATUS_INVALID_VALUE if
+ *         \p circuit or \p buffer is NULL, \p attribute is unknown,
+ *         \p sizeInBytes is too small, or \p buffer is misaligned.
+ */
+custabilizerStatus_t custabilizerCircuitGetAttribute(const custabilizerHandle_t handle,
+                                                     const custabilizerCircuit_t circuit,
+                                                     custabilizerCircuitAttributes_t attribute,
+                                                     void* buffer,
+                                                     size_t sizeInBytes);
+
 // -- </ Circuit methods > --
 
 
@@ -254,7 +320,9 @@ custabilizerStatus_t custabilizerDestroyCircuit(custabilizerCircuit_t circuit);
  * \param[in] handle Library handle.
  * \param[in] numQubits Number of qubits in the Pauli frame.
  * \param[in] numShots Number of samples to simulate.
- * \param[in] numMeasurements Number of measurements in the measurement table
+ * \param[in] numMeasurements Number of measurement bits per shot; also the
+ *            row offset at which DETECTOR outputs are written into the
+ *            measurement table. See \ref CUSTABILIZER_CIRCUIT_NUM_MEASUREMENT_BITS.
  * \param[in] tableStrideMajor Stride over the major axis for all input bit
  *            tables. Specified in bytes and must be a multiple of 4.
  * \param[out] frameSimulator Pointer to the created frame simulator.
@@ -266,6 +334,7 @@ custabilizerStatus_t custabilizerDestroyCircuit(custabilizerCircuit_t circuit);
  *
  * The data is updated by calling \ref custabilizerFrameSimulatorApplyCircuit.
  *
+ * \see custabilizerCreateLeakageFrameSimulator
  */
 custabilizerStatus_t custabilizerCreateFrameSimulator(const custabilizerHandle_t handle,
                                                       int64_t numQubits,
@@ -288,8 +357,9 @@ custabilizerStatus_t custabilizerDestroyFrameSimulator(custabilizerFrameSimulato
  * \param[in] handle Library handle.
  * \param[in] frameSimulator An instance of FrameSimulator with parameters
  *            consistent with the bit tables
- * \param[in] circuit A circuit that acts on at most `numQubits`
- *            and contains at most `numMeasurements` measurements
+ * \param[in] circuit A circuit acting on at most `numQubits` qubits and
+ *            producing at most `numMeasurements` measurement bits
+ *            (see \ref CUSTABILIZER_CIRCUIT_NUM_MEASUREMENT_BITS).
  * \param[in] randomizeFrameAfterMeasurement Disabling the randomization is
  *            helpful in some cases to focus on the error frame propagation.
  * \param[in] seed Random seed.
@@ -298,13 +368,18 @@ custabilizerStatus_t custabilizerDestroyFrameSimulator(custabilizerFrameSimulato
  * \param[in,out] zTableDevice Device buffer of the Z bit table in qubit-major order.
  *            Must be of size at least `numQubits` * `tableStrideMajor`
  * \param[in,out] mTableDevice Device buffer of the measurement bit table in
- *            measurement-major order. Must be of size at least
- *            `numMeasurements` * `tableStrideMajor`
+ *            measurement-major order: `numMeasurements` measurement rows
+ *            followed by `numDetectors` DETECTOR rows
+ *            (`numDetectors = \ref CUSTABILIZER_CIRCUIT_NUM_DETECTORS`).
+ *            Must be of size at least
+ *            `(numMeasurements + numDetectors) * tableStrideMajor`.
  * \param[in] stream CUDA stream.
  * \return custabilizerStatus_t
  *
+ * \see custabilizerLeakageFrameSimulatorApplyCircuit
+ *
  * \details
- * Use \ref custabilizerCreateFrameSimulator to create a frame simulator with 
+ * Use \ref custabilizerCreateFrameSimulator to create a frame simulator with
  * appropriate parameters for this call.
  * The method accepts an initial state in the form of bit tables.
  * All bit tables assume LSB ordering. That is, the bit for the first shot is
@@ -330,9 +405,10 @@ custabilizerStatus_t custabilizerDestroyFrameSimulator(custabilizerFrameSimulato
  * int64_t numQubits = 3;
  * int64_t numShots = 32;
  * int64_t numMeasurements = 2;
+ * int64_t numDetectors = 0;
  * int64_t stride = (numShots + 7) / 8;
  * int bit_table_bytes = numQubits * stride;
- * int m_table_bytes = numMeasurements * stride;
+ * int m_table_bytes = (numMeasurements + numDetectors) * stride;
  * int bit_int_bytes = sizeof(custabilizerBitInt_t);
  * custabilizerBitInt_t x_table[bit_table_bytes / bit_int_bytes] = {
  *     //    IXIX 
@@ -396,6 +472,151 @@ custabilizerStatus_t custabilizerFrameSimulatorApplyCircuit(const custabilizerHa
 
 /** \} */
 // -- </ Frame simulator methods > --
+
+
+// -- < Leakage frame simulator methods > --
+
+/**
+ * \defgroup LeakageFrameSimulator LeakageFrameSimulator
+ * \{
+ */
+
+/**
+ * \brief Create a LeakageFrameSimulator
+ *
+ * \param[in] handle Library handle.
+ * \param[in] numQubits Number of qubits in the Pauli and leakage tables.
+ * \param[in] numShots Number of samples to simulate.
+ * \param[in] numMeasurements Number of measurement bits per shot; also the
+ *            row offset at which DETECTOR outputs are written into the
+ *            measurement table. See \ref CUSTABILIZER_CIRCUIT_NUM_MEASUREMENT_BITS.
+ * \param[in] tableStrideMajor Stride over the major axis for all input bit
+ *            tables. Specified in bytes and must be a multiple of 4.
+ * \param[out] leakageFrameSimulator Pointer to the created leakage frame simulator.
+ * \return custabilizerStatus_t
+ *
+ * \details
+ * The stride is specified by the `tableStrideMajor` parameter, which is
+ * usually `(numShots + 7)/8` padded to the next multiple of 4.
+ *
+ * The data is updated by calling \ref custabilizerLeakageFrameSimulatorApplyCircuit.
+ *
+ * \see custabilizerCreateFrameSimulator
+ */
+custabilizerStatus_t custabilizerCreateLeakageFrameSimulator(
+    const custabilizerHandle_t handle,
+    int64_t numQubits,
+    int64_t numShots,
+    int64_t numMeasurements,
+    int64_t tableStrideMajor,
+    custabilizerLeakageFrameSimulator_t* leakageFrameSimulator);
+
+/**
+ * \brief Destroy the LeakageFrameSimulator
+ *
+ * \param[in] leakageFrameSimulator Leakage frame simulator to destroy.
+ * \return custabilizerStatus_t
+ */
+custabilizerStatus_t custabilizerDestroyLeakageFrameSimulator(
+    custabilizerLeakageFrameSimulator_t leakageFrameSimulator);
+
+/**
+ * \brief Run leakage-aware Pauli frame simulation using the circuit
+ *
+ * \param[in] handle Library handle.
+ * \param[in] leakageFrameSimulator An instance of LeakageFrameSimulator with
+ *            parameters consistent with the bit tables.
+ * \param[in] circuit A circuit acting on at most `numQubits` qubits and
+ *            producing at most `numMeasurements` measurement bits
+ *            (see \ref CUSTABILIZER_CIRCUIT_NUM_MEASUREMENT_BITS).
+ * \param[in] randomizeFrameAfterMeasurement Disabling the randomization is
+ *            helpful in some cases to focus on the error frame propagation.
+ * \param[in] seed Random seed.
+ * \param[in,out] xTableDevice Device buffer of the X bit table in qubit-major order.
+ *            Must be of size at least `numQubits` * `tableStrideMajor`.
+ * \param[in,out] zTableDevice Device buffer of the Z bit table in qubit-major order.
+ *            Must be of size at least `numQubits` * `tableStrideMajor`.
+ * \param[in,out] lTableDevice Device buffer of the leakage bit table in
+ *            qubit-major order. Must be of size at least
+ *            `numQubits` * `tableStrideMajor`. Bit `(q, shot)` is 1 when qubit
+ *            `q` is in the leaked subspace for shot `shot`.
+ * \param[in,out] mTableDevice Device buffer of the measurement bit table in
+ *            measurement-major order: `numMeasurements` measurement rows
+ *            followed by `numDetectors` DETECTOR rows
+ *            (`numDetectors = \ref CUSTABILIZER_CIRCUIT_NUM_DETECTORS`).
+ *            Must be of size at least
+ *            `(numMeasurements + numDetectors) * tableStrideMajor`.
+ * \param[in] stream CUDA stream.
+ * \return custabilizerStatus_t
+ *
+ * \see custabilizerFrameSimulatorApplyCircuit
+ *
+ * \details
+ * Use \ref custabilizerCreateLeakageFrameSimulator to create a leakage frame
+ * simulator with appropriate parameters for this call.
+ * The method accepts an initial state in the form of bit tables.
+ * All bit tables assume LSB ordering. That is, the bit for the first shot is
+ * stored at mask 0x1. If the buffers are smaller than required minimum size,
+ * the behavior is undefined.
+ *
+ * The `xTableDevice` and `zTableDevice` specify the initial Pauli frame in a
+ * qubit-major format. The operator on Pauli string `I` and qubit `J` is encoded
+ * by bits `I` on row `J` in x_table and z_table.
+ *
+ * The `lTableDevice` tracks leakage flags independently of the Pauli frame.
+ * `HERALD_LEAKAGE_EVENT` instructions copy `l_table[q, shot]` into the next
+ * measurement-table row so detectors can refer to herald readouts via `rec[-k]`.
+ *
+ * \code
+ * int64_t numQubits = 3;
+ * int64_t numShots = 32;
+ * int64_t numMeasurements = 2;
+ * int64_t numDetectors = 0;
+ * int64_t stride = (numShots + 7) / 8;
+ * int bit_table_bytes = numQubits * stride;
+ * int m_table_bytes = (numMeasurements + numDetectors) * stride;
+ * custabilizerBitInt_t *xTableDevice, *zTableDevice, *lTableDevice, *mTableDevice;
+ * cudaMalloc(&xTableDevice, bit_table_bytes);
+ * cudaMalloc(&zTableDevice, bit_table_bytes);
+ * cudaMalloc(&lTableDevice, bit_table_bytes);
+ * cudaMalloc(&mTableDevice, m_table_bytes);
+ *
+ * custabilizerHandle_t handle;
+ * custabilizerCreate(&handle);
+ * custabilizerLeakageFrameSimulator_t leakageFrameSimulator;
+ * custabilizerStatus_t status = custabilizerCreateLeakageFrameSimulator(
+ *     handle, numQubits, numShots, numMeasurements, stride, &leakageFrameSimulator);
+ *
+ * int seed = 5;
+ * cudaStream_t stream = 0;
+ * int rnd_frame = 0;
+ * // Assuming `circuit` is defined earlier
+ * status = custabilizerLeakageFrameSimulatorApplyCircuit(
+ *     handle, leakageFrameSimulator, circuit, rnd_frame, seed, xTableDevice,
+ *     zTableDevice, lTableDevice, mTableDevice, stream);
+ *
+ * custabilizerDestroyLeakageFrameSimulator(leakageFrameSimulator);
+ * cudaFree(xTableDevice);
+ * cudaFree(zTableDevice);
+ * cudaFree(lTableDevice);
+ * cudaFree(mTableDevice);
+ * custabilizerDestroy(handle);
+ * \endcode
+ */
+custabilizerStatus_t custabilizerLeakageFrameSimulatorApplyCircuit(
+    const custabilizerHandle_t handle,
+    custabilizerLeakageFrameSimulator_t leakageFrameSimulator,
+    const custabilizerCircuit_t circuit,
+    int randomizeFrameAfterMeasurement,
+    uint64_t seed,
+    custabilizerBitInt_t* xTableDevice,
+    custabilizerBitInt_t* zTableDevice,
+    custabilizerBitInt_t* lTableDevice,
+    custabilizerBitInt_t* mTableDevice,
+    cudaStream_t stream);
+
+/** \} */
+// -- </ Leakage frame simulator methods > --
 
 // -- < RNG methods > --
 

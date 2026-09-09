@@ -93,55 +93,61 @@ def coherent_state(n_levels, alpha):
 
 def main(omega, kappa, alpha0):
     """
-    Compute oscillator population using cuQuantum Python JAX.
+    Per-element oscillator-population expectation for a single set of parameters.
+
+    This is batched by wrapping the whole function in jax.vmap (see __main__), so every
+    operator here is built from per-element scalar parameters and is therefore unbatched
+    (no batch_dims needed). The batch dimension lives outside, in the vmap/grad.
     """
     key = global_key
 
-    # initialize operators, initial state and saving times
+    # Hamiltonian elementary operator, scaled by the (per-element) frequency omega.
     key, subkey = jax.random.split(key)
-    h_data = jnp.exp(omega) * jax.random.normal(subkey, (batch_size, dims[0], dims[0]), dtype=jnp.complex128)
+    h_data = jnp.exp(omega) * jax.random.normal(subkey, (dims[0], dims[0]), dtype=jnp.complex128)
     jax.debug.print("Defined Hamiltonian elementary operator data buffer.", ordered=True)
 
     h = ElementaryOperator(h_data)
     jax.debug.print("Created Hamiltonian elementary operator.", ordered=True)
 
+    # Dissipation elementary operators, scaled by the (per-element) decay rate kappa.
     key, subkey = jax.random.split(key)
-    l_data = jax.random.normal(subkey, (batch_size, dims[0], dims[0]), dtype=jnp.complex128)
+    l_data = jax.random.normal(subkey, (dims[0], dims[0]), dtype=jnp.complex128)
     jax.debug.print("Defined dissipation elementary operator data buffers.", ordered=True)
 
     l = ElementaryOperator(kappa * l_data)
-    ld = ElementaryOperator(l_data.conj().transpose(0, 2, 1))
+    ld = ElementaryOperator(jnp.conj(kappa) * l_data.conj().T)  # l†, scaled so it batches like l
     jax.debug.print("Created dissipation elementary operators.", ordered=True)
 
+    # Initial state from the (per-element) coherent amplitude alpha0.
     psi0 = coherent_state(dims[0], alpha0)
     rho0 = jnp.outer(psi0, psi0.conj())
-    rho0 = jnp.stack([rho0] * batch_size)
     jax.debug.print("Created initial state data buffer.", ordered=True)
 
     # Construct operator term for the Hamiltonian
     H = OperatorTerm(dims)
-    H.append([h], modes=modes)
+    H.append([h], modes=modes, coeff=jnp.full(batch_size, 1.0, dtype=jnp.complex128))
     jax.debug.print("Constructed Hamiltonian operator term.", ordered=True)
 
     # Construct operator term for dissipators
     Ls = OperatorTerm(dims)
-    Ls.append([l, ld], modes=(0, 0), duals=(False, True), coeff=1.0)
-    Ls.append([l, ld], modes=(0, 0), duals=(False, False), coeff=-0.5)
-    Ls.append([ld, l], modes=(0, 0), duals=(True, True), coeff=-0.5)
+    Ls.append([l, ld], modes=(0, 0), duals=(False, True), coeff=jnp.full(batch_size, 1.0, dtype=jnp.complex128))
+    Ls.append([l, ld], modes=(0, 0), duals=(False, False), coeff=jnp.full(batch_size, -0.5, dtype=jnp.complex128))
+    Ls.append([ld, l], modes=(0, 0), duals=(True, True), coeff=jnp.full(batch_size, -0.5, dtype=jnp.complex128))
     jax.debug.print("Constructed dissipator operator term.", ordered=True)
 
     liouvillian = Operator(dims)
-    liouvillian.append(H, dual=False, coeff=-1.0j)
-    liouvillian.append(H, dual=True, coeff=1.0j)
-    liouvillian.append(Ls, dual=False, coeff=1.0)
+    liouvillian.append(H, dual=False, coeff=jnp.full(batch_size, -1.0j, dtype=jnp.complex128))
+    liouvillian.append(H, dual=True, coeff=jnp.full(batch_size, 1.0j, dtype=jnp.complex128))
+    liouvillian.append(Ls, dual=False, coeff=jnp.full(batch_size, 1.0, dtype=jnp.complex128))
     jax.debug.print("Constructed Liouvillian operator from operator terms.", ordered=True)
 
-    rho1 = jax.vmap(operator_action, in_axes=(liouvillian.in_axes, 0))(liouvillian, rho0)
+    # No vmap here: operator_action is applied to a single (per-element) operator/state.
+    rho1 = operator_action(liouvillian, rho0)
     jax.debug.print("Performed operator action on the input state.", ordered=True)
 
     key, subkey = jax.random.split(key)
-    exp_op = jax.random.normal(subkey, (batch_size, dims[0], dims[0]), dtype=jnp.complex128)
-    return jnp.einsum('bij,bji->', exp_op, rho1).real
+    exp_op = jax.random.normal(subkey, (dims[0], dims[0]), dtype=jnp.complex128)
+    return jnp.einsum('ij,ji->', exp_op, rho1).real
 
 
 if __name__ == "__main__":
@@ -151,10 +157,17 @@ if __name__ == "__main__":
     dims = (5,)     # Hilbert space dimension
     modes = (0,)
     batch_size = 2
-    omega = 1.0     # frequency
-    kappa = 0.1     # decay rate
-    alpha0 = 1.0    # initial coherent state amplitude
 
-    result = jax.grad(main, argnums=(0, 1, 2))(omega, kappa, alpha0)
+    # Per-element (batched) physical parameters; each entry is one batch element.
+    omega = jnp.array([1.0, 1.2], dtype=jnp.complex128)     # frequency
+    kappa = jnp.array([0.1, 0.15], dtype=jnp.complex128)    # decay rate
+    alpha0 = jnp.array([1.0, 0.9], dtype=jnp.complex128)    # initial coherent amplitude
+
+    # Batch by vmapping the per-element computation (vmap outside main), then take the
+    # gradient of the summed batched loss -> a per-element gradient for each parameter.
+    result = jax.grad(
+        lambda omega, kappa, alpha0: jax.vmap(main, in_axes=0)(omega, kappa, alpha0).sum(),
+        argnums=(0, 1, 2),
+    )(omega, kappa, alpha0)
 
     print("Finished computation and exit.")

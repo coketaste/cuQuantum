@@ -185,8 +185,44 @@ def test_memory_limit():
     operand = factory.generate_operands(factory.input_shapes, "numpy", "float64", "C")[0]
     with pytest.raises(MemoryLimitExceeded):
         tensor.decompose(decompose_expr, operand, options={'memory_limit': 1})
-                
-    
+
+
+def test_decompose_output_only_mode_raises_value_error():
+    """A mode appearing only in the outputs must be the shared mid extent mode.
+
+    Regression for expressions like 'ab->axd,xb' where infer_output_mode_labels drops
+    multi-occurrence labels, so the contracted-outcome check used to pass and the
+    expression then crashed with a KeyError while computing the mid extent.
+    """
+    from cuquantum.tensornet._internal.decomposition_utils import parse_decomposition
+
+    operand = np.zeros((2, 3))
+    # Public API path (user-facing wrapper).
+    with pytest.raises(ValueError, match="contracted outcome"):
+        tensor.decompose("ab->axd,xb", operand)
+    # Internal parser path (where the validation lives).
+    with pytest.raises(ValueError, match="contracted outcome"):
+        parse_decomposition("ab->axd,xb", operand)
+
+
+@pytest.mark.parametrize(
+    "decompose_expr, shape", [
+        ('a->ax,xx', (4,)),      # mid extent mode repeated in one output term
+        ('ab->ax,xbb', (4, 4)),  # input mode repeated in one output term
+    ]
+)
+def test_decompose_repeated_output_mode_raises_value_error(decompose_expr, shape):
+    """The modes of each output tensor must be distinct.
+
+    Mode labels are compared as sets when validating the outputs against the inputs,
+    so multiplicity has to be checked separately, otherwise these expressions are
+    silently accepted.
+    """
+    operand = np.zeros(shape)
+    with pytest.raises(ValueError):
+        tensor.decompose(decompose_expr, operand)
+
+
 class TestDecompositionOptions(TestNetworkOptions):
 
     options_type = tensor.DecompositionOptions

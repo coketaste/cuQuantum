@@ -360,6 +360,7 @@ class DenseOperator(ElementaryOperator):
                     self.callback(callback_args[0], params_arr, arr)
                 else:
                     arr = np.empty(self.data.shape, dtype=self.dtype, order="F")
+                    params_arr = callback_args[1]
                     _params_arr = wrap_operand(params_arr)
                     params_arr = _params_arr.to("cpu")
                     self.callback(callback_args[0], params_arr, arr)
@@ -392,7 +393,7 @@ class DenseOperator(ElementaryOperator):
                         raise ValueError("Unary operations are not supported for ElementaryOperators with inplace callbacks.")
                     data = dense_op._data.module.empty_like(
                         _data, dtype=dense_op.dtype
-                    )  # FIXME: dtype should be inferable from _data? by empty_like
+                    )
                     callback = type(dense_op.callback)(
                         lambda t, args: operation(dense_op.callback(t, args).reshape(dense_op.data.shape))
                     )

@@ -4,12 +4,9 @@
 
 import os
 import re
-import site
-import sys
 
 from packaging.version import Version
 from setuptools.command.build_ext import build_ext as _build_ext
-from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 
 
 # Get __version__ variable
@@ -68,56 +65,15 @@ else:
     raise RuntimeError(f"Unsupported CUDA version: {cuda_ver}")
 
 
-building_wheel = False
-
-
-class bdist_wheel(_bdist_wheel):
-
-    def run(self):
-        global building_wheel
-        building_wheel = True
-        super().run()
-
-
 class build_ext(_build_ext):
 
-    def _prep_includes_libs_rpaths(self, ext_name):
-        """
-        Set global vars extra_linker_flags.
-
-        With the new bindings, we no longer need to link to cuQuantum DSOs.
-        """
-
-        if not building_wheel:
-            # Note: with PEP-517 the editable mode would not build a wheel for installation
-            # (and we purposely do not support PEP-660).
-            extra_linker_flags = []
-        else:
-            # Note: soname = library major version
-            # We don't need to link to cuBLAS/cuSOLVER/cuTensor at build time
-            # The rpaths must be adjusted given the following full-wheel installation:
-            # - cuquantum-python: site-packages/cuquantum/bindings/_internal/  [=$ORIGIN]
-            # - cusv, cutn & cudm:      site-packages/cuquantum/lib/
-            # - cutensor:         site-packages/cutensor/lib/
-            # - cublas:           site-packages/nvidia/cublas/lib/
-            # - cusolver:         site-packages/nvidia/cusolver/lib/
-            # (Note that starting v22.11 we use the new wheel format, so all lib wheels have suffix -cuXX,
-            #  and cuBLAS/cuSOLVER additionally have prefix nvidia-.)
-            ldflag = "-Wl,--disable-new-dtags"
-            ldflag += ",-rpath,$ORIGIN/../../lib"
-            ldflag += ",-rpath,$ORIGIN/../../../nvidia/cublas/lib"
-            if "cutensornet" in ext_name or "cudensitymat" in ext_name:
-                ldflag += ",-rpath,$ORIGIN/../../../cutensor/lib"
-                ldflag += ",-rpath,$ORIGIN/../../../nvidia/cusolver/lib"
-                #TODO: curand is only a cudensitymat dependency, not cutensornet
-                ldflag += ",-rpath,$ORIGIN/../../../nvidia/curand/lib"
-            extra_linker_flags = [ldflag]
-
-        return extra_linker_flags
-
     def build_extension(self, ext):
+        # The bindings do not link to any cuQuantum/CUDA DSO; the cuQuantum C
+        # libraries are located and loaded at runtime via cuda-pathfinder (by
+        # absolute path), and each of those libraries already carries its own
+        # RUNPATH for its transitive dependencies. No rpath/link flags are
+        # needed on the binding modules.
         ext.include_dirs = (os.path.join(cuda_path, 'include'),)
-        ext.extra_link_args = self._prep_includes_libs_rpaths(ext.name)
         super().build_extension(ext)
 
     def build_extensions(self):

@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES.
+# Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
@@ -168,6 +168,7 @@ if (MPI_FOUND)
   add_cutensornet_example(cutensornet_examples "cuTENSORNet.example.tensornet.mpi.auto_legacy" legacy/tensornet_example_mpi_auto_legacy.cu)
 
   add_cutensornet_example(cutensornet_examples "cuTENSORNet.example.tensornet.mpi.sampling" high_level/sampling_mpi_example.cu)
+  add_cutensornet_example(cutensornet_examples "cuTENSORNet.example.tensornet.mpi.decompose" approxTN/decompose_example_mpi_nccl.cu)
 else ()
   message(WARNING "An MPI installation was not detected. Please install CUDA-aware MPI if you would like to build the distributed example(s).")
 endif ()

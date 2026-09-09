@@ -58,6 +58,7 @@ all: check-env
 		${CUDA_PATH}/bin/nvcc legacy/tensornet_example_mpi_legacy.cu -Xlinker -rpath,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -o tensornet_example_mpi_legacy ${CXX_FLAGS} -lmpi
 		${CUDA_PATH}/bin/nvcc legacy/tensornet_example_mpi_auto_legacy.cu -Xlinker -rpath,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -o tensornet_example_mpi_auto_legacy ${CXX_FLAGS} -lmpi
 		${CUDA_PATH}/bin/nvcc high_level/sampling_mpi_example.cu -Xlinker -rpath,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -o sampling_mpi_example ${CXX_FLAGS} -lmpi
+		${CUDA_PATH}/bin/nvcc approxTN/decompose_example_mpi_nccl.cu -Xlinker -rpath,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -o decompose_example_mpi_nccl ${CXX_FLAGS} -lmpi
     endif
 
 check-env:
@@ -108,3 +109,4 @@ clean:
 	rm -f tensornet_example_mpi_legacy tensornet_example_mpi_legacy.o
 	rm -f tensornet_example_mpi_auto_legacy tensornet_example_mpi_auto_legacy.o
 	rm -f sampling_mpi_example sampling_mpi_example.o
+	rm -f decompose_example_mpi_nccl decompose_example_mpi_nccl.o

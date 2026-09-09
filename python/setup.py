@@ -34,13 +34,14 @@ with open(os.path.join(source_root, "tests/requirements.txt")) as f:
 #   need to list it
 install_requires = [
     'numpy>=1.21, <3.0',  # ">=1.21,<3"
-    'nvmath-python>=0.7.0, <1.0.0',  # ">=0.7.0,<1.0.0"
+    'nvmath-python>=1.0.0, <2.0.0',  # ">=1.0.0,<2.0.0"
+    'cuda-pathfinder>=1.6.0, <2',  # ">=1.6.0,<2"
     # 'torch', # <-- PyTorch is optional; also, the PyPI version does not support GPU...
-    f'custatevec-cu{utils.cuda_major_ver}>=1.14.0, <2',  # ">=1.14.0,<2"
-    f'cutensornet-cu{utils.cuda_major_ver}>=2.13.0, <3',  # ">=2.13.0,<3"
-    f'cudensitymat-cu{utils.cuda_major_ver}>=0.6.0, <0.7',  # ">=0.6.0,<0.7.0"
-    f'cupauliprop-cu{utils.cuda_major_ver}>=0.4.0, <0.5',  # ">=0.4.0,<0.5.0"
-    f'custabilizer-cu{utils.cuda_major_ver}>=0.4.0, <0.5',  # ">=0.4.0,<0.5.0"
+    f'custatevec-cu{utils.cuda_major_ver}>=1.15.0, <2',  # ">=1.15.0,<2"
+    f'cutensornet-cu{utils.cuda_major_ver}>=2.14.0, <3',  # ">=2.14.0,<3"
+    f'cudensitymat-cu{utils.cuda_major_ver}>=0.7.0, <0.8',  # ">=0.7.0,<0.8.0"
+    f'cupauliprop-cu{utils.cuda_major_ver}>=0.5.0, <0.6',  # ">=0.5.0,<0.6.0"
+    f'custabilizer-cu{utils.cuda_major_ver}>=0.5.0, <0.6',  # ">=0.5.0,<0.6.0"
 ]
 if utils.cuda_major_ver == '12':
     install_requires.append('cupy-cuda12x>=13.0')  # no ambiguity
@@ -97,6 +98,21 @@ ext_modules = [
     Extension(
         "cuquantum.bindings._internal.custatevec",
         sources=["cuquantum/bindings/_internal/custatevec.pyx"],
+        language="c++",
+    ),
+    Extension(
+        "cuquantum.bindings.custatevecEx",
+        sources=["cuquantum/bindings/custatevecEx.pyx"],
+        language="c++",
+    ),
+    Extension(
+        "cuquantum.bindings.cycustatevecEx",
+        sources=["cuquantum/bindings/cycustatevecEx.pyx"],
+        language="c++",
+    ),
+    Extension(
+        "cuquantum.bindings._internal.custatevecEx",
+        sources=["cuquantum/bindings/_internal/custatevecEx.pyx"],
         language="c++",
     ),
     Extension(
@@ -170,7 +186,6 @@ ext_modules = [
 
 cmdclass = {
     'build_ext': utils.build_ext,
-    'bdist_wheel': utils.bdist_wheel,
 }
 
 cuda_classifier = []

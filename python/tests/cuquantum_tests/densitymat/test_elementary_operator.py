@@ -674,3 +674,19 @@ class TestMixedOperations:
         subscripts = "abi,bci->aci"
         ref = np.einsum(subscripts, dia_op_arr , dense_op_arr )
         np.testing.assert_allclose(dense_dia_op_prod.to_array(t, args, device="cpu"), ref)
+
+
+# Verify that an in-place CPU callback receives its parameters and fills the dense operator.
+def test_dense_operator_to_array_inplace_cpu_callback():
+    def callback(t, args, out):
+        out[...] = t * args[0, 0]
+
+    operator = DenseOperator(
+        np.zeros((2, 2), dtype=np.float64, order="F"),
+        CPUCallback(callback, is_inplace=True),
+    )
+
+    result = operator.to_array(2.0, np.array([[3.0]]))
+
+    # Every output element must contain t * args[0, 0] = 6.
+    np.testing.assert_allclose(result, np.full((2, 2, 1), 6.0))

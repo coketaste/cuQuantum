@@ -2,7 +2,22 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1733+g9725189ff.d20260608. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.09.0. Do not modify it directly.
+
+
+# <<<< PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport (
+    int32_t,
+    int64_t,
+    intptr_t,
+    uint32_t,
+)
+
+from enum import IntEnum as _cyb_IntEnum
+
+
+# <<<< END OF PREAMBLE CONTENT >>>>
 
 cimport cython  # NOQA
 cimport cpython
@@ -12,8 +27,6 @@ from ._utils cimport (get_resource_ptr, get_nested_resource_ptr, nested_resource
                       get_resource_ptrs, DeviceAllocType, DeviceFreeType, cuqnt_alloc_wrapper, cuqnt_free_wrapper,
                       is_nested_sequence, logger_callback_with_data)
 
-from enum import IntEnum as _IntEnum
-
 import numpy as _numpy
 
 
@@ -21,7 +34,7 @@ import numpy as _numpy
 # Enum
 ###############################################################################
 
-class Status(_IntEnum):
+class Status(_cyb_IntEnum):
     """
     Contains the library status. Each cuStateVec API returns this
     enumerator.
@@ -51,9 +64,15 @@ class Status(_IntEnum):
     RESOURCES_NOT_ACCESSIBLE = CUSTATEVEC_STATUS_RESOURCES_NOT_ACCESSIBLE
     MAX_VALUE = CUSTATEVEC_STATUS_MAX_VALUE
 
-class Pauli(_IntEnum):
+class Pauli(_cyb_IntEnum):
     """
-    Constants to specify Pauli basis:
+    Constants to specify Pauli basis:  - :math:`\\boldsymbol{\\sigma}_0 =
+    \\mathbf{I} = \\left[ \\begin{array}{rr} 1 & 0 \\\\ 0 & 1
+    \\end{array}\\right]`  - :math:`\\boldsymbol{\\sigma}_x = \\left[
+    \\begin{array}{rr} 0 & 1 \\\\ 1 & 0 \\end{array}\\right]`  -
+    :math:`\\boldsymbol{\\sigma}_y = \\left[ \\begin{array}{rr} 0 & -i \\\\
+    i & 0 \\end{array}\\right]`  - :math:`\\boldsymbol{\\sigma}_z = \\left[
+    \\begin{array}{rr} 1 & 0 \\\\ 0 & -1 \\end{array}\\right]`
 
     See `custatevecPauli_t`.
     """
@@ -62,7 +81,7 @@ class Pauli(_IntEnum):
     Y = CUSTATEVEC_PAULI_Y
     Z = CUSTATEVEC_PAULI_Z
 
-class MatrixLayout(_IntEnum):
+class MatrixLayout(_cyb_IntEnum):
     """
     Constants to specify a matrix's memory layout.
 
@@ -71,7 +90,7 @@ class MatrixLayout(_IntEnum):
     COL = CUSTATEVEC_MATRIX_LAYOUT_COL
     ROW = CUSTATEVEC_MATRIX_LAYOUT_ROW
 
-class MatrixType(_IntEnum):
+class MatrixType(_cyb_IntEnum):
     """
     Constants to specify the matrix type.
 
@@ -81,7 +100,7 @@ class MatrixType(_IntEnum):
     UNITARY = CUSTATEVEC_MATRIX_TYPE_UNITARY
     HERMITIAN = CUSTATEVEC_MATRIX_TYPE_HERMITIAN
 
-class CollapseOp(_IntEnum):
+class CollapseOp(_cyb_IntEnum):
     """
     Constants to specify collapse operations.
 
@@ -91,7 +110,7 @@ class CollapseOp(_IntEnum):
     NORMALIZE_AND_ZERO = CUSTATEVEC_COLLAPSE_NORMALIZE_AND_ZERO
     RESET = CUSTATEVEC_COLLAPSE_RESET
 
-class ComputeType(_IntEnum):
+class ComputeType(_cyb_IntEnum):
     """
     Constants to specify the minimal accuracy for arithmetic operations.
 
@@ -102,7 +121,7 @@ class ComputeType(_IntEnum):
     COMPUTE_64F = CUSTATEVEC_COMPUTE_64F
     COMPUTE_TF32 = CUSTATEVEC_COMPUTE_TF32
 
-class SamplerOutput(_IntEnum):
+class SamplerOutput(_cyb_IntEnum):
     """
     Constants to specify the order of bit strings in sampling outputs.
 
@@ -111,7 +130,7 @@ class SamplerOutput(_IntEnum):
     RANDNUM_ORDER = CUSTATEVEC_SAMPLER_OUTPUT_RANDNUM_ORDER
     ASCENDING_ORDER = CUSTATEVEC_SAMPLER_OUTPUT_ASCENDING_ORDER
 
-class DeviceNetworkType(_IntEnum):
+class DeviceNetworkType(_cyb_IntEnum):
     """
     Constants to specify the device network topology.
 
@@ -120,7 +139,7 @@ class DeviceNetworkType(_IntEnum):
     SWITCH = CUSTATEVEC_DEVICE_NETWORK_TYPE_SWITCH
     FULLMESH = CUSTATEVEC_DEVICE_NETWORK_TYPE_FULLMESH
 
-class CommunicatorType(_IntEnum):
+class CommunicatorType(_cyb_IntEnum):
     """
     Constant to specify the communicator used in inter-process
     communications.
@@ -130,8 +149,9 @@ class CommunicatorType(_IntEnum):
     EXTERNAL = CUSTATEVEC_COMMUNICATOR_TYPE_EXTERNAL
     OPENMPI = CUSTATEVEC_COMMUNICATOR_TYPE_OPENMPI
     MPICH = CUSTATEVEC_COMMUNICATOR_TYPE_MPICH
+    MPI_ABI = CUSTATEVEC_COMMUNICATOR_TYPE_MPI_ABI
 
-class DataTransferType(_IntEnum):
+class DataTransferType(_cyb_IntEnum):
     """
     Constant to specify the data transfer direction in point-to-point
     communication.
@@ -143,7 +163,7 @@ class DataTransferType(_IntEnum):
     RECV = CUSTATEVEC_DATA_TRANSFER_TYPE_RECV
     SEND_RECV = CUSTATEVEC_DATA_TRANSFER_TYPE_SEND_RECV
 
-class MatrixMapType(_IntEnum):
+class MatrixMapType(_cyb_IntEnum):
     """
     Constants to specify how to assign matrices to batched state vectors.
 
@@ -152,7 +172,7 @@ class MatrixMapType(_IntEnum):
     BROADCAST = CUSTATEVEC_MATRIX_MAP_TYPE_BROADCAST
     MATRIX_INDEXED = CUSTATEVEC_MATRIX_MAP_TYPE_MATRIX_INDEXED
 
-class StateVectorType(_IntEnum):
+class StateVectorType(_cyb_IntEnum):
     """
     Constants to specify the quantum state.
 
@@ -163,7 +183,7 @@ class StateVectorType(_IntEnum):
     GHZ = CUSTATEVEC_STATE_VECTOR_TYPE_GHZ
     W = CUSTATEVEC_STATE_VECTOR_TYPE_W
 
-class MathMode(_IntEnum):
+class MathMode(_cyb_IntEnum):
     """
     Constants to specify the compute precision mode.
 
@@ -425,8 +445,11 @@ cpdef str get_error_name(int status):
 
     .. seealso:: `custatevecGetErrorName`
     """
+    cdef const char *_output_cstr_
     cdef bytes _output_
-    _output_ = custatevecGetErrorName(<_Status>status)
+    with nogil:
+        _output_cstr_ = custatevecGetErrorName(<_Status>status)
+    _output_ = _output_cstr_
     return _output_.decode()
 
 
@@ -438,8 +461,11 @@ cpdef str get_error_string(int status):
 
     .. seealso:: `custatevecGetErrorString`
     """
+    cdef const char *_output_cstr_
     cdef bytes _output_
-    _output_ = custatevecGetErrorString(<_Status>status)
+    with nogil:
+        _output_cstr_ = custatevecGetErrorString(<_Status>status)
+    _output_ = _output_cstr_
     return _output_.decode()
 
 
@@ -447,7 +473,8 @@ cpdef int32_t get_property(int type) except? -1:
     """This function returns the version information of the cuStateVec library.
 
     Args:
-        type (int): requested property (``MAJOR_VERSION``, ``MINOR_VERSION``, or ``PATCH_LEVEL``).
+        type (int): requested property (``MAJOR_VERSION``,
+            ``MINOR_VERSION``, or ``PATCH_LEVEL``).
 
     Returns:
         int32_t: value of the requested property.
@@ -466,7 +493,10 @@ cpdef size_t get_version() except? 0:
 
     .. seealso:: `custatevecGetVersion`
     """
-    return custatevecGetVersion()
+    cdef size_t ret
+    with nogil:
+        ret = custatevecGetVersion()
+    return ret
 
 
 cpdef set_stream(intptr_t handle, intptr_t stream_id):
@@ -562,19 +592,23 @@ cpdef abs2sum_array(intptr_t handle, intptr_t sv, int sv_data_type, uint32_t n_i
         sv (intptr_t): state vector.
         sv_data_type (int): data type of state vector.
         n_index_bits (uint32_t): the number of index bits.
-        abs2sum (intptr_t): pointer to a host or device array of sums of squared absolute values.
-        bit_ordering (object): pointer to a host array of index bit ordering. It can be:
+        abs2sum (intptr_t): pointer to a host or device array of sums
+            of squared absolute values.
+        bit_ordering (object): pointer to a host array of index bit
+            ordering. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
         bit_ordering_len (uint32_t): the length of bit_ordering.
-        mask_bit_string (object): pointer to a host array for a bit string to specify mask. It can be:
+        mask_bit_string (object): pointer to a host array for a bit
+            string to specify mask. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
-        mask_ordering (object): pointer to a host array for the mask ordering. It can be:
+        mask_ordering (object): pointer to a host array for the mask
+            ordering. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -603,7 +637,8 @@ cpdef collapse_on_z_basis(intptr_t handle, intptr_t sv, int sv_data_type, uint32
         sv_data_type (int): data type of state vector.
         n_index_bits (uint32_t): the number of index bits.
         parity (int32_t): parity, 0 or 1.
-        basis_bits (object): pointer to a host array of Z-basis index bits. It can be:
+        basis_bits (object): pointer to a host array of Z-basis index
+            bits. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -633,7 +668,8 @@ cpdef collapse_by_bit_string(intptr_t handle, intptr_t sv, int sv_data_type, uin
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
-        bit_ordering (object): pointer to a host array of bit string ordering. It can be:
+        bit_ordering (object): pointer to a host array of bit string
+            ordering. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -691,8 +727,10 @@ cpdef batch_measure(intptr_t handle, intptr_t sv, int sv_data_type, uint32_t n_i
         sv (intptr_t): state vector.
         sv_data_type (int): data type of the state vector.
         n_index_bits (uint32_t): the number of index bits.
-        bit_string (intptr_t): pointer to a host array of measured bit string.
-        bit_ordering (object): pointer to a host array of bit string ordering. It can be:
+        bit_string (intptr_t): pointer to a host array of measured bit
+            string.
+        bit_ordering (object): pointer to a host array of bit string
+            ordering. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -718,8 +756,10 @@ cpdef batch_measure_with_offset(intptr_t handle, intptr_t sv, int sv_data_type, 
         sv (intptr_t): partial state vector.
         sv_data_type (int): data type of the state vector.
         n_index_bits (uint32_t): the number of index bits.
-        bit_string (intptr_t): pointer to a host array of measured bit string.
-        bit_ordering (object): pointer to a host array of bit string ordering. It can be:
+        bit_string (intptr_t): pointer to a host array of measured bit
+            string.
+        bit_ordering (object): pointer to a host array of bit string
+            ordering. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -728,7 +768,8 @@ cpdef batch_measure_with_offset(intptr_t handle, intptr_t sv, int sv_data_type, 
         randnum (double): random number, [0, 1).
         collapse (CollapseOp): Collapse operation.
         offset (double): partial sum of squared absolute values.
-        abs2sum (double): sum of squared absolute values for the entire state vector.
+        abs2sum (double): sum of squared absolute values for the
+            entire state vector.
 
     .. seealso:: `custatevecBatchMeasureWithOffset`
     """
@@ -746,9 +787,10 @@ cpdef apply_pauli_rotation(intptr_t handle, intptr_t sv, int sv_data_type, uint3
         handle (intptr_t): the handle to the cuStateVec library.
         sv (intptr_t): state vector.
         sv_data_type (int): data type of the state vector.
-        n_index_bits (uint32_t): the number of bits in the state vector index.
+        n_index_bits (uint32_t): the number of bits in the state
+            vector index.
         theta (double): theta.
-        paulis (object): host pointer to custatevecPauli_t array. It can be:
+        paulis (object): host pointer to ``custatevecPauli_t`` array. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``_Pauli``.
@@ -764,7 +806,8 @@ cpdef apply_pauli_rotation(intptr_t handle, intptr_t sv, int sv_data_type, uint3
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
-        control_bit_values (object): pointer to a host array of control bit values. It can be:
+        control_bit_values (object): pointer to a host array of
+            control bit values. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -792,14 +835,17 @@ cpdef size_t apply_matrix_get_workspace_size(intptr_t handle, int sv_data_type, 
     Args:
         handle (intptr_t): the handle to the cuStateVec context.
         sv_data_type (int): Data type of the state vector.
-        n_index_bits (uint32_t): the number of index bits of the state vector.
+        n_index_bits (uint32_t): the number of index bits of the state
+            vector.
         matrix (intptr_t): host or device pointer to a matrix.
         matrix_data_type (int): data type of matrix.
-        layout (MatrixLayout): enumerator specifying the memory layout of matrix.
+        layout (MatrixLayout): enumerator specifying the memory layout
+            of matrix.
         adjoint (int32_t): apply adjoint of matrix.
         n_targets (uint32_t): the number of target bits.
         n_controls (uint32_t): the number of control bits.
-        compute_type (ComputeType): compute_type of matrix multiplication.
+        compute_type (ComputeType): compute_type of matrix
+            multiplication.
 
     Returns:
         size_t: workspace size.
@@ -820,10 +866,12 @@ cpdef apply_matrix(intptr_t handle, intptr_t sv, int sv_data_type, uint32_t n_in
         handle (intptr_t): the handle to the cuStateVec library.
         sv (intptr_t): state vector.
         sv_data_type (int): data type of the state vector.
-        n_index_bits (uint32_t): the number of index bits of the state vector.
+        n_index_bits (uint32_t): the number of index bits of the state
+            vector.
         matrix (intptr_t): host or device pointer to a square matrix.
         matrix_data_type (int): data type of matrix.
-        layout (MatrixLayout): enumerator specifying the memory layout of matrix.
+        layout (MatrixLayout): enumerator specifying the memory layout
+            of matrix.
         adjoint (int32_t): apply adjoint of matrix.
         targets (object): pointer to a host array of target bits. It can be:
 
@@ -836,13 +884,15 @@ cpdef apply_matrix(intptr_t handle, intptr_t sv, int sv_data_type, uint32_t n_in
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
-        control_bit_values (object): pointer to a host array of control bit values. It can be:
+        control_bit_values (object): pointer to a host array of
+            control bit values. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
         n_controls (uint32_t): the number of control bits.
-        compute_type (ComputeType): compute_type of matrix multiplication.
+        compute_type (ComputeType): compute_type of matrix
+            multiplication.
         extra_workspace (intptr_t): extra workspace.
         extra_workspace_size_in_bytes (size_t): extra workspace size.
 
@@ -865,12 +915,15 @@ cpdef size_t compute_expectation_get_workspace_size(intptr_t handle, int sv_data
     Args:
         handle (intptr_t): the handle to the cuStateVec context.
         sv_data_type (int): Data type of the state vector.
-        n_index_bits (uint32_t): the number of index bits of the state vector.
+        n_index_bits (uint32_t): the number of index bits of the state
+            vector.
         matrix (intptr_t): host or device pointer to a matrix.
         matrix_data_type (int): data type of matrix.
-        layout (MatrixLayout): enumerator specifying the memory layout of matrix.
+        layout (MatrixLayout): enumerator specifying the memory layout
+            of matrix.
         n_basis_bits (uint32_t): the number of target bits.
-        compute_type (ComputeType): compute_type of matrix multiplication.
+        compute_type (ComputeType): compute_type of matrix
+            multiplication.
 
     Returns:
         size_t: size of the extra workspace.
@@ -891,21 +944,26 @@ cpdef double compute_expectation(intptr_t handle, intptr_t sv, int sv_data_type,
         handle (intptr_t): the handle to the cuStateVec library.
         sv (intptr_t): state vector.
         sv_data_type (int): data type of the state vector.
-        n_index_bits (uint32_t): the number of index bits of the state vector.
-        expectation_value (intptr_t): host pointer to a variable to store an expectation value.
+        n_index_bits (uint32_t): the number of index bits of the state
+            vector.
+        expectation_value (intptr_t): host pointer to a variable to
+            store an expectation value.
         expectation_data_type (int): data type of expect.
         matrix (intptr_t): observable as matrix.
         matrix_data_type (int): data type of matrix.
         layout (MatrixLayout): matrix memory layout.
-        basis_bits (object): pointer to a host array of basis index bits. It can be:
+        basis_bits (object): pointer to a host array of basis index
+            bits. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
         n_basis_bits (uint32_t): the number of basis bits.
-        compute_type (ComputeType): compute_type of matrix multiplication.
+        compute_type (ComputeType): compute_type of matrix
+            multiplication.
         extra_workspace (intptr_t): pointer to an extra workspace.
-        extra_workspace_size_in_bytes (size_t): the size of extra workspace.
+        extra_workspace_size_in_bytes (size_t): the size of extra
+            workspace.
 
     Returns:
         double: result of matrix type test.
@@ -928,8 +986,10 @@ cpdef tuple sampler_create(intptr_t handle, intptr_t sv, int sv_data_type, uint3
         handle (intptr_t): the handle to the cuStateVec library.
         sv (intptr_t): pointer to state vector.
         sv_data_type (int): data type of state vector.
-        n_index_bits (uint32_t): the number of index bits of the state vector.
-        n_max_shots (uint32_t): the max number of shots used for this sampler context.
+        n_index_bits (uint32_t): the number of index bits of the state
+            vector.
+        n_max_shots (uint32_t): the max number of shots used for this
+            sampler context.
 
     Returns:
         A 2-tuple containing:
@@ -967,7 +1027,8 @@ cpdef sampler_preprocess(intptr_t handle, intptr_t sampler, intptr_t extra_works
         handle (intptr_t): the handle to the cuStateVec library.
         sampler (intptr_t): the sampler descriptor.
         extra_workspace (intptr_t): extra workspace.
-        extra_workspace_size_in_bytes (size_t): size of the extra workspace.
+        extra_workspace_size_in_bytes (size_t): size of the extra
+            workspace.
 
     .. seealso:: `custatevecSamplerPreprocess`
     """
@@ -1003,7 +1064,8 @@ cpdef sampler_apply_sub_sv_offset(intptr_t handle, intptr_t sampler, int32_t sub
         sampler (intptr_t): the sampler descriptor.
         sub_sv_ord (int32_t): sub state vector ordinal.
         n_sub_svs (uint32_t): the number of sub state vectors.
-        offset (double): cumulative sum offset for the sub state vector.
+        offset (double): cumulative sum offset for the sub state
+            vector.
         norm (double): norm for all sub vectors.
 
     .. seealso:: `custatevecSamplerApplySubSVOffset`
@@ -1019,8 +1081,10 @@ cpdef sampler_sample(intptr_t handle, intptr_t sampler, intptr_t bit_strings, bi
     Args:
         handle (intptr_t): the handle to the cuStateVec library.
         sampler (intptr_t): the sampler descriptor.
-        bit_strings (intptr_t): pointer to a host array to store sampled bit strings.
-        bit_ordering (object): pointer to a host array of bit ordering for sampling. It can be:
+        bit_strings (intptr_t): pointer to a host array to store
+            sampled bit strings.
+        bit_ordering (object): pointer to a host array of bit ordering
+            for sampling. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -1051,13 +1115,16 @@ cpdef size_t apply_generalized_permutation_matrix_get_workspace_size(intptr_t ha
     Args:
         handle (intptr_t): the handle to the cuStateVec library.
         sv_data_type (int): data type of the state vector.
-        n_index_bits (uint32_t): the number of index bits of the state vector.
-        permutation (object): host or device pointer to a permutation table. It can be:
+        n_index_bits (uint32_t): the number of index bits of the state
+            vector.
+        permutation (object): host or device pointer to a permutation
+            table. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``custatevecIndex_t``.
 
-        diagonals (intptr_t): host or device pointer to diagonal elements.
+        diagonals (intptr_t): host or device pointer to diagonal
+            elements.
         diagonals_data_type (int): data type of diagonals.
         targets (object): pointer to a host array of target bits. It can be:
 
@@ -1090,15 +1157,19 @@ cpdef apply_generalized_permutation_matrix(intptr_t handle, intptr_t sv, int sv_
         handle (intptr_t): the handle to the cuStateVec library.
         sv (intptr_t): state vector.
         sv_data_type (int): data type of the state vector.
-        n_index_bits (uint32_t): the number of index bits of the state vector.
-        permutation (object): host or device pointer to a permutation table. It can be:
+        n_index_bits (uint32_t): the number of index bits of the state
+            vector.
+        permutation (object): host or device pointer to a permutation
+            table. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``custatevecIndex_t``.
 
-        diagonals (intptr_t): host or device pointer to diagonal elements.
+        diagonals (intptr_t): host or device pointer to diagonal
+            elements.
         diagonals_data_type (int): data type of diagonals.
-        adjoint (int32_t): apply adjoint of generalized permutation matrix.
+        adjoint (int32_t): apply adjoint of generalized permutation
+            matrix.
         targets (object): pointer to a host array of target bits. It can be:
 
             - an :class:`int` as the pointer address to the array, or
@@ -1110,7 +1181,8 @@ cpdef apply_generalized_permutation_matrix(intptr_t handle, intptr_t sv, int sv_
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
-        control_bit_values (object): pointer to a host array of control bit values. It can be:
+        control_bit_values (object): pointer to a host array of
+            control bit values. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -1141,16 +1213,20 @@ cpdef compute_expectations_on_pauli_basis(intptr_t handle, intptr_t sv, int sv_d
         handle (intptr_t): the handle to the cuStateVec library.
         sv (intptr_t): state vector.
         sv_data_type (int): data type of the state vector.
-        n_index_bits (uint32_t): the number of index bits of the state vector.
-        expectation_values (intptr_t): pointer to a host array to store expectation values.
-        pauli_operators_array (object): pointer to a host array of Pauli operator arrays. It can be:
+        n_index_bits (uint32_t): the number of index bits of the state
+            vector.
+        expectation_values (intptr_t): pointer to a host array to
+            store expectation values.
+        pauli_operators_array (object): pointer to a host array of
+            Pauli operator arrays. It can be:
 
             - an :class:`int` as the pointer address to the nested sequence, or
             - a Python sequence of :class:`int`\s, each of which is a pointer address
               to a valid sequence of '_Pauli', or
             - a nested Python sequence of ``_Pauli``.
 
-        n_pauli_operator_arrays (uint32_t): the number of Pauli operator arrays.
+        n_pauli_operator_arrays (uint32_t): the number of Pauli
+            operator arrays.
         basis_bits_array (object): host array of basis bit arrays. It can be:
 
             - an :class:`int` as the pointer address to the nested sequence, or
@@ -1158,7 +1234,8 @@ cpdef compute_expectations_on_pauli_basis(intptr_t handle, intptr_t sv, int sv_d
               to a valid sequence of 'int32_t', or
             - a nested Python sequence of ``int32_t``.
 
-        n_basis_bits_array (object): host array of the number of basis bits. It can be:
+        n_basis_bits_array (object): host array of the number of basis
+            bits. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``uint32_t``.
@@ -1184,19 +1261,23 @@ cpdef tuple accessor_create(intptr_t handle, intptr_t sv, int sv_data_type, uint
         handle (intptr_t): the handle to the cuStateVec library.
         sv (intptr_t): state vector.
         sv_data_type (int): Data type of state vector.
-        n_index_bits (uint32_t): the number of index bits of state vector.
-        bit_ordering (object): pointer to a host array to specify the basis bits of the external buffer. It can be:
+        n_index_bits (uint32_t): the number of index bits of state
+            vector.
+        bit_ordering (object): pointer to a host array to specify the
+            basis bits of the external buffer. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
         bit_ordering_len (uint32_t): the length of bit_ordering.
-        mask_bit_string (object): pointer to a host array to specify the mask values to limit access. It can be:
+        mask_bit_string (object): pointer to a host array to specify
+            the mask values to limit access. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
-        mask_ordering (object): pointer to a host array for the mask ordering. It can be:
+        mask_ordering (object): pointer to a host array for the mask
+            ordering. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -1232,19 +1313,23 @@ cpdef tuple accessor_create_view(intptr_t handle, intptr_t sv, int sv_data_type,
         handle (intptr_t): the handle to the cuStateVec library.
         sv (intptr_t): state vector.
         sv_data_type (int): Data type of state vector.
-        n_index_bits (uint32_t): the number of index bits of state vector.
-        bit_ordering (object): pointer to a host array to specify the basis bits of the external buffer. It can be:
+        n_index_bits (uint32_t): the number of index bits of state
+            vector.
+        bit_ordering (object): pointer to a host array to specify the
+            basis bits of the external buffer. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
         bit_ordering_len (uint32_t): the length of bit_ordering.
-        mask_bit_string (object): pointer to a host array to specify the mask values to limit access. It can be:
+        mask_bit_string (object): pointer to a host array to specify
+            the mask values to limit access. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
-        mask_ordering (object): pointer to a host array for the mask ordering. It can be:
+        mask_ordering (object): pointer to a host array for the mask
+            ordering. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -1308,9 +1393,12 @@ cpdef accessor_get(intptr_t handle, intptr_t accessor, intptr_t external_buffer,
     Args:
         handle (intptr_t): the handle to the cuStateVec library.
         accessor (intptr_t): the accessor descriptor.
-        external_buffer (intptr_t): pointer to a host or device buffer to receive copied elements.
-        begin (int64_t): index in the permuted bit ordering for the first elements being copied to the state vector.
-        end (int64_t): index in the permuted bit ordering for the last elements being copied to the state vector (non-inclusive).
+        external_buffer (intptr_t): pointer to a host or device buffer
+            to receive copied elements.
+        begin (int64_t): index in the permuted bit ordering for the
+            first elements being copied to the state vector.
+        end (int64_t): index in the permuted bit ordering for the last
+            elements being copied to the state vector (non-inclusive).
 
     .. seealso:: `custatevecAccessorGet`
     """
@@ -1325,9 +1413,13 @@ cpdef accessor_set(intptr_t handle, intptr_t accessor, intptr_t external_buffer,
     Args:
         handle (intptr_t): the handle to the cuStateVec library.
         accessor (intptr_t): the accessor descriptor.
-        external_buffer (intptr_t): pointer to a host or device buffer of complex values being copied to the state vector.
-        begin (int64_t): index in the permuted bit ordering for the first elements being copied from the state vector.
-        end (int64_t): index in the permuted bit ordering for the last elements being copied from the state vector (non-inclusive).
+        external_buffer (intptr_t): pointer to a host or device buffer
+            of complex values being copied to the state vector.
+        begin (int64_t): index in the permuted bit ordering for the
+            first elements being copied from the state vector.
+        end (int64_t): index in the permuted bit ordering for the last
+            elements being copied from the state vector (non-
+            inclusive).
 
     .. seealso:: `custatevecAccessorSet`
     """
@@ -1344,9 +1436,11 @@ cpdef size_t test_matrix_type_get_workspace_size(intptr_t handle, int matrix_typ
         matrix_type (MatrixType): matrix type.
         matrix (intptr_t): host or device pointer to a matrix.
         matrix_data_type (int): data type of matrix.
-        layout (MatrixLayout): enumerator specifying the memory layout of matrix.
+        layout (MatrixLayout): enumerator specifying the memory layout
+            of matrix.
         n_targets (uint32_t): the number of target bits, up to 15.
-        adjoint (int32_t): flag to control whether the adjoint of matrix is tested.
+        adjoint (int32_t): flag to control whether the adjoint of
+            matrix is tested.
         compute_type (ComputeType): compute type.
 
     Returns:
@@ -1369,15 +1463,18 @@ cpdef double test_matrix_type(intptr_t handle, int matrix_type, intptr_t matrix,
         matrix_type (MatrixType): matrix type.
         matrix (intptr_t): host or device pointer to a matrix.
         matrix_data_type (int): data type of matrix.
-        layout (MatrixLayout): enumerator specifying the memory layout of matrix.
+        layout (MatrixLayout): enumerator specifying the memory layout
+            of matrix.
         n_targets (uint32_t): the number of target bits, up to 15.
-        adjoint (int32_t): flag to control whether the adjoint of matrix is tested.
+        adjoint (int32_t): flag to control whether the adjoint of
+            matrix is tested.
         compute_type (ComputeType): compute type.
         extra_workspace (intptr_t): extra workspace.
         extra_workspace_size_in_bytes (size_t): extra workspace size.
 
     Returns:
-        double: host pointer, to store the deviation from certain matrix type.
+        double: host pointer, to store the deviation from certain
+            matrix type.
 
     .. seealso:: `custatevecTestMatrixType`
     """
@@ -1394,7 +1491,7 @@ cpdef intptr_t communicator_create(intptr_t handle, int communicator_type, sonam
     Args:
         handle (intptr_t): the handle to cuStateVec library.
         communicator_type (CommunicatorType): the communicator type.
-        soname (str): the shared object name.
+        soname (str): the shared object name (can be NULL).
 
     Returns:
         intptr_t: a pointer to the communicator.
@@ -1431,7 +1528,8 @@ cpdef intptr_t dist_index_bit_swap_scheduler_create(intptr_t handle, uint32_t n_
 
     Args:
         handle (intptr_t): the handle to cuStateVec library.
-        n_global_index_bits (uint32_t): the number of global index bits.
+        n_global_index_bits (uint32_t): the number of global index
+            bits.
         n_local_index_bits (uint32_t): the number of local index bits.
 
     Returns:
@@ -1451,7 +1549,8 @@ cpdef dist_index_bit_swap_scheduler_destroy(intptr_t handle, intptr_t scheduler)
 
     Args:
         handle (intptr_t): the handle to cuStateVec library.
-        scheduler (intptr_t): a pointer to the batch swap scheduler to destroy.
+        scheduler (intptr_t): a pointer to the batch swap scheduler to
+            destroy.
 
     .. seealso:: `custatevecDistIndexBitSwapSchedulerDestroy`
     """
@@ -1467,10 +1566,14 @@ cpdef tuple sv_swap_worker_create(intptr_t handle, intptr_t communicator, intptr
         handle (intptr_t): the handle to cuStateVec library.
         communicator (intptr_t): a pointer to the MPI communicator.
         org_sub_sv (intptr_t): a pointer to a sub state vector.
-        org_sub_sv_index (int32_t): the index of the sub state vector specified by the org_sub_sv argument.
-        org_event (intptr_t): the event for synchronization with the peer worker.
-        sv_data_type (int): data type used by the state vector representation.
-        stream (intptr_t): a stream that is used to locally execute kernels during data transfers.
+        org_sub_sv_index (int32_t): the index of the sub state vector
+            specified by the org_sub_sv argument.
+        org_event (intptr_t): the event for synchronization with the
+            peer worker.
+        sv_data_type (int): data type used by the state vector
+            representation.
+        stream (intptr_t): a stream that is used to locally execute
+            kernels during data transfers.
 
     Returns:
         A 3-tuple containing:
@@ -1510,8 +1613,10 @@ cpdef sv_swap_worker_set_extra_workspace(intptr_t handle, intptr_t sv_swap_worke
     Args:
         handle (intptr_t): the handle to cuStateVec library.
         sv_swap_worker (intptr_t): state vector swap worker.
-        extra_workspace (intptr_t): pointer to the user-owned workspace.
-        extra_workspace_size_in_bytes (size_t): size of the user-provided workspace.
+        extra_workspace (intptr_t): pointer to the user-owned
+            workspace.
+        extra_workspace_size_in_bytes (size_t): size of the user-
+            provided workspace.
 
     .. seealso:: `custatevecSVSwapWorkerSetExtraWorkspace`
     """
@@ -1526,8 +1631,10 @@ cpdef sv_swap_worker_set_transfer_workspace(intptr_t handle, intptr_t sv_swap_wo
     Args:
         handle (intptr_t): the handle to cuStateVec library.
         sv_swap_worker (intptr_t): state vector swap worker.
-        transfer_workspace (intptr_t): pointer to the user-owned workspace.
-        transfer_workspace_size_in_bytes (size_t): size of the user-provided workspace.
+        transfer_workspace (intptr_t): pointer to the user-owned
+            workspace.
+        transfer_workspace_size_in_bytes (size_t): size of the user-
+            provided workspace.
 
     .. seealso:: `custatevecSVSwapWorkerSetTransferWorkspace`
     """
@@ -1542,12 +1649,15 @@ cpdef sv_swap_worker_set_sub_svs_p2p(intptr_t handle, intptr_t sv_swap_worker, d
     Args:
         handle (intptr_t): the handle to cuStateVec library.
         sv_swap_worker (intptr_t): state vector swap worker.
-        dst_sub_svs_p2p (object): an array of pointers to sub state vectors that are accessed by GPUDirect P2P. It can be:
+        dst_sub_svs_p2p (object): an array of pointers to sub state
+            vectors that are accessed by GPUDirect P2P. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of :class:`int`\s (as pointer addresses).
 
-        dst_sub_sv_indices_p2p (object): the sub state vector indices of sub state vector pointers specified by the dst_sub_svs_p2p argument. It can be:
+        dst_sub_sv_indices_p2p (object): the sub state vector indices
+            of sub state vector pointers specified by the
+            dst_sub_svs_p2p argument. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -1557,7 +1667,8 @@ cpdef sv_swap_worker_set_sub_svs_p2p(intptr_t handle, intptr_t sv_swap_worker, d
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``intptr_t``.
 
-        n_dst_sub_svs_p2p (uint32_t): the number of sub state vector pointers specified by the dst_sub_svs_p2p argument.
+        n_dst_sub_svs_p2p (uint32_t): the number of sub state vector
+            pointers specified by the dst_sub_svs_p2p argument.
 
     .. seealso:: `custatevecSVSwapWorkerSetSubSVsP2P`
     """
@@ -1611,23 +1722,30 @@ cpdef size_t apply_matrix_batched_get_workspace_size(intptr_t handle, int sv_dat
     Args:
         handle (intptr_t): the handle to the cuStateVec context.
         sv_data_type (int): Data type of the state vector.
-        n_index_bits (uint32_t): the number of index bits of the state vector.
+        n_index_bits (uint32_t): the number of index bits of the state
+            vector.
         n_svs (uint32_t): the number of state vectors.
-        sv_stride (int64_t): distance of two consecutive state vectors.
-        map_type (MatrixMapType): enumerator specifying the way to assign matrices.
-        matrix_indices (object): pointer to a host or device array of matrix indices. It can be:
+        sv_stride (int64_t): distance of two consecutive state
+            vectors.
+        map_type (MatrixMapType): enumerator specifying the way to
+            assign matrices.
+        matrix_indices (object): pointer to a host or device array of
+            matrix indices. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
-        matrices (intptr_t): pointer to allocated matrices in one contiguous memory chunk on host or device.
+        matrices (intptr_t): pointer to allocated matrices in one
+            contiguous memory chunk on host or device.
         matrix_data_type (int): data type of matrix.
-        layout (MatrixLayout): enumerator specifying the memory layout of matrix.
+        layout (MatrixLayout): enumerator specifying the memory layout
+            of matrix.
         adjoint (int32_t): apply adjoint of matrix.
         n_matrices (uint32_t): the number of matrices.
         n_targets (uint32_t): the number of target bits.
         n_controls (uint32_t): the number of control bits.
-        compute_type (ComputeType): compute_type of matrix multiplication.
+        compute_type (ComputeType): compute_type of matrix
+            multiplication.
 
     Returns:
         size_t: workspace size.
@@ -1648,20 +1766,27 @@ cpdef apply_matrix_batched(intptr_t handle, intptr_t batched_sv, int sv_data_typ
 
     Args:
         handle (intptr_t): the handle to the cuStateVec library.
-        batched_sv (intptr_t): batched state vector allocated in one continuous memory chunk on device.
+        batched_sv (intptr_t): batched state vector allocated in one
+            continuous memory chunk on device.
         sv_data_type (int): data type of the state vectors.
-        n_index_bits (uint32_t): the number of index bits of the state vectors.
+        n_index_bits (uint32_t): the number of index bits of the state
+            vectors.
         n_svs (uint32_t): the number of state vectors.
-        sv_stride (int64_t): distance of two consecutive state vectors.
-        map_type (MatrixMapType): enumerator specifying the way to assign matrices.
-        matrix_indices (object): pointer to a host or device array of matrix indices. It can be:
+        sv_stride (int64_t): distance of two consecutive state
+            vectors.
+        map_type (MatrixMapType): enumerator specifying the way to
+            assign matrices.
+        matrix_indices (object): pointer to a host or device array of
+            matrix indices. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
-        matrices (intptr_t): pointer to allocated matrices in one contiguous memory chunk on host or device.
+        matrices (intptr_t): pointer to allocated matrices in one
+            contiguous memory chunk on host or device.
         matrix_data_type (int): data type of matrices.
-        layout (MatrixLayout): enumerator specifying the memory layout of matrix.
+        layout (MatrixLayout): enumerator specifying the memory layout
+            of matrix.
         adjoint (int32_t): apply adjoint of matrix.
         n_matrices (uint32_t): the number of matrices.
         targets (object): pointer to a host array of target bits. It can be:
@@ -1675,13 +1800,15 @@ cpdef apply_matrix_batched(intptr_t handle, intptr_t batched_sv, int sv_data_typ
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
-        control_bit_values (object): pointer to a host array of control bit values. It can be:
+        control_bit_values (object): pointer to a host array of
+            control bit values. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
         n_controls (uint32_t): the number of control bits.
-        compute_type (ComputeType): compute_type of matrix multiplication.
+        compute_type (ComputeType): compute_type of matrix
+            multiplication.
         extra_workspace (intptr_t): extra workspace.
         extra_workspace_size_in_bytes (size_t): extra workspace size.
 
@@ -1710,20 +1837,25 @@ cpdef abs2sum_array_batched(intptr_t handle, intptr_t batched_sv, int sv_data_ty
         n_index_bits (uint32_t): the number of index bits.
         n_svs (uint32_t): the number of state vectors in a batch.
         sv_stride (int64_t): the stride of state vector.
-        abs2sum_arrays (intptr_t): pointer to a host or device array of sums of squared absolute values.
-        abs2sum_array_stride (int64_t): the distance between consequence abs2sum_arrays.
-        bit_ordering (object): pointer to a host array of index bit ordering. It can be:
+        abs2sum_arrays (intptr_t): pointer to a host or device array
+            of sums of squared absolute values.
+        abs2sum_array_stride (int64_t): the distance between
+            consequence abs2sum_arrays.
+        bit_ordering (object): pointer to a host array of index bit
+            ordering. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
         bit_ordering_len (uint32_t): the length of bit_ordering.
-        mask_bit_strings (object): pointer to a host or device array of mask bit strings. It can be:
+        mask_bit_strings (object): pointer to a host or device array
+            of mask bit strings. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``custatevecIndex_t``.
 
-        mask_ordering (object): pointer to a host array for the mask ordering. It can be:
+        mask_ordering (object): pointer to a host array for the mask
+            ordering. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
@@ -1749,12 +1881,14 @@ cpdef size_t collapse_by_bit_string_batched_get_workspace_size(intptr_t handle, 
     Args:
         handle (intptr_t): the handle to the cuStateVec context.
         n_svs (uint32_t): the number of batched state vectors.
-        bit_strings (object): pointer to an array of bit strings, on either host or device. It can be:
+        bit_strings (object): pointer to an array of bit strings, on
+            either host or device. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``custatevecIndex_t``.
 
-        norms (object): pointer to an array of normalization constants, on either host or device. It can be:
+        norms (object): pointer to an array of normalization
+            constants, on either host or device. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``float``.
@@ -1781,29 +1915,36 @@ cpdef collapse_by_bit_string_batched(intptr_t handle, intptr_t batched_sv, int s
 
     Args:
         handle (intptr_t): the handle to the cuStateVec library.
-        batched_sv (intptr_t): batched state vector allocated in one continuous memory chunk on device.
+        batched_sv (intptr_t): batched state vector allocated in one
+            continuous memory chunk on device.
         sv_data_type (int): data type of the state vectors.
-        n_index_bits (uint32_t): the number of index bits of the state vectors.
+        n_index_bits (uint32_t): the number of index bits of the state
+            vectors.
         n_svs (uint32_t): the number of batched state vectors.
-        sv_stride (int64_t): distance of two consecutive state vectors.
-        bit_strings (object): pointer to an array of bit strings, on either host or device. It can be:
+        sv_stride (int64_t): distance of two consecutive state
+            vectors.
+        bit_strings (object): pointer to an array of bit strings, on
+            either host or device. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``custatevecIndex_t``.
 
-        bit_ordering (object): pointer to a host array of bit string ordering. It can be:
+        bit_ordering (object): pointer to a host array of bit string
+            ordering. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
         bit_string_len (uint32_t): length of bit string.
-        norms (object): pointer to an array of normalization constants on either host or device. It can be:
+        norms (object): pointer to an array of normalization constants
+            on either host or device. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``float``.
 
         extra_workspace (intptr_t): extra workspace.
-        extra_workspace_size_in_bytes (size_t): size of the extra workspace.
+        extra_workspace_size_in_bytes (size_t): size of the extra
+            workspace.
 
     .. seealso:: `custatevecCollapseByBitStringBatched`
     """
@@ -1826,16 +1967,21 @@ cpdef measure_batched(intptr_t handle, intptr_t batched_sv, int sv_data_type, ui
         batched_sv (intptr_t): batched state vectors.
         sv_data_type (int): data type of the state vector.
         n_index_bits (uint32_t): the number of index bits.
-        n_svs (uint32_t): the number of state vectors in the batched state vector.
-        sv_stride (int64_t): the distance between state vectors in the batch.
-        bit_strings (intptr_t): pointer to a host or device array of measured bit strings.
-        bit_ordering (object): pointer to a host array of bit string ordering. It can be:
+        n_svs (uint32_t): the number of state vectors in the batched
+            state vector.
+        sv_stride (int64_t): the distance between state vectors in the
+            batch.
+        bit_strings (intptr_t): pointer to a host or device array of
+            measured bit strings.
+        bit_ordering (object): pointer to a host array of bit string
+            ordering. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
         bit_string_len (uint32_t): length of bitString.
-        randnums (object): pointer to a host or device array of random numbers. It can be:
+        randnums (object): pointer to a host or device array of random
+            numbers. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``float``.
@@ -1858,10 +2004,13 @@ cpdef intptr_t sub_sv_migrator_create(intptr_t handle, intptr_t device_slices, i
 
     Args:
         handle (intptr_t): the handle to the cuStateVec library.
-        device_slices (intptr_t): pointer to sub state vector slices on device.
+        device_slices (intptr_t): pointer to sub state vector slices
+            on device.
         sv_data_type (int): data type of state vector.
-        n_device_slices (int): the number of sub state vector slices in device_slices.
-        n_slice_local_index_bits (int): the number of index bits of sub state vector slices.
+        n_device_slices (int): the number of sub state vector slices
+            in device_slices.
+        n_slice_local_index_bits (int): the number of index bits of
+            sub state vector slices.
 
     Returns:
         intptr_t: pointer to a new migrator descriptor.
@@ -1895,9 +2044,12 @@ cpdef sub_sv_migrator_migrate(intptr_t handle, intptr_t migrator, int device_sli
     Args:
         handle (intptr_t): the handle to the cuStateVec library.
         migrator (intptr_t): the migrator descriptor.
-        device_slice_index (int): the index to specify sub state vector slice to migrate.
-        src_sub_sv_slice (intptr_t): a pointer to a sub state vector slice that is migrated to deviceSlices.
-        dst_sub_sv_slice (intptr_t): a pointer to a sub state vector slice that is migrated from deviceSlices.
+        device_slice_index (int): the index to specify sub state
+            vector slice to migrate.
+        src_sub_sv_slice (intptr_t): a pointer to a sub state vector
+            slice that is migrated to deviceSlices.
+        dst_sub_sv_slice (intptr_t): a pointer to a sub state vector
+            slice that is migrated from deviceSlices.
         begin (int64_t): the index to start migration.
         end (int64_t): the index to end migration.
 
@@ -1914,15 +2066,20 @@ cpdef size_t compute_expectation_batched_get_workspace_size(intptr_t handle, int
     Args:
         handle (intptr_t): the handle to the cuStateVec context.
         sv_data_type (int): Data type of the state vector.
-        n_index_bits (uint32_t): the number of index bits of the state vector.
+        n_index_bits (uint32_t): the number of index bits of the state
+            vector.
         n_svs (uint32_t): the number of state vectors.
-        sv_stride (int64_t): distance of two consecutive state vectors.
-        matrices (intptr_t): pointer to allocated matrices in one contiguous memory chunk on host or device.
+        sv_stride (int64_t): distance of two consecutive state
+            vectors.
+        matrices (intptr_t): pointer to allocated matrices in one
+            contiguous memory chunk on host or device.
         matrix_data_type (int): data type of matrices.
-        layout (MatrixLayout): enumerator specifying the memory layout of matrix.
+        layout (MatrixLayout): enumerator specifying the memory layout
+            of matrix.
         n_matrices (uint32_t): the number of matrices.
         n_basis_bits (uint32_t): the number of basis bits.
-        compute_type (ComputeType): compute_type of matrix multiplication.
+        compute_type (ComputeType): compute_type of matrix
+            multiplication.
 
     Returns:
         size_t: size of the extra workspace.
@@ -1941,25 +2098,33 @@ cpdef compute_expectation_batched(intptr_t handle, intptr_t batched_sv, int sv_d
 
     Args:
         handle (intptr_t): the handle to the cuStateVec library.
-        batched_sv (intptr_t): batched state vector allocated in one continuous memory chunk on device.
+        batched_sv (intptr_t): batched state vector allocated in one
+            continuous memory chunk on device.
         sv_data_type (int): data type of the state vector.
-        n_index_bits (uint32_t): the number of index bits of the state vector.
+        n_index_bits (uint32_t): the number of index bits of the state
+            vector.
         n_svs (uint32_t): the number of state vectors.
-        sv_stride (int64_t): distance of two consecutive state vectors.
-        expectation_values (intptr_t): pointer to a host or device array to store expectation values.
-        matrices (intptr_t): pointer to allocated matrices in one contiguous memory chunk on host or device.
+        sv_stride (int64_t): distance of two consecutive state
+            vectors.
+        expectation_values (intptr_t): pointer to a host or device
+            array to store expectation values.
+        matrices (intptr_t): pointer to allocated matrices in one
+            contiguous memory chunk on host or device.
         matrix_data_type (int): data type of matrices.
         layout (MatrixLayout): matrix memory layout.
         n_matrices (uint32_t): the number of matrices.
-        basis_bits (object): pointer to a host array of basis index bits. It can be:
+        basis_bits (object): pointer to a host array of basis index
+            bits. It can be:
 
             - an :class:`int` as the pointer address to the array, or
             - a Python sequence of ``int32_t``.
 
         n_basis_bits (uint32_t): the number of basis bits.
-        compute_type (ComputeType): compute_type of matrix multiplication.
+        compute_type (ComputeType): compute_type of matrix
+            multiplication.
         extra_workspace (intptr_t): pointer to an extra workspace.
-        extra_workspace_size_in_bytes (size_t): the size of extra workspace.
+        extra_workspace_size_in_bytes (size_t): the size of extra
+            workspace.
 
     .. seealso:: `custatevecComputeExpectationBatched`
     """
@@ -1974,7 +2139,8 @@ cpdef set_math_mode(intptr_t handle, int mode):
     """Set the compute precision mode.
 
     Args:
-        handle (intptr_t): Opaque handle holding cuStateVec's library context.
+        handle (intptr_t): Opaque handle holding cuStateVec's library
+            context.
         mode (MathMode): Compute precision mode.
 
     .. seealso:: `custatevecSetMathMode`
@@ -1988,7 +2154,8 @@ cpdef int get_math_mode(intptr_t handle) except? -1:
     """Get the current compute precision mode.
 
     Args:
-        handle (intptr_t): Opaque handle holding cuStateVec's library context.
+        handle (intptr_t): Opaque handle holding cuStateVec's library
+            context.
 
     Returns:
         int: Compute precision mode.
@@ -2000,6 +2167,81 @@ cpdef int get_math_mode(intptr_t handle) except? -1:
         __status__ = custatevecGetMathMode(<Handle>handle, &mode)
     check_status(__status__)
     return <int>mode
+
+
+cpdef tuple sv_swap_worker_create_with_semaphore(intptr_t handle, intptr_t communicator, intptr_t org_sub_sv, int32_t org_sub_sv_index, intptr_t org_semaphore, int sv_data_type, intptr_t stream):
+    """Create state vector swap worker with semaphore.
+
+    Args:
+        handle (intptr_t): the handle to cuStateVec library.
+        communicator (intptr_t): a pointer to the MPI communicator.
+        org_sub_sv (intptr_t): a pointer to a sub state vector.
+        org_sub_sv_index (int32_t): the index of the sub state vector
+            specified by the org_sub_sv argument.
+        org_semaphore (intptr_t): a pointer to a device memory chunk
+            that used for synchronization with the peer worker.
+        sv_data_type (int): data type used by the state vector
+            representation.
+        stream (intptr_t): a stream that is used to locally execute
+            kernels during data transfers.
+
+    Returns:
+        A 3-tuple containing:
+
+        - intptr_t: state vector swap worker.
+        - size_t: the size of the extra workspace needed.
+        - size_t: the minimum-required size of the transfer workspace.
+
+    .. seealso:: `custatevecSVSwapWorkerCreateWithSemaphore`
+    """
+    cdef SVSwapWorkerDescriptor sv_swap_worker
+    cdef size_t extra_workspace_size_in_bytes
+    cdef size_t min_transfer_workspace_size_in_bytes
+    with nogil:
+        __status__ = custatevecSVSwapWorkerCreateWithSemaphore(<Handle>handle, &sv_swap_worker, <CommunicatorDescriptor>communicator, <void*>org_sub_sv, org_sub_sv_index, <void*>org_semaphore, <DataType>sv_data_type, <Stream>stream, &extra_workspace_size_in_bytes, &min_transfer_workspace_size_in_bytes)
+    check_status(__status__)
+    return (<intptr_t>sv_swap_worker, extra_workspace_size_in_bytes, min_transfer_workspace_size_in_bytes)
+
+
+cpdef sv_swap_worker_set_sub_svs_p2p_with_semaphores(intptr_t handle, intptr_t sv_swap_worker, dst_sub_svs_p2p, dst_sub_sv_indices_p2p, dst_semaphores, uint32_t n_dst_sub_svs_p2p):
+    """Set sub state vector pointers accessible via GPUDirect P2P with semaphores.
+
+    Args:
+        handle (intptr_t): the handle to cuStateVec library.
+        sv_swap_worker (intptr_t): state vector swap worker.
+        dst_sub_svs_p2p (object): an array of pointers to sub state
+            vectors that are accessed by GPUDirect P2P. It can be:
+
+            - an :class:`int` as the pointer address to the array, or
+            - a Python sequence of :class:`int`\s (as pointer addresses).
+
+        dst_sub_sv_indices_p2p (object): the sub state vector indices
+            of sub state vector pointers specified by the
+            dst_sub_svs_p2p argument. It can be:
+
+            - an :class:`int` as the pointer address to the array, or
+            - a Python sequence of ``int32_t``.
+
+        dst_semaphores (object): semaphores used to create peer
+            workers. It can be:
+
+            - an :class:`int` as the pointer address to the array, or
+            - a Python sequence of :class:`int`\s (as pointer addresses).
+
+        n_dst_sub_svs_p2p (uint32_t): the number of sub state vector
+            pointers specified by the dst_sub_svs_p2p argument.
+
+    .. seealso:: `custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores`
+    """
+    cdef nullable_unique_ptr[ vector[void*] ] _dst_sub_svs_p2p_
+    get_resource_ptrs[void](_dst_sub_svs_p2p_, dst_sub_svs_p2p, <void*>NULL)
+    cdef nullable_unique_ptr[ vector[int32_t] ] _dst_sub_sv_indices_p2p_
+    get_resource_ptr[int32_t](_dst_sub_sv_indices_p2p_, dst_sub_sv_indices_p2p, <int32_t*>NULL)
+    cdef nullable_unique_ptr[ vector[void*] ] _dst_semaphores_
+    get_resource_ptrs[void](_dst_semaphores_, dst_semaphores, <void*>NULL)
+    with nogil:
+        __status__ = custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores(<Handle>handle, <SVSwapWorkerDescriptor>sv_swap_worker, <void**>(_dst_sub_svs_p2p_.data()), <const int32_t*>(_dst_sub_sv_indices_p2p_.data()), <void**>(_dst_semaphores_.data()), <const uint32_t>n_dst_sub_svs_p2p)
+    check_status(__status__)
 
 
 # for backward compat
@@ -2549,3 +2791,4 @@ def logger_set_callback_data(callback, *args, **kwargs):
 
 # who owns a reference to user-provided Python objects (k: owner, v: object)
 cdef dict owner_pyobj = {}
+del _cyb_IntEnum

@@ -2,67 +2,81 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 25.11.0 to 26.06.0, generator version 0.3.1.dev1734+g2cfbd9662.d20260611. Do not modify it directly.
+# This code was automatically generated with version 26.09.0. Do not modify it directly.
 
-from libc.stdint cimport intptr_t
 
-import threading
+
+# <<<< PREAMBLE CONTENT >>>>
+
+cdef extern from * nogil:
+    """
+    #if defined(_MSC_VER) && !defined(__clang__)
+        #include <intrin.h>
+        static __forceinline int atomic_int_load(int *p) {
+            int v = *(int volatile *)p; _ReadBarrier(); return v;
+        }
+        static __forceinline void atomic_int_store(int *p, int v) {
+            _WriteBarrier(); *(int volatile *)p = v;
+        }
+    #elif defined(__cplusplus)
+        /* GCC/Clang __atomic builtins work in any C++ standard without headers */
+        static inline int atomic_int_load(int *p) {
+            return __atomic_load_n(p, __ATOMIC_ACQUIRE);
+        }
+        static inline void atomic_int_store(int *p, int v) {
+            __atomic_store_n(p, v, __ATOMIC_RELEASE);
+        }
+    #else
+        #include <stdatomic.h>
+        static inline int atomic_int_load(int *p) {
+            return (int)atomic_load_explicit((atomic_int *)p, memory_order_acquire);
+        }
+        static inline void atomic_int_store(int *p, int v) {
+            atomic_store_explicit((atomic_int *)p, v, memory_order_release);
+        }
+    #endif
+
+    """
+    cdef int _cyb_atomic_int_load "atomic_int_load"(int *p) nogil
+    cdef void _cyb_atomic_int_store "atomic_int_store"(int *p, int v) nogil
+
+cdef extern from "<dlfcn.h>":
+    void* _cyb_dlsym "dlsym"(void*, const char*) nogil
+    const void * _cyb_RTLD_DEFAULT "RTLD_DEFAULT"
+
+from libc.stdint cimport (
+    int32_t,
+    int64_t,
+    intptr_t,
+)
+
+import threading as _cyb_threading
+
+cdef int _cyb___py_cupauliprop_init = 0
+cdef dict _cyb_func_ptrs = None
+cdef object _cyb_symbol_lock = _cyb_threading.Lock()
+
+# <<<< END OF PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport uintptr_t
 
 from .._utils import FunctionNotFoundError, NotSupportedError
-
-
-###############################################################################
-# Extern
-###############################################################################
-
-# You must 'from .utils import NotSupportedError' before using this template
-
-cdef extern from "<dlfcn.h>" nogil:
-    void* dlopen(const char*, int)
-    char* dlerror()
-    void* dlsym(void*, const char*)
-    int dlclose(void*)
-
-    enum:
-        RTLD_LAZY
-        RTLD_NOW
-        RTLD_GLOBAL
-        RTLD_LOCAL
-
-    const void* RTLD_DEFAULT 'RTLD_DEFAULT'
-
-cdef int get_cuda_version():
-    cdef void* handle = NULL
-    cdef int err, driver_ver = 0
-
-    # Load driver to check version
-    handle = dlopen('libcuda.so.1', RTLD_NOW | RTLD_GLOBAL)
-    if handle == NULL:
-        err_msg = dlerror()
-        raise NotSupportedError(f'CUDA driver is not found ({err_msg.decode()})')
-    cuDriverGetVersion = dlsym(handle, "cuDriverGetVersion")
-    if cuDriverGetVersion == NULL:
-        raise RuntimeError('Did not find cuDriverGetVersion symbol in libcuda.so.1')
-    err = (<int (*)(int*) noexcept nogil>cuDriverGetVersion)(&driver_ver)
-    if err != 0:
-        raise RuntimeError(f'cuDriverGetVersion returned error code {err}')
-
-    return driver_ver
-
+from cuda.pathfinder import load_nvidia_dynamic_lib
 
 
 ###############################################################################
 # Wrapper init
 ###############################################################################
 
-cdef object __symbol_lock = threading.Lock()
-cdef bint __py_cupauliprop_init = False
 
 cdef void* __cupaulipropGetVersion = NULL
 cdef void* __cupaulipropGetErrorString = NULL
 cdef void* __cupaulipropGetNumPackedIntegers = NULL
 cdef void* __cupaulipropCreate = NULL
 cdef void* __cupaulipropDestroy = NULL
+cdef void* __cupaulipropResetDistributedConfiguration = NULL
+cdef void* __cupaulipropGetNumRanks = NULL
+cdef void* __cupaulipropGetProcRank = NULL
 cdef void* __cupaulipropCreateWorkspaceDescriptor = NULL
 cdef void* __cupaulipropDestroyWorkspaceDescriptor = NULL
 cdef void* __cupaulipropWorkspaceGetMemorySize = NULL
@@ -74,6 +88,7 @@ cdef void* __cupaulipropPauliExpansionGetStorageBuffer = NULL
 cdef void* __cupaulipropPauliExpansionGetNumQubits = NULL
 cdef void* __cupaulipropPauliExpansionGetNumTerms = NULL
 cdef void* __cupaulipropPauliExpansionGetDataType = NULL
+cdef void* __cupaulipropPauliExpansionGetSortOrder = NULL
 cdef void* __cupaulipropPauliExpansionIsDeduplicated = NULL
 cdef void* __cupaulipropPauliExpansionGetTerm = NULL
 cdef void* __cupaulipropPauliExpansionGetContiguousRange = NULL
@@ -83,424 +98,441 @@ cdef void* __cupaulipropPauliExpansionViewGetLocation = NULL
 cdef void* __cupaulipropPauliExpansionViewGetTerm = NULL
 cdef void* __cupaulipropPauliExpansionViewPrepareDeduplication = NULL
 cdef void* __cupaulipropPauliExpansionViewExecuteDeduplication = NULL
+cdef void* __cupaulipropPauliExpansionViewPrepareSort = NULL
+cdef void* __cupaulipropPauliExpansionViewExecuteSort = NULL
 cdef void* __cupaulipropPauliExpansionPopulateFromView = NULL
 cdef void* __cupaulipropPauliExpansionViewPrepareTraceWithExpansionView = NULL
 cdef void* __cupaulipropPauliExpansionViewComputeTraceWithExpansionView = NULL
+cdef void* __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff = NULL
+cdef void* __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff = NULL
 cdef void* __cupaulipropPauliExpansionViewPrepareTraceWithZeroState = NULL
 cdef void* __cupaulipropPauliExpansionViewComputeTraceWithZeroState = NULL
+cdef void* __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff = NULL
+cdef void* __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff = NULL
 cdef void* __cupaulipropPauliExpansionViewPrepareOperatorApplication = NULL
 cdef void* __cupaulipropPauliExpansionViewComputeOperatorApplication = NULL
+cdef void* __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication = NULL
+cdef void* __cupaulipropPauliExpansionViewComputeOperatorFusedApplication = NULL
+cdef void* __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff = NULL
+cdef void* __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff = NULL
 cdef void* __cupaulipropPauliExpansionViewPrepareTruncation = NULL
 cdef void* __cupaulipropPauliExpansionViewExecuteTruncation = NULL
 cdef void* __cupaulipropCreateCliffordGateOperator = NULL
 cdef void* __cupaulipropCreatePauliRotationGateOperator = NULL
 cdef void* __cupaulipropCreatePauliNoiseChannelOperator = NULL
-cdef void* __cupaulipropDestroyOperator = NULL
-cdef void* __cupaulipropPauliExpansionGetSortOrder = NULL
-cdef void* __cupaulipropPauliExpansionViewPrepareSort = NULL
-cdef void* __cupaulipropPauliExpansionViewExecuteSort = NULL
 cdef void* __cupaulipropCreateAmplitudeDampingChannelOperator = NULL
-cdef void* __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff = NULL
-cdef void* __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff = NULL
-cdef void* __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff = NULL
-cdef void* __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff = NULL
-cdef void* __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff = NULL
-cdef void* __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff = NULL
 cdef void* __cupaulipropQuantumOperatorAttachCotangentBuffer = NULL
 cdef void* __cupaulipropQuantumOperatorGetCotangentBuffer = NULL
-cdef void* __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication = NULL
-cdef void* __cupaulipropPauliExpansionViewComputeOperatorFusedApplication = NULL
+cdef void* __cupaulipropDestroyOperator = NULL
 
-
-cdef void* load_library() except* nogil:
-    cdef void* handle
-    handle = dlopen("libcupauliprop.so.0", RTLD_NOW | RTLD_GLOBAL)
-    if handle == NULL:
-        with gil:
-            err_msg = dlerror()
-            raise RuntimeError(f'Failed to dlopen libcupauliprop ({err_msg.decode()})')
-    return handle
-
-
-cdef int _check_or_init_cupauliprop() except -1 nogil:
-    global __py_cupauliprop_init
-    if __py_cupauliprop_init:
-        return 0
-
+cdef int _init_cupauliprop() except -1 nogil:
+    global _cyb___py_cupauliprop_init
     cdef void* handle = NULL
-    with gil, __symbol_lock:
-        # Load function
+    with gil, _cyb_symbol_lock:
+        if _cyb___py_cupauliprop_init: return 0
+
         global __cupaulipropGetVersion
-        __cupaulipropGetVersion = dlsym(RTLD_DEFAULT, 'cupaulipropGetVersion')
+        __cupaulipropGetVersion = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropGetVersion')
         if __cupaulipropGetVersion == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropGetVersion = dlsym(handle, 'cupaulipropGetVersion')
+            __cupaulipropGetVersion = _cyb_dlsym(handle, 'cupaulipropGetVersion')
 
         global __cupaulipropGetErrorString
-        __cupaulipropGetErrorString = dlsym(RTLD_DEFAULT, 'cupaulipropGetErrorString')
+        __cupaulipropGetErrorString = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropGetErrorString')
         if __cupaulipropGetErrorString == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropGetErrorString = dlsym(handle, 'cupaulipropGetErrorString')
+            __cupaulipropGetErrorString = _cyb_dlsym(handle, 'cupaulipropGetErrorString')
 
         global __cupaulipropGetNumPackedIntegers
-        __cupaulipropGetNumPackedIntegers = dlsym(RTLD_DEFAULT, 'cupaulipropGetNumPackedIntegers')
+        __cupaulipropGetNumPackedIntegers = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropGetNumPackedIntegers')
         if __cupaulipropGetNumPackedIntegers == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropGetNumPackedIntegers = dlsym(handle, 'cupaulipropGetNumPackedIntegers')
+            __cupaulipropGetNumPackedIntegers = _cyb_dlsym(handle, 'cupaulipropGetNumPackedIntegers')
 
         global __cupaulipropCreate
-        __cupaulipropCreate = dlsym(RTLD_DEFAULT, 'cupaulipropCreate')
+        __cupaulipropCreate = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropCreate')
         if __cupaulipropCreate == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropCreate = dlsym(handle, 'cupaulipropCreate')
+            __cupaulipropCreate = _cyb_dlsym(handle, 'cupaulipropCreate')
 
         global __cupaulipropDestroy
-        __cupaulipropDestroy = dlsym(RTLD_DEFAULT, 'cupaulipropDestroy')
+        __cupaulipropDestroy = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropDestroy')
         if __cupaulipropDestroy == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropDestroy = dlsym(handle, 'cupaulipropDestroy')
+            __cupaulipropDestroy = _cyb_dlsym(handle, 'cupaulipropDestroy')
+
+        global __cupaulipropResetDistributedConfiguration
+        __cupaulipropResetDistributedConfiguration = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropResetDistributedConfiguration')
+        if __cupaulipropResetDistributedConfiguration == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropResetDistributedConfiguration = _cyb_dlsym(handle, 'cupaulipropResetDistributedConfiguration')
+
+        global __cupaulipropGetNumRanks
+        __cupaulipropGetNumRanks = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropGetNumRanks')
+        if __cupaulipropGetNumRanks == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropGetNumRanks = _cyb_dlsym(handle, 'cupaulipropGetNumRanks')
+
+        global __cupaulipropGetProcRank
+        __cupaulipropGetProcRank = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropGetProcRank')
+        if __cupaulipropGetProcRank == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropGetProcRank = _cyb_dlsym(handle, 'cupaulipropGetProcRank')
 
         global __cupaulipropCreateWorkspaceDescriptor
-        __cupaulipropCreateWorkspaceDescriptor = dlsym(RTLD_DEFAULT, 'cupaulipropCreateWorkspaceDescriptor')
+        __cupaulipropCreateWorkspaceDescriptor = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropCreateWorkspaceDescriptor')
         if __cupaulipropCreateWorkspaceDescriptor == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropCreateWorkspaceDescriptor = dlsym(handle, 'cupaulipropCreateWorkspaceDescriptor')
+            __cupaulipropCreateWorkspaceDescriptor = _cyb_dlsym(handle, 'cupaulipropCreateWorkspaceDescriptor')
 
         global __cupaulipropDestroyWorkspaceDescriptor
-        __cupaulipropDestroyWorkspaceDescriptor = dlsym(RTLD_DEFAULT, 'cupaulipropDestroyWorkspaceDescriptor')
+        __cupaulipropDestroyWorkspaceDescriptor = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropDestroyWorkspaceDescriptor')
         if __cupaulipropDestroyWorkspaceDescriptor == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropDestroyWorkspaceDescriptor = dlsym(handle, 'cupaulipropDestroyWorkspaceDescriptor')
+            __cupaulipropDestroyWorkspaceDescriptor = _cyb_dlsym(handle, 'cupaulipropDestroyWorkspaceDescriptor')
 
         global __cupaulipropWorkspaceGetMemorySize
-        __cupaulipropWorkspaceGetMemorySize = dlsym(RTLD_DEFAULT, 'cupaulipropWorkspaceGetMemorySize')
+        __cupaulipropWorkspaceGetMemorySize = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropWorkspaceGetMemorySize')
         if __cupaulipropWorkspaceGetMemorySize == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropWorkspaceGetMemorySize = dlsym(handle, 'cupaulipropWorkspaceGetMemorySize')
+            __cupaulipropWorkspaceGetMemorySize = _cyb_dlsym(handle, 'cupaulipropWorkspaceGetMemorySize')
 
         global __cupaulipropWorkspaceSetMemory
-        __cupaulipropWorkspaceSetMemory = dlsym(RTLD_DEFAULT, 'cupaulipropWorkspaceSetMemory')
+        __cupaulipropWorkspaceSetMemory = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropWorkspaceSetMemory')
         if __cupaulipropWorkspaceSetMemory == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropWorkspaceSetMemory = dlsym(handle, 'cupaulipropWorkspaceSetMemory')
+            __cupaulipropWorkspaceSetMemory = _cyb_dlsym(handle, 'cupaulipropWorkspaceSetMemory')
 
         global __cupaulipropWorkspaceGetMemory
-        __cupaulipropWorkspaceGetMemory = dlsym(RTLD_DEFAULT, 'cupaulipropWorkspaceGetMemory')
+        __cupaulipropWorkspaceGetMemory = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropWorkspaceGetMemory')
         if __cupaulipropWorkspaceGetMemory == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropWorkspaceGetMemory = dlsym(handle, 'cupaulipropWorkspaceGetMemory')
+            __cupaulipropWorkspaceGetMemory = _cyb_dlsym(handle, 'cupaulipropWorkspaceGetMemory')
 
         global __cupaulipropCreatePauliExpansion
-        __cupaulipropCreatePauliExpansion = dlsym(RTLD_DEFAULT, 'cupaulipropCreatePauliExpansion')
+        __cupaulipropCreatePauliExpansion = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropCreatePauliExpansion')
         if __cupaulipropCreatePauliExpansion == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropCreatePauliExpansion = dlsym(handle, 'cupaulipropCreatePauliExpansion')
+            __cupaulipropCreatePauliExpansion = _cyb_dlsym(handle, 'cupaulipropCreatePauliExpansion')
 
         global __cupaulipropDestroyPauliExpansion
-        __cupaulipropDestroyPauliExpansion = dlsym(RTLD_DEFAULT, 'cupaulipropDestroyPauliExpansion')
+        __cupaulipropDestroyPauliExpansion = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropDestroyPauliExpansion')
         if __cupaulipropDestroyPauliExpansion == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropDestroyPauliExpansion = dlsym(handle, 'cupaulipropDestroyPauliExpansion')
+            __cupaulipropDestroyPauliExpansion = _cyb_dlsym(handle, 'cupaulipropDestroyPauliExpansion')
 
         global __cupaulipropPauliExpansionGetStorageBuffer
-        __cupaulipropPauliExpansionGetStorageBuffer = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionGetStorageBuffer')
+        __cupaulipropPauliExpansionGetStorageBuffer = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionGetStorageBuffer')
         if __cupaulipropPauliExpansionGetStorageBuffer == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionGetStorageBuffer = dlsym(handle, 'cupaulipropPauliExpansionGetStorageBuffer')
+            __cupaulipropPauliExpansionGetStorageBuffer = _cyb_dlsym(handle, 'cupaulipropPauliExpansionGetStorageBuffer')
 
         global __cupaulipropPauliExpansionGetNumQubits
-        __cupaulipropPauliExpansionGetNumQubits = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionGetNumQubits')
+        __cupaulipropPauliExpansionGetNumQubits = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionGetNumQubits')
         if __cupaulipropPauliExpansionGetNumQubits == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionGetNumQubits = dlsym(handle, 'cupaulipropPauliExpansionGetNumQubits')
+            __cupaulipropPauliExpansionGetNumQubits = _cyb_dlsym(handle, 'cupaulipropPauliExpansionGetNumQubits')
 
         global __cupaulipropPauliExpansionGetNumTerms
-        __cupaulipropPauliExpansionGetNumTerms = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionGetNumTerms')
+        __cupaulipropPauliExpansionGetNumTerms = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionGetNumTerms')
         if __cupaulipropPauliExpansionGetNumTerms == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionGetNumTerms = dlsym(handle, 'cupaulipropPauliExpansionGetNumTerms')
+            __cupaulipropPauliExpansionGetNumTerms = _cyb_dlsym(handle, 'cupaulipropPauliExpansionGetNumTerms')
 
         global __cupaulipropPauliExpansionGetDataType
-        __cupaulipropPauliExpansionGetDataType = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionGetDataType')
+        __cupaulipropPauliExpansionGetDataType = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionGetDataType')
         if __cupaulipropPauliExpansionGetDataType == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionGetDataType = dlsym(handle, 'cupaulipropPauliExpansionGetDataType')
-
-        global __cupaulipropPauliExpansionIsDeduplicated
-        __cupaulipropPauliExpansionIsDeduplicated = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionIsDeduplicated')
-        if __cupaulipropPauliExpansionIsDeduplicated == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionIsDeduplicated = dlsym(handle, 'cupaulipropPauliExpansionIsDeduplicated')
-
-        global __cupaulipropPauliExpansionGetTerm
-        __cupaulipropPauliExpansionGetTerm = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionGetTerm')
-        if __cupaulipropPauliExpansionGetTerm == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionGetTerm = dlsym(handle, 'cupaulipropPauliExpansionGetTerm')
-
-        global __cupaulipropPauliExpansionGetContiguousRange
-        __cupaulipropPauliExpansionGetContiguousRange = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionGetContiguousRange')
-        if __cupaulipropPauliExpansionGetContiguousRange == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionGetContiguousRange = dlsym(handle, 'cupaulipropPauliExpansionGetContiguousRange')
-
-        global __cupaulipropDestroyPauliExpansionView
-        __cupaulipropDestroyPauliExpansionView = dlsym(RTLD_DEFAULT, 'cupaulipropDestroyPauliExpansionView')
-        if __cupaulipropDestroyPauliExpansionView == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropDestroyPauliExpansionView = dlsym(handle, 'cupaulipropDestroyPauliExpansionView')
-
-        global __cupaulipropPauliExpansionViewGetNumTerms
-        __cupaulipropPauliExpansionViewGetNumTerms = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewGetNumTerms')
-        if __cupaulipropPauliExpansionViewGetNumTerms == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionViewGetNumTerms = dlsym(handle, 'cupaulipropPauliExpansionViewGetNumTerms')
-
-        global __cupaulipropPauliExpansionViewGetLocation
-        __cupaulipropPauliExpansionViewGetLocation = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewGetLocation')
-        if __cupaulipropPauliExpansionViewGetLocation == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionViewGetLocation = dlsym(handle, 'cupaulipropPauliExpansionViewGetLocation')
-
-        global __cupaulipropPauliExpansionViewGetTerm
-        __cupaulipropPauliExpansionViewGetTerm = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewGetTerm')
-        if __cupaulipropPauliExpansionViewGetTerm == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionViewGetTerm = dlsym(handle, 'cupaulipropPauliExpansionViewGetTerm')
-
-        global __cupaulipropPauliExpansionViewPrepareDeduplication
-        __cupaulipropPauliExpansionViewPrepareDeduplication = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareDeduplication')
-        if __cupaulipropPauliExpansionViewPrepareDeduplication == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionViewPrepareDeduplication = dlsym(handle, 'cupaulipropPauliExpansionViewPrepareDeduplication')
-
-        global __cupaulipropPauliExpansionViewExecuteDeduplication
-        __cupaulipropPauliExpansionViewExecuteDeduplication = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewExecuteDeduplication')
-        if __cupaulipropPauliExpansionViewExecuteDeduplication == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionViewExecuteDeduplication = dlsym(handle, 'cupaulipropPauliExpansionViewExecuteDeduplication')
-
-        global __cupaulipropPauliExpansionPopulateFromView
-        __cupaulipropPauliExpansionPopulateFromView = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionPopulateFromView')
-        if __cupaulipropPauliExpansionPopulateFromView == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionPopulateFromView = dlsym(handle, 'cupaulipropPauliExpansionPopulateFromView')
-
-        global __cupaulipropPauliExpansionViewPrepareTraceWithExpansionView
-        __cupaulipropPauliExpansionViewPrepareTraceWithExpansionView = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareTraceWithExpansionView')
-        if __cupaulipropPauliExpansionViewPrepareTraceWithExpansionView == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionViewPrepareTraceWithExpansionView = dlsym(handle, 'cupaulipropPauliExpansionViewPrepareTraceWithExpansionView')
-
-        global __cupaulipropPauliExpansionViewComputeTraceWithExpansionView
-        __cupaulipropPauliExpansionViewComputeTraceWithExpansionView = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeTraceWithExpansionView')
-        if __cupaulipropPauliExpansionViewComputeTraceWithExpansionView == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionViewComputeTraceWithExpansionView = dlsym(handle, 'cupaulipropPauliExpansionViewComputeTraceWithExpansionView')
-
-        global __cupaulipropPauliExpansionViewPrepareTraceWithZeroState
-        __cupaulipropPauliExpansionViewPrepareTraceWithZeroState = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareTraceWithZeroState')
-        if __cupaulipropPauliExpansionViewPrepareTraceWithZeroState == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionViewPrepareTraceWithZeroState = dlsym(handle, 'cupaulipropPauliExpansionViewPrepareTraceWithZeroState')
-
-        global __cupaulipropPauliExpansionViewComputeTraceWithZeroState
-        __cupaulipropPauliExpansionViewComputeTraceWithZeroState = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeTraceWithZeroState')
-        if __cupaulipropPauliExpansionViewComputeTraceWithZeroState == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionViewComputeTraceWithZeroState = dlsym(handle, 'cupaulipropPauliExpansionViewComputeTraceWithZeroState')
-
-        global __cupaulipropPauliExpansionViewPrepareOperatorApplication
-        __cupaulipropPauliExpansionViewPrepareOperatorApplication = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareOperatorApplication')
-        if __cupaulipropPauliExpansionViewPrepareOperatorApplication == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionViewPrepareOperatorApplication = dlsym(handle, 'cupaulipropPauliExpansionViewPrepareOperatorApplication')
-
-        global __cupaulipropPauliExpansionViewComputeOperatorApplication
-        __cupaulipropPauliExpansionViewComputeOperatorApplication = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeOperatorApplication')
-        if __cupaulipropPauliExpansionViewComputeOperatorApplication == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionViewComputeOperatorApplication = dlsym(handle, 'cupaulipropPauliExpansionViewComputeOperatorApplication')
-
-        global __cupaulipropPauliExpansionViewPrepareTruncation
-        __cupaulipropPauliExpansionViewPrepareTruncation = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareTruncation')
-        if __cupaulipropPauliExpansionViewPrepareTruncation == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionViewPrepareTruncation = dlsym(handle, 'cupaulipropPauliExpansionViewPrepareTruncation')
-
-        global __cupaulipropPauliExpansionViewExecuteTruncation
-        __cupaulipropPauliExpansionViewExecuteTruncation = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewExecuteTruncation')
-        if __cupaulipropPauliExpansionViewExecuteTruncation == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropPauliExpansionViewExecuteTruncation = dlsym(handle, 'cupaulipropPauliExpansionViewExecuteTruncation')
-
-        global __cupaulipropCreateCliffordGateOperator
-        __cupaulipropCreateCliffordGateOperator = dlsym(RTLD_DEFAULT, 'cupaulipropCreateCliffordGateOperator')
-        if __cupaulipropCreateCliffordGateOperator == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropCreateCliffordGateOperator = dlsym(handle, 'cupaulipropCreateCliffordGateOperator')
-
-        global __cupaulipropCreatePauliRotationGateOperator
-        __cupaulipropCreatePauliRotationGateOperator = dlsym(RTLD_DEFAULT, 'cupaulipropCreatePauliRotationGateOperator')
-        if __cupaulipropCreatePauliRotationGateOperator == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropCreatePauliRotationGateOperator = dlsym(handle, 'cupaulipropCreatePauliRotationGateOperator')
-
-        global __cupaulipropCreatePauliNoiseChannelOperator
-        __cupaulipropCreatePauliNoiseChannelOperator = dlsym(RTLD_DEFAULT, 'cupaulipropCreatePauliNoiseChannelOperator')
-        if __cupaulipropCreatePauliNoiseChannelOperator == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropCreatePauliNoiseChannelOperator = dlsym(handle, 'cupaulipropCreatePauliNoiseChannelOperator')
-
-        global __cupaulipropDestroyOperator
-        __cupaulipropDestroyOperator = dlsym(RTLD_DEFAULT, 'cupaulipropDestroyOperator')
-        if __cupaulipropDestroyOperator == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropDestroyOperator = dlsym(handle, 'cupaulipropDestroyOperator')
+            __cupaulipropPauliExpansionGetDataType = _cyb_dlsym(handle, 'cupaulipropPauliExpansionGetDataType')
 
         global __cupaulipropPauliExpansionGetSortOrder
-        __cupaulipropPauliExpansionGetSortOrder = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionGetSortOrder')
+        __cupaulipropPauliExpansionGetSortOrder = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionGetSortOrder')
         if __cupaulipropPauliExpansionGetSortOrder == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionGetSortOrder = dlsym(handle, 'cupaulipropPauliExpansionGetSortOrder')
+            __cupaulipropPauliExpansionGetSortOrder = _cyb_dlsym(handle, 'cupaulipropPauliExpansionGetSortOrder')
+
+        global __cupaulipropPauliExpansionIsDeduplicated
+        __cupaulipropPauliExpansionIsDeduplicated = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionIsDeduplicated')
+        if __cupaulipropPauliExpansionIsDeduplicated == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionIsDeduplicated = _cyb_dlsym(handle, 'cupaulipropPauliExpansionIsDeduplicated')
+
+        global __cupaulipropPauliExpansionGetTerm
+        __cupaulipropPauliExpansionGetTerm = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionGetTerm')
+        if __cupaulipropPauliExpansionGetTerm == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionGetTerm = _cyb_dlsym(handle, 'cupaulipropPauliExpansionGetTerm')
+
+        global __cupaulipropPauliExpansionGetContiguousRange
+        __cupaulipropPauliExpansionGetContiguousRange = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionGetContiguousRange')
+        if __cupaulipropPauliExpansionGetContiguousRange == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionGetContiguousRange = _cyb_dlsym(handle, 'cupaulipropPauliExpansionGetContiguousRange')
+
+        global __cupaulipropDestroyPauliExpansionView
+        __cupaulipropDestroyPauliExpansionView = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropDestroyPauliExpansionView')
+        if __cupaulipropDestroyPauliExpansionView == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropDestroyPauliExpansionView = _cyb_dlsym(handle, 'cupaulipropDestroyPauliExpansionView')
+
+        global __cupaulipropPauliExpansionViewGetNumTerms
+        __cupaulipropPauliExpansionViewGetNumTerms = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewGetNumTerms')
+        if __cupaulipropPauliExpansionViewGetNumTerms == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionViewGetNumTerms = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewGetNumTerms')
+
+        global __cupaulipropPauliExpansionViewGetLocation
+        __cupaulipropPauliExpansionViewGetLocation = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewGetLocation')
+        if __cupaulipropPauliExpansionViewGetLocation == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionViewGetLocation = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewGetLocation')
+
+        global __cupaulipropPauliExpansionViewGetTerm
+        __cupaulipropPauliExpansionViewGetTerm = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewGetTerm')
+        if __cupaulipropPauliExpansionViewGetTerm == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionViewGetTerm = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewGetTerm')
+
+        global __cupaulipropPauliExpansionViewPrepareDeduplication
+        __cupaulipropPauliExpansionViewPrepareDeduplication = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareDeduplication')
+        if __cupaulipropPauliExpansionViewPrepareDeduplication == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionViewPrepareDeduplication = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewPrepareDeduplication')
+
+        global __cupaulipropPauliExpansionViewExecuteDeduplication
+        __cupaulipropPauliExpansionViewExecuteDeduplication = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewExecuteDeduplication')
+        if __cupaulipropPauliExpansionViewExecuteDeduplication == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionViewExecuteDeduplication = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewExecuteDeduplication')
 
         global __cupaulipropPauliExpansionViewPrepareSort
-        __cupaulipropPauliExpansionViewPrepareSort = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareSort')
+        __cupaulipropPauliExpansionViewPrepareSort = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareSort')
         if __cupaulipropPauliExpansionViewPrepareSort == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionViewPrepareSort = dlsym(handle, 'cupaulipropPauliExpansionViewPrepareSort')
+            __cupaulipropPauliExpansionViewPrepareSort = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewPrepareSort')
 
         global __cupaulipropPauliExpansionViewExecuteSort
-        __cupaulipropPauliExpansionViewExecuteSort = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewExecuteSort')
+        __cupaulipropPauliExpansionViewExecuteSort = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewExecuteSort')
         if __cupaulipropPauliExpansionViewExecuteSort == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionViewExecuteSort = dlsym(handle, 'cupaulipropPauliExpansionViewExecuteSort')
+            __cupaulipropPauliExpansionViewExecuteSort = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewExecuteSort')
 
-        global __cupaulipropCreateAmplitudeDampingChannelOperator
-        __cupaulipropCreateAmplitudeDampingChannelOperator = dlsym(RTLD_DEFAULT, 'cupaulipropCreateAmplitudeDampingChannelOperator')
-        if __cupaulipropCreateAmplitudeDampingChannelOperator == NULL:
+        global __cupaulipropPauliExpansionPopulateFromView
+        __cupaulipropPauliExpansionPopulateFromView = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionPopulateFromView')
+        if __cupaulipropPauliExpansionPopulateFromView == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropCreateAmplitudeDampingChannelOperator = dlsym(handle, 'cupaulipropCreateAmplitudeDampingChannelOperator')
+            __cupaulipropPauliExpansionPopulateFromView = _cyb_dlsym(handle, 'cupaulipropPauliExpansionPopulateFromView')
+
+        global __cupaulipropPauliExpansionViewPrepareTraceWithExpansionView
+        __cupaulipropPauliExpansionViewPrepareTraceWithExpansionView = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareTraceWithExpansionView')
+        if __cupaulipropPauliExpansionViewPrepareTraceWithExpansionView == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionViewPrepareTraceWithExpansionView = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewPrepareTraceWithExpansionView')
+
+        global __cupaulipropPauliExpansionViewComputeTraceWithExpansionView
+        __cupaulipropPauliExpansionViewComputeTraceWithExpansionView = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeTraceWithExpansionView')
+        if __cupaulipropPauliExpansionViewComputeTraceWithExpansionView == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionViewComputeTraceWithExpansionView = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewComputeTraceWithExpansionView')
 
         global __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff
-        __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff')
+        __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff')
         if __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff = dlsym(handle, 'cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff')
+            __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff')
 
         global __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff
-        __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff')
+        __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff')
         if __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff = dlsym(handle, 'cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff')
+            __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff')
+
+        global __cupaulipropPauliExpansionViewPrepareTraceWithZeroState
+        __cupaulipropPauliExpansionViewPrepareTraceWithZeroState = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareTraceWithZeroState')
+        if __cupaulipropPauliExpansionViewPrepareTraceWithZeroState == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionViewPrepareTraceWithZeroState = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewPrepareTraceWithZeroState')
+
+        global __cupaulipropPauliExpansionViewComputeTraceWithZeroState
+        __cupaulipropPauliExpansionViewComputeTraceWithZeroState = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeTraceWithZeroState')
+        if __cupaulipropPauliExpansionViewComputeTraceWithZeroState == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionViewComputeTraceWithZeroState = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewComputeTraceWithZeroState')
 
         global __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff
-        __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff')
+        __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff')
         if __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff = dlsym(handle, 'cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff')
+            __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff')
 
         global __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff
-        __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff')
+        __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff')
         if __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff = dlsym(handle, 'cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff')
+            __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff')
 
-        global __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff
-        __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff')
-        if __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff == NULL:
+        global __cupaulipropPauliExpansionViewPrepareOperatorApplication
+        __cupaulipropPauliExpansionViewPrepareOperatorApplication = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareOperatorApplication')
+        if __cupaulipropPauliExpansionViewPrepareOperatorApplication == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff = dlsym(handle, 'cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff')
+            __cupaulipropPauliExpansionViewPrepareOperatorApplication = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewPrepareOperatorApplication')
 
-        global __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff
-        __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff')
-        if __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff == NULL:
+        global __cupaulipropPauliExpansionViewComputeOperatorApplication
+        __cupaulipropPauliExpansionViewComputeOperatorApplication = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeOperatorApplication')
+        if __cupaulipropPauliExpansionViewComputeOperatorApplication == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff = dlsym(handle, 'cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff')
-
-        global __cupaulipropQuantumOperatorAttachCotangentBuffer
-        __cupaulipropQuantumOperatorAttachCotangentBuffer = dlsym(RTLD_DEFAULT, 'cupaulipropQuantumOperatorAttachCotangentBuffer')
-        if __cupaulipropQuantumOperatorAttachCotangentBuffer == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropQuantumOperatorAttachCotangentBuffer = dlsym(handle, 'cupaulipropQuantumOperatorAttachCotangentBuffer')
-
-        global __cupaulipropQuantumOperatorGetCotangentBuffer
-        __cupaulipropQuantumOperatorGetCotangentBuffer = dlsym(RTLD_DEFAULT, 'cupaulipropQuantumOperatorGetCotangentBuffer')
-        if __cupaulipropQuantumOperatorGetCotangentBuffer == NULL:
-            if handle == NULL:
-                handle = load_library()
-            __cupaulipropQuantumOperatorGetCotangentBuffer = dlsym(handle, 'cupaulipropQuantumOperatorGetCotangentBuffer')
+            __cupaulipropPauliExpansionViewComputeOperatorApplication = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewComputeOperatorApplication')
 
         global __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication
-        __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareOperatorFusedApplication')
+        __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareOperatorFusedApplication')
         if __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication = dlsym(handle, 'cupaulipropPauliExpansionViewPrepareOperatorFusedApplication')
+            __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewPrepareOperatorFusedApplication')
 
         global __cupaulipropPauliExpansionViewComputeOperatorFusedApplication
-        __cupaulipropPauliExpansionViewComputeOperatorFusedApplication = dlsym(RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeOperatorFusedApplication')
+        __cupaulipropPauliExpansionViewComputeOperatorFusedApplication = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeOperatorFusedApplication')
         if __cupaulipropPauliExpansionViewComputeOperatorFusedApplication == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cupaulipropPauliExpansionViewComputeOperatorFusedApplication = dlsym(handle, 'cupaulipropPauliExpansionViewComputeOperatorFusedApplication')
-        __py_cupauliprop_init = True
+            __cupaulipropPauliExpansionViewComputeOperatorFusedApplication = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewComputeOperatorFusedApplication')
+
+        global __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff
+        __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff')
+        if __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff')
+
+        global __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff
+        __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff')
+        if __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff')
+
+        global __cupaulipropPauliExpansionViewPrepareTruncation
+        __cupaulipropPauliExpansionViewPrepareTruncation = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewPrepareTruncation')
+        if __cupaulipropPauliExpansionViewPrepareTruncation == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionViewPrepareTruncation = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewPrepareTruncation')
+
+        global __cupaulipropPauliExpansionViewExecuteTruncation
+        __cupaulipropPauliExpansionViewExecuteTruncation = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropPauliExpansionViewExecuteTruncation')
+        if __cupaulipropPauliExpansionViewExecuteTruncation == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropPauliExpansionViewExecuteTruncation = _cyb_dlsym(handle, 'cupaulipropPauliExpansionViewExecuteTruncation')
+
+        global __cupaulipropCreateCliffordGateOperator
+        __cupaulipropCreateCliffordGateOperator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropCreateCliffordGateOperator')
+        if __cupaulipropCreateCliffordGateOperator == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropCreateCliffordGateOperator = _cyb_dlsym(handle, 'cupaulipropCreateCliffordGateOperator')
+
+        global __cupaulipropCreatePauliRotationGateOperator
+        __cupaulipropCreatePauliRotationGateOperator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropCreatePauliRotationGateOperator')
+        if __cupaulipropCreatePauliRotationGateOperator == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropCreatePauliRotationGateOperator = _cyb_dlsym(handle, 'cupaulipropCreatePauliRotationGateOperator')
+
+        global __cupaulipropCreatePauliNoiseChannelOperator
+        __cupaulipropCreatePauliNoiseChannelOperator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropCreatePauliNoiseChannelOperator')
+        if __cupaulipropCreatePauliNoiseChannelOperator == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropCreatePauliNoiseChannelOperator = _cyb_dlsym(handle, 'cupaulipropCreatePauliNoiseChannelOperator')
+
+        global __cupaulipropCreateAmplitudeDampingChannelOperator
+        __cupaulipropCreateAmplitudeDampingChannelOperator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropCreateAmplitudeDampingChannelOperator')
+        if __cupaulipropCreateAmplitudeDampingChannelOperator == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropCreateAmplitudeDampingChannelOperator = _cyb_dlsym(handle, 'cupaulipropCreateAmplitudeDampingChannelOperator')
+
+        global __cupaulipropQuantumOperatorAttachCotangentBuffer
+        __cupaulipropQuantumOperatorAttachCotangentBuffer = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropQuantumOperatorAttachCotangentBuffer')
+        if __cupaulipropQuantumOperatorAttachCotangentBuffer == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropQuantumOperatorAttachCotangentBuffer = _cyb_dlsym(handle, 'cupaulipropQuantumOperatorAttachCotangentBuffer')
+
+        global __cupaulipropQuantumOperatorGetCotangentBuffer
+        __cupaulipropQuantumOperatorGetCotangentBuffer = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropQuantumOperatorGetCotangentBuffer')
+        if __cupaulipropQuantumOperatorGetCotangentBuffer == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropQuantumOperatorGetCotangentBuffer = _cyb_dlsym(handle, 'cupaulipropQuantumOperatorGetCotangentBuffer')
+
+        global __cupaulipropDestroyOperator
+        __cupaulipropDestroyOperator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cupaulipropDestroyOperator')
+        if __cupaulipropDestroyOperator == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cupaulipropDestroyOperator = _cyb_dlsym(handle, 'cupaulipropDestroyOperator')
+
+        _cyb_atomic_int_store(<int *>&_cyb___py_cupauliprop_init, 1)
         return 0
+
+cdef inline int _check_or_init_cupauliprop() except -1 nogil:
+    if _cyb_atomic_int_load(<int *>&_cyb___py_cupauliprop_init):
+        return 0
+
+    return _init_cupauliprop()
 
 
 cpdef dict _inspect_function_pointers():
+    global _cyb_func_ptrs
+    if _cyb_func_ptrs is not None:
+        return _cyb_func_ptrs
+
     _check_or_init_cupauliprop()
     cdef dict data = {}
-
     global __cupaulipropGetVersion
     data["__cupaulipropGetVersion"] = <intptr_t>__cupaulipropGetVersion
 
@@ -515,6 +547,15 @@ cpdef dict _inspect_function_pointers():
 
     global __cupaulipropDestroy
     data["__cupaulipropDestroy"] = <intptr_t>__cupaulipropDestroy
+
+    global __cupaulipropResetDistributedConfiguration
+    data["__cupaulipropResetDistributedConfiguration"] = <intptr_t>__cupaulipropResetDistributedConfiguration
+
+    global __cupaulipropGetNumRanks
+    data["__cupaulipropGetNumRanks"] = <intptr_t>__cupaulipropGetNumRanks
+
+    global __cupaulipropGetProcRank
+    data["__cupaulipropGetProcRank"] = <intptr_t>__cupaulipropGetProcRank
 
     global __cupaulipropCreateWorkspaceDescriptor
     data["__cupaulipropCreateWorkspaceDescriptor"] = <intptr_t>__cupaulipropCreateWorkspaceDescriptor
@@ -549,6 +590,9 @@ cpdef dict _inspect_function_pointers():
     global __cupaulipropPauliExpansionGetDataType
     data["__cupaulipropPauliExpansionGetDataType"] = <intptr_t>__cupaulipropPauliExpansionGetDataType
 
+    global __cupaulipropPauliExpansionGetSortOrder
+    data["__cupaulipropPauliExpansionGetSortOrder"] = <intptr_t>__cupaulipropPauliExpansionGetSortOrder
+
     global __cupaulipropPauliExpansionIsDeduplicated
     data["__cupaulipropPauliExpansionIsDeduplicated"] = <intptr_t>__cupaulipropPauliExpansionIsDeduplicated
 
@@ -576,6 +620,12 @@ cpdef dict _inspect_function_pointers():
     global __cupaulipropPauliExpansionViewExecuteDeduplication
     data["__cupaulipropPauliExpansionViewExecuteDeduplication"] = <intptr_t>__cupaulipropPauliExpansionViewExecuteDeduplication
 
+    global __cupaulipropPauliExpansionViewPrepareSort
+    data["__cupaulipropPauliExpansionViewPrepareSort"] = <intptr_t>__cupaulipropPauliExpansionViewPrepareSort
+
+    global __cupaulipropPauliExpansionViewExecuteSort
+    data["__cupaulipropPauliExpansionViewExecuteSort"] = <intptr_t>__cupaulipropPauliExpansionViewExecuteSort
+
     global __cupaulipropPauliExpansionPopulateFromView
     data["__cupaulipropPauliExpansionPopulateFromView"] = <intptr_t>__cupaulipropPauliExpansionPopulateFromView
 
@@ -585,17 +635,41 @@ cpdef dict _inspect_function_pointers():
     global __cupaulipropPauliExpansionViewComputeTraceWithExpansionView
     data["__cupaulipropPauliExpansionViewComputeTraceWithExpansionView"] = <intptr_t>__cupaulipropPauliExpansionViewComputeTraceWithExpansionView
 
+    global __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff
+    data["__cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff"] = <intptr_t>__cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff
+
+    global __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff
+    data["__cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff"] = <intptr_t>__cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff
+
     global __cupaulipropPauliExpansionViewPrepareTraceWithZeroState
     data["__cupaulipropPauliExpansionViewPrepareTraceWithZeroState"] = <intptr_t>__cupaulipropPauliExpansionViewPrepareTraceWithZeroState
 
     global __cupaulipropPauliExpansionViewComputeTraceWithZeroState
     data["__cupaulipropPauliExpansionViewComputeTraceWithZeroState"] = <intptr_t>__cupaulipropPauliExpansionViewComputeTraceWithZeroState
 
+    global __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff
+    data["__cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff"] = <intptr_t>__cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff
+
+    global __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff
+    data["__cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff"] = <intptr_t>__cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff
+
     global __cupaulipropPauliExpansionViewPrepareOperatorApplication
     data["__cupaulipropPauliExpansionViewPrepareOperatorApplication"] = <intptr_t>__cupaulipropPauliExpansionViewPrepareOperatorApplication
 
     global __cupaulipropPauliExpansionViewComputeOperatorApplication
     data["__cupaulipropPauliExpansionViewComputeOperatorApplication"] = <intptr_t>__cupaulipropPauliExpansionViewComputeOperatorApplication
+
+    global __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication
+    data["__cupaulipropPauliExpansionViewPrepareOperatorFusedApplication"] = <intptr_t>__cupaulipropPauliExpansionViewPrepareOperatorFusedApplication
+
+    global __cupaulipropPauliExpansionViewComputeOperatorFusedApplication
+    data["__cupaulipropPauliExpansionViewComputeOperatorFusedApplication"] = <intptr_t>__cupaulipropPauliExpansionViewComputeOperatorFusedApplication
+
+    global __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff
+    data["__cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff"] = <intptr_t>__cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff
+
+    global __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff
+    data["__cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff"] = <intptr_t>__cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff
 
     global __cupaulipropPauliExpansionViewPrepareTruncation
     data["__cupaulipropPauliExpansionViewPrepareTruncation"] = <intptr_t>__cupaulipropPauliExpansionViewPrepareTruncation
@@ -612,38 +686,8 @@ cpdef dict _inspect_function_pointers():
     global __cupaulipropCreatePauliNoiseChannelOperator
     data["__cupaulipropCreatePauliNoiseChannelOperator"] = <intptr_t>__cupaulipropCreatePauliNoiseChannelOperator
 
-    global __cupaulipropDestroyOperator
-    data["__cupaulipropDestroyOperator"] = <intptr_t>__cupaulipropDestroyOperator
-
-    global __cupaulipropPauliExpansionGetSortOrder
-    data["__cupaulipropPauliExpansionGetSortOrder"] = <intptr_t>__cupaulipropPauliExpansionGetSortOrder
-
-    global __cupaulipropPauliExpansionViewPrepareSort
-    data["__cupaulipropPauliExpansionViewPrepareSort"] = <intptr_t>__cupaulipropPauliExpansionViewPrepareSort
-
-    global __cupaulipropPauliExpansionViewExecuteSort
-    data["__cupaulipropPauliExpansionViewExecuteSort"] = <intptr_t>__cupaulipropPauliExpansionViewExecuteSort
-
     global __cupaulipropCreateAmplitudeDampingChannelOperator
     data["__cupaulipropCreateAmplitudeDampingChannelOperator"] = <intptr_t>__cupaulipropCreateAmplitudeDampingChannelOperator
-
-    global __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff
-    data["__cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff"] = <intptr_t>__cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff
-
-    global __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff
-    data["__cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff"] = <intptr_t>__cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff
-
-    global __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff
-    data["__cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff"] = <intptr_t>__cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff
-
-    global __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff
-    data["__cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff"] = <intptr_t>__cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff
-
-    global __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff
-    data["__cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff"] = <intptr_t>__cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff
-
-    global __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff
-    data["__cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff"] = <intptr_t>__cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff
 
     global __cupaulipropQuantumOperatorAttachCotangentBuffer
     data["__cupaulipropQuantumOperatorAttachCotangentBuffer"] = <intptr_t>__cupaulipropQuantumOperatorAttachCotangentBuffer
@@ -651,13 +695,24 @@ cpdef dict _inspect_function_pointers():
     global __cupaulipropQuantumOperatorGetCotangentBuffer
     data["__cupaulipropQuantumOperatorGetCotangentBuffer"] = <intptr_t>__cupaulipropQuantumOperatorGetCotangentBuffer
 
-    global __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication
-    data["__cupaulipropPauliExpansionViewPrepareOperatorFusedApplication"] = <intptr_t>__cupaulipropPauliExpansionViewPrepareOperatorFusedApplication
-
-    global __cupaulipropPauliExpansionViewComputeOperatorFusedApplication
-    data["__cupaulipropPauliExpansionViewComputeOperatorFusedApplication"] = <intptr_t>__cupaulipropPauliExpansionViewComputeOperatorFusedApplication
-
+    global __cupaulipropDestroyOperator
+    data["__cupaulipropDestroyOperator"] = <intptr_t>__cupaulipropDestroyOperator
+    _cyb_func_ptrs = data
     return data
+
+
+cpdef _inspect_function_pointer(str name):
+    global _cyb_func_ptrs
+    if _cyb_func_ptrs is None:
+        _cyb_func_ptrs = _inspect_function_pointers()
+    return _cyb_func_ptrs[name]
+
+
+
+
+cdef void* load_library() except* with gil:
+    cdef uintptr_t handle = load_nvidia_dynamic_lib("cupauliprop")._handle_uint
+    return <void*>handle
 
 
 ###############################################################################
@@ -714,6 +769,36 @@ cdef cupaulipropStatus_t _cupaulipropDestroy(cupaulipropHandle_t handle) except?
         handle)
 
 
+cdef cupaulipropStatus_t _cupaulipropResetDistributedConfiguration(cupaulipropHandle_t handle, cupaulipropDistributedProvider_t provider, const void* commPtr, size_t commSize) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropResetDistributedConfiguration
+    _check_or_init_cupauliprop()
+    if __cupaulipropResetDistributedConfiguration == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropResetDistributedConfiguration is not found")
+    return (<cupaulipropStatus_t (*)(cupaulipropHandle_t, cupaulipropDistributedProvider_t, const void*, size_t) noexcept nogil>__cupaulipropResetDistributedConfiguration)(
+        handle, provider, commPtr, commSize)
+
+
+cdef cupaulipropStatus_t _cupaulipropGetNumRanks(const cupaulipropHandle_t handle, int32_t* numRanks) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropGetNumRanks
+    _check_or_init_cupauliprop()
+    if __cupaulipropGetNumRanks == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropGetNumRanks is not found")
+    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, int32_t*) noexcept nogil>__cupaulipropGetNumRanks)(
+        handle, numRanks)
+
+
+cdef cupaulipropStatus_t _cupaulipropGetProcRank(const cupaulipropHandle_t handle, int32_t* procRank) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropGetProcRank
+    _check_or_init_cupauliprop()
+    if __cupaulipropGetProcRank == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropGetProcRank is not found")
+    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, int32_t*) noexcept nogil>__cupaulipropGetProcRank)(
+        handle, procRank)
+
+
 cdef cupaulipropStatus_t _cupaulipropCreateWorkspaceDescriptor(cupaulipropHandle_t handle, cupaulipropWorkspaceDescriptor_t* workspaceDesc) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     global __cupaulipropCreateWorkspaceDescriptor
     _check_or_init_cupauliprop()
@@ -764,14 +849,14 @@ cdef cupaulipropStatus_t _cupaulipropWorkspaceGetMemory(const cupaulipropHandle_
         handle, workspaceDescr, memSpace, workspaceKind, memoryBuffer, memoryBufferSize)
 
 
-cdef cupaulipropStatus_t _cupaulipropCreatePauliExpansion(const cupaulipropHandle_t handle, int32_t numQubits, void* xzBitsBuffer, int64_t xzBitsBufferSize, void* coefBuffer, int64_t coefBufferSize, cudaDataType_t dataType, int64_t numTerms, cupaulipropSortOrder_t sortOrder, int32_t hasDuplicates, cupaulipropPauliExpansion_t* pauliExpansion) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+cdef cupaulipropStatus_t _cupaulipropCreatePauliExpansion(const cupaulipropHandle_t handle, int32_t numQubits, void* xzBitsBuffer, int64_t xzBitsBufferSize, void* coefBuffer, int64_t coefBufferSize, cudaDataType_t dataType, int64_t numLocalTerms, cupaulipropSortOrder_t sortOrder, int32_t hasDuplicates, cupaulipropPauliExpansion_t* pauliExpansion) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     global __cupaulipropCreatePauliExpansion
     _check_or_init_cupauliprop()
     if __cupaulipropCreatePauliExpansion == NULL:
         with gil:
             raise FunctionNotFoundError("function cupaulipropCreatePauliExpansion is not found")
     return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, int32_t, void*, int64_t, void*, int64_t, cudaDataType_t, int64_t, cupaulipropSortOrder_t, int32_t, cupaulipropPauliExpansion_t*) noexcept nogil>__cupaulipropCreatePauliExpansion)(
-        handle, numQubits, xzBitsBuffer, xzBitsBufferSize, coefBuffer, coefBufferSize, dataType, numTerms, sortOrder, hasDuplicates, pauliExpansion)
+        handle, numQubits, xzBitsBuffer, xzBitsBufferSize, coefBuffer, coefBufferSize, dataType, numLocalTerms, sortOrder, hasDuplicates, pauliExpansion)
 
 
 cdef cupaulipropStatus_t _cupaulipropDestroyPauliExpansion(cupaulipropPauliExpansion_t pauliExpansion) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -784,14 +869,14 @@ cdef cupaulipropStatus_t _cupaulipropDestroyPauliExpansion(cupaulipropPauliExpan
         pauliExpansion)
 
 
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionGetStorageBuffer(const cupaulipropHandle_t handle, const cupaulipropPauliExpansion_t pauliExpansion, void** xzBitsBuffer, int64_t* xzBitsBufferSize, void** coefBuffer, int64_t* coefBufferSize, int64_t* numTerms, cupaulipropMemspace_t* location) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionGetStorageBuffer(const cupaulipropHandle_t handle, const cupaulipropPauliExpansion_t pauliExpansion, void** xzBitsBuffer, int64_t* xzBitsBufferSize, void** coefBuffer, int64_t* coefBufferSize, int64_t* numLocalTerms, cupaulipropMemspace_t* location) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     global __cupaulipropPauliExpansionGetStorageBuffer
     _check_or_init_cupauliprop()
     if __cupaulipropPauliExpansionGetStorageBuffer == NULL:
         with gil:
             raise FunctionNotFoundError("function cupaulipropPauliExpansionGetStorageBuffer is not found")
     return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansion_t, void**, int64_t*, void**, int64_t*, int64_t*, cupaulipropMemspace_t*) noexcept nogil>__cupaulipropPauliExpansionGetStorageBuffer)(
-        handle, pauliExpansion, xzBitsBuffer, xzBitsBufferSize, coefBuffer, coefBufferSize, numTerms, location)
+        handle, pauliExpansion, xzBitsBuffer, xzBitsBufferSize, coefBuffer, coefBufferSize, numLocalTerms, location)
 
 
 cdef cupaulipropStatus_t _cupaulipropPauliExpansionGetNumQubits(const cupaulipropHandle_t handle, const cupaulipropPauliExpansion_t pauliExpansion, int32_t* numQubits) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -804,14 +889,14 @@ cdef cupaulipropStatus_t _cupaulipropPauliExpansionGetNumQubits(const cupaulipro
         handle, pauliExpansion, numQubits)
 
 
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionGetNumTerms(const cupaulipropHandle_t handle, const cupaulipropPauliExpansion_t pauliExpansion, int64_t* numTerms) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionGetNumTerms(const cupaulipropHandle_t handle, const cupaulipropPauliExpansion_t pauliExpansion, int64_t* numLocalTerms) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     global __cupaulipropPauliExpansionGetNumTerms
     _check_or_init_cupauliprop()
     if __cupaulipropPauliExpansionGetNumTerms == NULL:
         with gil:
             raise FunctionNotFoundError("function cupaulipropPauliExpansionGetNumTerms is not found")
     return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansion_t, int64_t*) noexcept nogil>__cupaulipropPauliExpansionGetNumTerms)(
-        handle, pauliExpansion, numTerms)
+        handle, pauliExpansion, numLocalTerms)
 
 
 cdef cupaulipropStatus_t _cupaulipropPauliExpansionGetDataType(const cupaulipropHandle_t handle, const cupaulipropPauliExpansion_t pauliExpansion, cudaDataType_t* dataType) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -822,6 +907,16 @@ cdef cupaulipropStatus_t _cupaulipropPauliExpansionGetDataType(const cupauliprop
             raise FunctionNotFoundError("function cupaulipropPauliExpansionGetDataType is not found")
     return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansion_t, cudaDataType_t*) noexcept nogil>__cupaulipropPauliExpansionGetDataType)(
         handle, pauliExpansion, dataType)
+
+
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionGetSortOrder(const cupaulipropHandle_t handle, const cupaulipropPauliExpansion_t pauliExpansion, cupaulipropSortOrder_t* sortOrder) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropPauliExpansionGetSortOrder
+    _check_or_init_cupauliprop()
+    if __cupaulipropPauliExpansionGetSortOrder == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropPauliExpansionGetSortOrder is not found")
+    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansion_t, cupaulipropSortOrder_t*) noexcept nogil>__cupaulipropPauliExpansionGetSortOrder)(
+        handle, pauliExpansion, sortOrder)
 
 
 cdef cupaulipropStatus_t _cupaulipropPauliExpansionIsDeduplicated(const cupaulipropHandle_t handle, const cupaulipropPauliExpansion_t pauliExpansion, int32_t* isDeduplicated) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -864,14 +959,14 @@ cdef cupaulipropStatus_t _cupaulipropDestroyPauliExpansionView(cupaulipropPauliE
         view)
 
 
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewGetNumTerms(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view, int64_t* numTerms) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewGetNumTerms(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view, int64_t* numLocalTerms) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     global __cupaulipropPauliExpansionViewGetNumTerms
     _check_or_init_cupauliprop()
     if __cupaulipropPauliExpansionViewGetNumTerms == NULL:
         with gil:
             raise FunctionNotFoundError("function cupaulipropPauliExpansionViewGetNumTerms is not found")
     return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, int64_t*) noexcept nogil>__cupaulipropPauliExpansionViewGetNumTerms)(
-        handle, view, numTerms)
+        handle, view, numLocalTerms)
 
 
 cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewGetLocation(const cupaulipropPauliExpansionView_t view, cupaulipropMemspace_t* location) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -914,6 +1009,26 @@ cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewExecuteDeduplication(cons
         handle, viewIn, expansionOut, sortOrder, workspace, stream)
 
 
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewPrepareSort(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropSortOrder_t sortOrder, int64_t maxWorkspaceDeviceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropPauliExpansionViewPrepareSort
+    _check_or_init_cupauliprop()
+    if __cupaulipropPauliExpansionViewPrepareSort == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewPrepareSort is not found")
+    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, cupaulipropSortOrder_t, int64_t, cupaulipropWorkspaceDescriptor_t) noexcept nogil>__cupaulipropPauliExpansionViewPrepareSort)(
+        handle, viewIn, sortOrder, maxWorkspaceDeviceSize, workspace)
+
+
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewExecuteSort(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropPauliExpansion_t expansionOut, cupaulipropSortOrder_t sortOrder, cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropPauliExpansionViewExecuteSort
+    _check_or_init_cupauliprop()
+    if __cupaulipropPauliExpansionViewExecuteSort == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewExecuteSort is not found")
+    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, cupaulipropPauliExpansion_t, cupaulipropSortOrder_t, cupaulipropWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cupaulipropPauliExpansionViewExecuteSort)(
+        handle, viewIn, expansionOut, sortOrder, workspace, stream)
+
+
 cdef cupaulipropStatus_t _cupaulipropPauliExpansionPopulateFromView(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropPauliExpansion_t expansionOut, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     global __cupaulipropPauliExpansionPopulateFromView
     _check_or_init_cupauliprop()
@@ -944,6 +1059,26 @@ cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewComputeTraceWithExpansion
         handle, view1, view2, takeAdjoint1, traceSignificand, traceExponent, workspace, stream)
 
 
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view1, const cupaulipropPauliExpansionView_t view2, int64_t maxWorkspaceDeviceSize, int64_t* requiredXZBitsBufferSize1, int64_t* requiredCoefBufferSize1, int64_t* requiredXZBitsBufferSize2, int64_t* requiredCoefBufferSize2, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff
+    _check_or_init_cupauliprop()
+    if __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff is not found")
+    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, const cupaulipropPauliExpansionView_t, int64_t, int64_t*, int64_t*, int64_t*, int64_t*, cupaulipropWorkspaceDescriptor_t) noexcept nogil>__cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff)(
+        handle, view1, view2, maxWorkspaceDeviceSize, requiredXZBitsBufferSize1, requiredCoefBufferSize1, requiredXZBitsBufferSize2, requiredCoefBufferSize2, workspace)
+
+
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view1, const cupaulipropPauliExpansionView_t view2, int32_t takeAdjoint1, const void* cotangentTraceSignificand, const double* cotangentTraceExponent, cupaulipropPauliExpansion_t cotangentExpansion1, cupaulipropPauliExpansion_t cotangentExpansion2, cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff
+    _check_or_init_cupauliprop()
+    if __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff is not found")
+    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, const cupaulipropPauliExpansionView_t, int32_t, const void*, const double*, cupaulipropPauliExpansion_t, cupaulipropPauliExpansion_t, cupaulipropWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff)(
+        handle, view1, view2, takeAdjoint1, cotangentTraceSignificand, cotangentTraceExponent, cotangentExpansion1, cotangentExpansion2, workspace, stream)
+
+
 cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewPrepareTraceWithZeroState(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view, int64_t maxWorkspaceDeviceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     global __cupaulipropPauliExpansionViewPrepareTraceWithZeroState
     _check_or_init_cupauliprop()
@@ -964,6 +1099,26 @@ cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewComputeTraceWithZeroState
         handle, view, traceSignificand, traceExponent, workspace, stream)
 
 
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view, int64_t maxWorkspaceDeviceSize, int64_t* requiredXZBitsBufferSize, int64_t* requiredCoefBufferSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff
+    _check_or_init_cupauliprop()
+    if __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff is not found")
+    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, int64_t, int64_t*, int64_t*, cupaulipropWorkspaceDescriptor_t) noexcept nogil>__cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff)(
+        handle, view, maxWorkspaceDeviceSize, requiredXZBitsBufferSize, requiredCoefBufferSize, workspace)
+
+
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view, const void* cotangentTraceSignificand, const double* cotangentTraceExponent, cupaulipropPauliExpansion_t cotangentExpansion, cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff
+    _check_or_init_cupauliprop()
+    if __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff is not found")
+    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, const void*, const double*, cupaulipropPauliExpansion_t, cupaulipropWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff)(
+        handle, view, cotangentTraceSignificand, cotangentTraceExponent, cotangentExpansion, workspace, stream)
+
+
 cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewPrepareOperatorApplication(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, const cupaulipropQuantumOperator_t quantumOperator, cupaulipropSortOrder_t sortOrder, int32_t keepDuplicates, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], int64_t maxWorkspaceDeviceSize, int64_t* requiredXZBitsBufferSize, int64_t* requiredCoefBufferSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     global __cupaulipropPauliExpansionViewPrepareOperatorApplication
     _check_or_init_cupauliprop()
@@ -982,6 +1137,46 @@ cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewComputeOperatorApplicatio
             raise FunctionNotFoundError("function cupaulipropPauliExpansionViewComputeOperatorApplication is not found")
     return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, cupaulipropPauliExpansion_t, const cupaulipropQuantumOperator_t, int32_t, cupaulipropSortOrder_t, int32_t, int32_t, const cupaulipropTruncationStrategy_t*, cupaulipropWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cupaulipropPauliExpansionViewComputeOperatorApplication)(
         handle, viewIn, expansionOut, quantumOperator, adjoint, sortOrder, keepDuplicates, numTruncationStrategies, truncationStrategies, workspace, stream)
+
+
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewPrepareOperatorFusedApplication(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, int32_t numQuantumOperators, const cupaulipropQuantumOperator_t quantumOperators[], const int32_t adjoints[], int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], int64_t maxWorkspaceDeviceSize, int64_t* minExpansionOutCapacity, cupaulipropWorkspaceDescriptor_t minWorkspace, int64_t* averageExpansionOutCapacity, cupaulipropWorkspaceDescriptor_t averageWorkspace, int64_t* maxExpansionOutCapacity, cupaulipropWorkspaceDescriptor_t maxWorkspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication
+    _check_or_init_cupauliprop()
+    if __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewPrepareOperatorFusedApplication is not found")
+    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, int32_t, const cupaulipropQuantumOperator_t*, const int32_t*, int32_t, const cupaulipropTruncationStrategy_t*, int64_t, int64_t*, cupaulipropWorkspaceDescriptor_t, int64_t*, cupaulipropWorkspaceDescriptor_t, int64_t*, cupaulipropWorkspaceDescriptor_t) noexcept nogil>__cupaulipropPauliExpansionViewPrepareOperatorFusedApplication)(
+        handle, viewIn, numQuantumOperators, quantumOperators, adjoints, numTruncationStrategies, truncationStrategies, maxWorkspaceDeviceSize, minExpansionOutCapacity, minWorkspace, averageExpansionOutCapacity, averageWorkspace, maxExpansionOutCapacity, maxWorkspace)
+
+
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewComputeOperatorFusedApplication(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropPauliExpansion_t expansionOut, int32_t numQuantumOperators, const cupaulipropQuantumOperator_t quantumOperators[], const int32_t adjoints[], int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropPauliExpansionViewComputeOperatorFusedApplication
+    _check_or_init_cupauliprop()
+    if __cupaulipropPauliExpansionViewComputeOperatorFusedApplication == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewComputeOperatorFusedApplication is not found")
+    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, cupaulipropPauliExpansion_t, int32_t, const cupaulipropQuantumOperator_t*, const int32_t*, int32_t, const cupaulipropTruncationStrategy_t*, cupaulipropWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cupaulipropPauliExpansionViewComputeOperatorFusedApplication)(
+        handle, viewIn, expansionOut, numQuantumOperators, quantumOperators, adjoints, numTruncationStrategies, truncationStrategies, workspace, stream)
+
+
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, const cupaulipropPauliExpansionView_t cotangentOut, const cupaulipropQuantumOperator_t quantumOperator, cupaulipropSortOrder_t sortOrder, int32_t keepDuplicates, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], int64_t maxWorkspaceDeviceSize, int64_t* requiredXZBitsBufferSize, int64_t* requiredCoefBufferSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff
+    _check_or_init_cupauliprop()
+    if __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff is not found")
+    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, const cupaulipropPauliExpansionView_t, const cupaulipropQuantumOperator_t, cupaulipropSortOrder_t, int32_t, int32_t, const cupaulipropTruncationStrategy_t*, int64_t, int64_t*, int64_t*, cupaulipropWorkspaceDescriptor_t) noexcept nogil>__cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff)(
+        handle, viewIn, cotangentOut, quantumOperator, sortOrder, keepDuplicates, numTruncationStrategies, truncationStrategies, maxWorkspaceDeviceSize, requiredXZBitsBufferSize, requiredCoefBufferSize, workspace)
+
+
+cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, const cupaulipropPauliExpansionView_t cotangentOut, cupaulipropPauliExpansion_t cotangentIn, cupaulipropQuantumOperator_t quantumOperator, int32_t adjoint, cupaulipropSortOrder_t sortOrder, int32_t keepDuplicates, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff
+    _check_or_init_cupauliprop()
+    if __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff is not found")
+    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, const cupaulipropPauliExpansionView_t, cupaulipropPauliExpansion_t, cupaulipropQuantumOperator_t, int32_t, cupaulipropSortOrder_t, int32_t, int32_t, const cupaulipropTruncationStrategy_t*, cupaulipropWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff)(
+        handle, viewIn, cotangentOut, cotangentIn, quantumOperator, adjoint, sortOrder, keepDuplicates, numTruncationStrategies, truncationStrategies, workspace, stream)
 
 
 cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewPrepareTruncation(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], int64_t maxWorkspaceDeviceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -1034,46 +1229,6 @@ cdef cupaulipropStatus_t _cupaulipropCreatePauliNoiseChannelOperator(const cupau
         handle, numQubits, qubitIndices, probabilities, oper)
 
 
-cdef cupaulipropStatus_t _cupaulipropDestroyOperator(cupaulipropQuantumOperator_t oper) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    global __cupaulipropDestroyOperator
-    _check_or_init_cupauliprop()
-    if __cupaulipropDestroyOperator == NULL:
-        with gil:
-            raise FunctionNotFoundError("function cupaulipropDestroyOperator is not found")
-    return (<cupaulipropStatus_t (*)(cupaulipropQuantumOperator_t) noexcept nogil>__cupaulipropDestroyOperator)(
-        oper)
-
-
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionGetSortOrder(const cupaulipropHandle_t handle, const cupaulipropPauliExpansion_t pauliExpansion, cupaulipropSortOrder_t* sortOrder) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    global __cupaulipropPauliExpansionGetSortOrder
-    _check_or_init_cupauliprop()
-    if __cupaulipropPauliExpansionGetSortOrder == NULL:
-        with gil:
-            raise FunctionNotFoundError("function cupaulipropPauliExpansionGetSortOrder is not found")
-    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansion_t, cupaulipropSortOrder_t*) noexcept nogil>__cupaulipropPauliExpansionGetSortOrder)(
-        handle, pauliExpansion, sortOrder)
-
-
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewPrepareSort(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropSortOrder_t sortOrder, int64_t maxWorkspaceDeviceSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    global __cupaulipropPauliExpansionViewPrepareSort
-    _check_or_init_cupauliprop()
-    if __cupaulipropPauliExpansionViewPrepareSort == NULL:
-        with gil:
-            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewPrepareSort is not found")
-    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, cupaulipropSortOrder_t, int64_t, cupaulipropWorkspaceDescriptor_t) noexcept nogil>__cupaulipropPauliExpansionViewPrepareSort)(
-        handle, viewIn, sortOrder, maxWorkspaceDeviceSize, workspace)
-
-
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewExecuteSort(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropPauliExpansion_t expansionOut, cupaulipropSortOrder_t sortOrder, cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    global __cupaulipropPauliExpansionViewExecuteSort
-    _check_or_init_cupauliprop()
-    if __cupaulipropPauliExpansionViewExecuteSort == NULL:
-        with gil:
-            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewExecuteSort is not found")
-    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, cupaulipropPauliExpansion_t, cupaulipropSortOrder_t, cupaulipropWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cupaulipropPauliExpansionViewExecuteSort)(
-        handle, viewIn, expansionOut, sortOrder, workspace, stream)
-
-
 cdef cupaulipropStatus_t _cupaulipropCreateAmplitudeDampingChannelOperator(const cupaulipropHandle_t handle, int32_t qubitIndex, double dampingProb, double exciteProb, cupaulipropQuantumOperator_t* oper) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     global __cupaulipropCreateAmplitudeDampingChannelOperator
     _check_or_init_cupauliprop()
@@ -1082,66 +1237,6 @@ cdef cupaulipropStatus_t _cupaulipropCreateAmplitudeDampingChannelOperator(const
             raise FunctionNotFoundError("function cupaulipropCreateAmplitudeDampingChannelOperator is not found")
     return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, int32_t, double, double, cupaulipropQuantumOperator_t*) noexcept nogil>__cupaulipropCreateAmplitudeDampingChannelOperator)(
         handle, qubitIndex, dampingProb, exciteProb, oper)
-
-
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view1, const cupaulipropPauliExpansionView_t view2, int64_t maxWorkspaceDeviceSize, int64_t* requiredXZBitsBufferSize1, int64_t* requiredCoefBufferSize1, int64_t* requiredXZBitsBufferSize2, int64_t* requiredCoefBufferSize2, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    global __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff
-    _check_or_init_cupauliprop()
-    if __cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff == NULL:
-        with gil:
-            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff is not found")
-    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, const cupaulipropPauliExpansionView_t, int64_t, int64_t*, int64_t*, int64_t*, int64_t*, cupaulipropWorkspaceDescriptor_t) noexcept nogil>__cupaulipropPauliExpansionViewPrepareTraceWithExpansionViewBackwardDiff)(
-        handle, view1, view2, maxWorkspaceDeviceSize, requiredXZBitsBufferSize1, requiredCoefBufferSize1, requiredXZBitsBufferSize2, requiredCoefBufferSize2, workspace)
-
-
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view1, const cupaulipropPauliExpansionView_t view2, int32_t takeAdjoint1, const void* cotangentTraceSignificand, const double* cotangentTraceExponent, cupaulipropPauliExpansion_t cotangentExpansion1, cupaulipropPauliExpansion_t cotangentExpansion2, cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    global __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff
-    _check_or_init_cupauliprop()
-    if __cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff == NULL:
-        with gil:
-            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff is not found")
-    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, const cupaulipropPauliExpansionView_t, int32_t, const void*, const double*, cupaulipropPauliExpansion_t, cupaulipropPauliExpansion_t, cupaulipropWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cupaulipropPauliExpansionViewComputeTraceWithExpansionViewBackwardDiff)(
-        handle, view1, view2, takeAdjoint1, cotangentTraceSignificand, cotangentTraceExponent, cotangentExpansion1, cotangentExpansion2, workspace, stream)
-
-
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view, int64_t maxWorkspaceDeviceSize, int64_t* requiredXZBitsBufferSize, int64_t* requiredCoefBufferSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    global __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff
-    _check_or_init_cupauliprop()
-    if __cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff == NULL:
-        with gil:
-            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff is not found")
-    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, int64_t, int64_t*, int64_t*, cupaulipropWorkspaceDescriptor_t) noexcept nogil>__cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff)(
-        handle, view, maxWorkspaceDeviceSize, requiredXZBitsBufferSize, requiredCoefBufferSize, workspace)
-
-
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t view, const void* cotangentTraceSignificand, const double* cotangentTraceExponent, cupaulipropPauliExpansion_t cotangentExpansion, cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    global __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff
-    _check_or_init_cupauliprop()
-    if __cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff == NULL:
-        with gil:
-            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff is not found")
-    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, const void*, const double*, cupaulipropPauliExpansion_t, cupaulipropWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff)(
-        handle, view, cotangentTraceSignificand, cotangentTraceExponent, cotangentExpansion, workspace, stream)
-
-
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, const cupaulipropPauliExpansionView_t cotangentOut, const cupaulipropQuantumOperator_t quantumOperator, cupaulipropSortOrder_t sortOrder, int32_t keepDuplicates, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], int64_t maxWorkspaceDeviceSize, int64_t* requiredXZBitsBufferSize, int64_t* requiredCoefBufferSize, cupaulipropWorkspaceDescriptor_t workspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    global __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff
-    _check_or_init_cupauliprop()
-    if __cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff == NULL:
-        with gil:
-            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff is not found")
-    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, const cupaulipropPauliExpansionView_t, const cupaulipropQuantumOperator_t, cupaulipropSortOrder_t, int32_t, int32_t, const cupaulipropTruncationStrategy_t*, int64_t, int64_t*, int64_t*, cupaulipropWorkspaceDescriptor_t) noexcept nogil>__cupaulipropPauliExpansionViewPrepareOperatorApplicationBackwardDiff)(
-        handle, viewIn, cotangentOut, quantumOperator, sortOrder, keepDuplicates, numTruncationStrategies, truncationStrategies, maxWorkspaceDeviceSize, requiredXZBitsBufferSize, requiredCoefBufferSize, workspace)
-
-
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, const cupaulipropPauliExpansionView_t cotangentOut, cupaulipropPauliExpansion_t cotangentIn, cupaulipropQuantumOperator_t quantumOperator, int32_t adjoint, cupaulipropSortOrder_t sortOrder, int32_t keepDuplicates, int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    global __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff
-    _check_or_init_cupauliprop()
-    if __cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff == NULL:
-        with gil:
-            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff is not found")
-    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, const cupaulipropPauliExpansionView_t, cupaulipropPauliExpansion_t, cupaulipropQuantumOperator_t, int32_t, cupaulipropSortOrder_t, int32_t, int32_t, const cupaulipropTruncationStrategy_t*, cupaulipropWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cupaulipropPauliExpansionViewComputeOperatorApplicationBackwardDiff)(
-        handle, viewIn, cotangentOut, cotangentIn, quantumOperator, adjoint, sortOrder, keepDuplicates, numTruncationStrategies, truncationStrategies, workspace, stream)
 
 
 cdef cupaulipropStatus_t _cupaulipropQuantumOperatorAttachCotangentBuffer(const cupaulipropHandle_t handle, cupaulipropQuantumOperator_t oper, void* cotangentBuffer, int64_t cotangentBufferSize, cudaDataType_t dataType, cupaulipropMemspace_t location) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -1164,21 +1259,11 @@ cdef cupaulipropStatus_t _cupaulipropQuantumOperatorGetCotangentBuffer(const cup
         handle, oper, cotangentBuffer, cotangentBufferNumElements, dataType, location)
 
 
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewPrepareOperatorFusedApplication(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, int32_t numQuantumOperators, const cupaulipropQuantumOperator_t quantumOperators[], const int32_t adjoints[], int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], int64_t maxWorkspaceDeviceSize, int64_t* minExpansionOutCapacity, cupaulipropWorkspaceDescriptor_t minWorkspace, int64_t* averageExpansionOutCapacity, cupaulipropWorkspaceDescriptor_t averageWorkspace, int64_t* maxExpansionOutCapacity, cupaulipropWorkspaceDescriptor_t maxWorkspace) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    global __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication
+cdef cupaulipropStatus_t _cupaulipropDestroyOperator(cupaulipropQuantumOperator_t oper) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cupaulipropDestroyOperator
     _check_or_init_cupauliprop()
-    if __cupaulipropPauliExpansionViewPrepareOperatorFusedApplication == NULL:
+    if __cupaulipropDestroyOperator == NULL:
         with gil:
-            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewPrepareOperatorFusedApplication is not found")
-    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, int32_t, const cupaulipropQuantumOperator_t*, const int32_t*, int32_t, const cupaulipropTruncationStrategy_t*, int64_t, int64_t*, cupaulipropWorkspaceDescriptor_t, int64_t*, cupaulipropWorkspaceDescriptor_t, int64_t*, cupaulipropWorkspaceDescriptor_t) noexcept nogil>__cupaulipropPauliExpansionViewPrepareOperatorFusedApplication)(
-        handle, viewIn, numQuantumOperators, quantumOperators, adjoints, numTruncationStrategies, truncationStrategies, maxWorkspaceDeviceSize, minExpansionOutCapacity, minWorkspace, averageExpansionOutCapacity, averageWorkspace, maxExpansionOutCapacity, maxWorkspace)
-
-
-cdef cupaulipropStatus_t _cupaulipropPauliExpansionViewComputeOperatorFusedApplication(const cupaulipropHandle_t handle, const cupaulipropPauliExpansionView_t viewIn, cupaulipropPauliExpansion_t expansionOut, int32_t numQuantumOperators, const cupaulipropQuantumOperator_t quantumOperators[], const int32_t adjoints[], int32_t numTruncationStrategies, const cupaulipropTruncationStrategy_t truncationStrategies[], cupaulipropWorkspaceDescriptor_t workspace, cudaStream_t stream) except?_CUPAULIPROPSTATUS_T_INTERNAL_LOADING_ERROR nogil:
-    global __cupaulipropPauliExpansionViewComputeOperatorFusedApplication
-    _check_or_init_cupauliprop()
-    if __cupaulipropPauliExpansionViewComputeOperatorFusedApplication == NULL:
-        with gil:
-            raise FunctionNotFoundError("function cupaulipropPauliExpansionViewComputeOperatorFusedApplication is not found")
-    return (<cupaulipropStatus_t (*)(const cupaulipropHandle_t, const cupaulipropPauliExpansionView_t, cupaulipropPauliExpansion_t, int32_t, const cupaulipropQuantumOperator_t*, const int32_t*, int32_t, const cupaulipropTruncationStrategy_t*, cupaulipropWorkspaceDescriptor_t, cudaStream_t) noexcept nogil>__cupaulipropPauliExpansionViewComputeOperatorFusedApplication)(
-        handle, viewIn, expansionOut, numQuantumOperators, quantumOperators, adjoints, numTruncationStrategies, truncationStrategies, workspace, stream)
+            raise FunctionNotFoundError("function cupaulipropDestroyOperator is not found")
+    return (<cupaulipropStatus_t (*)(cupaulipropQuantumOperator_t) noexcept nogil>__cupaulipropDestroyOperator)(
+        oper)

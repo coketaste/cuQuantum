@@ -771,12 +771,7 @@ class TorchRefExplicitAdjoints:
                     raw = getattr(tensors[i], "tensor", tensors[i])
                     if getattr(raw, "is_contiguous", None) is not None and not raw.is_contiguous():
                         raw = raw.contiguous()
-                    arr = TensorBackend.to_numpy(raw)
-                    try:
-                        arr_np = np.asarray(arr, dtype=np_dtype)
-                    except TypeError:
-                        stream_holder = get_or_create_stream(getattr(raw, "device_id", 0), None, "cuda")
-                        arr_np = np.asarray(ndbuffer_to_numpy(arr, stream_holder), dtype=np_dtype)
+                    arr_np = operand_to_numpy(raw, np_dtype)
                     gate_list_torch.append(
                         (torch_asarray(arr_np).to(device=device, dtype=torch_dtype).detach(), (q,))
                     )
@@ -789,12 +784,7 @@ class TorchRefExplicitAdjoints:
                     raw = getattr(t, "tensor", t)
                     if getattr(raw, "is_contiguous", None) is not None and not raw.is_contiguous():
                         raw = raw.contiguous()
-                    arr = TensorBackend.to_numpy(raw)
-                    try:
-                        mpo_tensors_np.append(np.asarray(arr, dtype=np_dtype))
-                    except TypeError:
-                        stream_holder = get_or_create_stream(getattr(raw, "device_id", 0), None, "cuda")
-                        mpo_tensors_np.append(np.asarray(ndbuffer_to_numpy(arr, stream_holder), dtype=np_dtype))
+                    mpo_tensors_np.append(operand_to_numpy(raw, np_dtype))
                 coeff = complex(coeff) if np.iscomplexobj(coeff) else float(coeff)
                 terms.append(("mpo", coeff, mpo_tensors_np, list(mpo_modes)))
         elif isinstance(hamiltonian, dict):
@@ -1167,12 +1157,7 @@ class TorchRef:
                     raw = getattr(tensors[i], "tensor", tensors[i])
                     if getattr(raw, "is_contiguous", None) is not None and not raw.is_contiguous():
                         raw = raw.contiguous()
-                    arr = TensorBackend.to_numpy(raw)
-                    try:
-                        arr_np = np.asarray(arr, dtype=np_dtype)
-                    except TypeError:
-                        stream_holder = get_or_create_stream(getattr(raw, "device_id", 0), None, "cuda")
-                        arr_np = np.asarray(ndbuffer_to_numpy(arr, stream_holder), dtype=np_dtype)
+                    arr_np = operand_to_numpy(raw, np_dtype)
                     gate_list_torch.append(
                         (torch_asarray(arr_np).to(device=device, dtype=torch_dtype).detach(), (q,))
                     )
@@ -1185,12 +1170,7 @@ class TorchRef:
                     raw = getattr(t, "tensor", t)
                     if getattr(raw, "is_contiguous", None) is not None and not raw.is_contiguous():
                         raw = raw.contiguous()
-                    arr = TensorBackend.to_numpy(raw)
-                    try:
-                        mpo_tensors_np.append(np.asarray(arr, dtype=np_dtype))
-                    except TypeError:
-                        stream_holder = get_or_create_stream(getattr(raw, "device_id", 0), None, "cuda")
-                        mpo_tensors_np.append(np.asarray(ndbuffer_to_numpy(arr, stream_holder), dtype=np_dtype))
+                    mpo_tensors_np.append(operand_to_numpy(raw, np_dtype))
                 coeff = complex(coeff) if np.iscomplexobj(coeff) else float(coeff)
                 terms.append(("mpo", coeff, mpo_tensors_np, list(mpo_modes)))
         elif isinstance(hamiltonian, dict):
@@ -1595,6 +1575,20 @@ def _needs_ndbuffer_convert(arr):
     return getattr(arr, "device_id", None) is not None or (
         type(arr).__name__ == "NDBuffer" and "ndbuffer" in type(arr).__module__
     )
+
+
+def operand_to_numpy(raw, np_dtype):
+    """Convert a Hamiltonian operand to a numpy array of ``np_dtype``.
+
+    Handles numpy/cupy/torch arrays directly; nvmath ``NDBuffer`` operands
+    (which ``TensorBackend.to_numpy`` returns unchanged under nvmath >= 1.0)
+    are routed through ``ndbuffer_to_numpy``.
+    """
+    arr = TensorBackend.to_numpy(raw)
+    if _needs_ndbuffer_convert(arr):
+        stream_holder = get_or_create_stream(getattr(raw, "device_id", 0), None, "cuda")
+        arr = ndbuffer_to_numpy(arr, stream_holder)
+    return np.asarray(arr, dtype=np_dtype)
 
 
 def extract_gradient_array(grad):

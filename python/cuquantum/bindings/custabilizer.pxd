@@ -2,9 +2,21 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 25.11.0 to 26.03.1, generator version 0.3.1.dev1520+g79061d461. Do not modify it directly.
+# This code was automatically generated across versions from 25.11.0 to 26.09.0. Do not modify it directly.
 
-from libc.stdint cimport intptr_t
+
+
+# <<<< PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport (
+    int32_t,
+    int64_t,
+    intptr_t,
+    uint64_t,
+)
+
+
+# <<<< END OF PREAMBLE CONTENT >>>>
 
 from .cycustabilizer cimport *
 
@@ -16,6 +28,7 @@ from .cycustabilizer cimport *
 ctypedef custabilizerCircuit_t Circuit
 ctypedef custabilizerFrameSimulator_t FrameSimulator
 ctypedef custabilizerHandle_t Handle
+ctypedef custabilizerLeakageFrameSimulator_t LeakageFrameSimulator
 
 ctypedef cudaStream_t Stream
 ctypedef cudaEvent_t Event
@@ -27,6 +40,7 @@ ctypedef cudaDataType DataType
 ###############################################################################
 
 ctypedef custabilizerStatus_t _Status
+ctypedef custabilizerCircuitAttributes_t _CircuitAttribute
 
 
 ###############################################################################
@@ -48,3 +62,8 @@ cpdef size_t sample_prob_array_sparse_prepare(intptr_t handle, int64_t num_sampl
 cpdef sample_prob_array_sparse_compute(intptr_t handle, int64_t num_samples, int64_t num_probs, intptr_t probs, uint64_t seed, intptr_t nnz, intptr_t column_indices, intptr_t row_offsets, intptr_t workspace, size_t workspace_size, intptr_t stream)
 cpdef gf2_sparse_dense_matrix_multiply(intptr_t handle, uint64_t m, uint64_t n, uint64_t k, uint64_t nnz, intptr_t column_indices, intptr_t row_offsets, intptr_t b, int32_t beta, intptr_t c, intptr_t stream)
 cpdef gf2_sparse_sparse_matrix_multiply(intptr_t handle, uint64_t m, uint64_t n, uint64_t k, intptr_t a_column_indices, intptr_t a_row_offsets, uint64_t b_nnz, intptr_t b_column_indices, intptr_t b_row_offsets, int32_t beta, intptr_t c, intptr_t stream)
+cpdef get_circuit_attribute_dtype(int attr)
+cpdef circuit_get_attribute(intptr_t handle, intptr_t circuit, int attribute, intptr_t buffer, size_t size_in_bytes)
+cpdef intptr_t create_leakage_frame_simulator(intptr_t handle, int64_t num_qubits, int64_t num_shots, int64_t num_measurements, int64_t table_stride_major) except? 0
+cpdef destroy_leakage_frame_simulator(intptr_t leakage_frame_simulator)
+cpdef leakage_frame_simulator_apply_circuit(intptr_t handle, intptr_t leakage_frame_simulator, intptr_t circuit, int randomize_frame_after_measurement, uint64_t seed, intptr_t x_table_device, intptr_t z_table_device, intptr_t l_table_device, intptr_t m_table_device, intptr_t stream)

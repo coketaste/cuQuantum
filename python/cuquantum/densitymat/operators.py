@@ -257,13 +257,20 @@ class OperatorTerm:
                     )
 
         self._check_dtype(ops)
-        if elementary_only or is_scalar_op:
+        if is_scalar_op:
             product_of = ElementaryOperator
+            modes = []
+            duals = []
+            conjugations = []
+            elementary_only = True
+        elif elementary_only:
+            product_of = ElementaryOperator
+            if modes is None:
+                raise ValueError("Modes must be provided for elementary operator products.")
             # check shapes
             for operand, operand_modes in zip(ops, modes):
                 _shape = operand.shape
                 assert len(_shape) % 2 == 0 and len(_shape) // 2 == len(operand_modes)
-            elementary_only = True
         elif matrix_only:
             product_of = MatrixOperator
         elif mpo_only:
@@ -328,12 +335,10 @@ class OperatorTerm:
         if self._dtype is None:
             self._dtype = dtype
         elif dtype is not None:
-            try:
-                self._dtype != dtype
-            except AssertionError as e:
+            if self._dtype != dtype:
                 raise TypeError(
                     "The provided operands are required to have the same data type as this OperatorTerm instance."
-                ) from e
+                )
 
     def _append_matrix_product(
         self,
@@ -587,7 +592,7 @@ class OperatorTerm:
             assert self._dtype == other.dtype
         assert (
             self._dtype and self._dtype == other.dtype
-        )  # TODO [FUTURE]: allow self to have indefinite dtype if other has definite dtype
+        )
         for term, modes, conjugations, duals, coeff in zip(
             other.terms, other.modes, other._conjugations, other.duals, other._coefficients
         ):
@@ -775,8 +780,7 @@ class Operator:
         self._current_gradient_compute_type = None
 
         self._upstream_finalizers = collections.OrderedDict()
-        
-        # TODO: once forward differentation is added, we need to add logic to determine gradient direction
+
         self._gradient_dir = cudm.DifferentiationDir.BACKWARD
         self._gradient_dir_str = "backward"
 
@@ -867,7 +871,6 @@ class Operator:
                 as specified for its constituents (False) or the opposite (True).
         """
         if self._valid_state:
-            # TODO[FUTURE]/TODO[OPTIONAL]: Maybe relax this in the future, requires sync
             raise RuntimeError(
                 "Cannot inplace add to this Operator after either\n\
                                a) its prepare or compute method has been called or\n\
@@ -1291,8 +1294,7 @@ class Operator:
             else:
                 raise NotImplementedError(f"Gradient direction {self._gradient_dir_str} not currently supported.")
         return params_gradient
-    
-    #FIXME: for compute_action, we don't want to precondition here to avoid hard to parse error message, instead a check for self._ctx is done inside the function body ---> should it be the same here?
+
     @nvmath_utils.precondition(_check_valid_state)
     def compute_expectation(
         self,
@@ -1334,6 +1336,11 @@ class Operator:
                 f"The array to which to write the (batched) expectation value is of incorrect shape.\
                 Expected shape is ({self._prepared_expectation_batch_size},), received output array of shape {out.shape}."
             )
+        if out is not None and out.dtype != state.dtype:
+            raise ValueError(
+                f"The array to which to write the (batched) expectation value has dtype {out.dtype}, "
+                f"but expected dtype {state.dtype}."
+            )
 
         self._ctx._maybe_allocate()
 
@@ -1350,7 +1357,8 @@ class Operator:
             state._last_compute_event = self._last_compute_event
             self._update_last_compute_event_downstream()
 
-            out = cp.ndarray((self._prepared_expectation_batch_size,), dtype=state.dtype)
+            if out is None:
+                out = cp.ndarray((self._prepared_expectation_batch_size,), dtype=state.dtype)
 
             cudm.expectation_compute(
                 self._ctx._handle._validated_ptr,

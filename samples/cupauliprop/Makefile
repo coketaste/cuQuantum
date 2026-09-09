@@ -8,6 +8,21 @@ CUDA_MAJOR_VERSION := $(shell "${CUDA_PATH}/bin/"nvcc --version | egrep -o "V[0-
 CUDA_MINOR_VERSION := $(shell "${CUDA_PATH}/bin/"nvcc --version | egrep -o "V[0-9]+.[0-9]+.[0-9]" | cut -d. -f2)
 
 CUPAULIPROP_ROOT ?= ${CUQUANTUM_ROOT}
+MPI_ROOT         := ${MPI_ROOT}
+NCCL_ROOT        := ${NCCL_ROOT}
+
+# Auto-detect NCCL library (handles pip packages that only have versioned .so.2)
+ifdef NCCL_ROOT
+  ifeq ($(shell test -f "${NCCL_ROOT}/lib/libnccl.so" && echo "exists"),exists)
+    NCCL_LIB := ${NCCL_ROOT}/lib/libnccl.so
+  else ifeq ($(shell test -f "${NCCL_ROOT}/lib64/libnccl.so" && echo "exists"),exists)
+    NCCL_LIB := ${NCCL_ROOT}/lib64/libnccl.so
+  else ifeq ($(shell test -f "${NCCL_ROOT}/lib/libnccl.so.2" && echo "exists"),exists)
+    NCCL_LIB := ${NCCL_ROOT}/lib/libnccl.so.2
+  else ifeq ($(shell test -f "${NCCL_ROOT}/lib64/libnccl.so.2" && echo "exists"),exists)
+    NCCL_LIB := ${NCCL_ROOT}/lib64/libnccl.so.2
+  endif
+endif
 
 INCLUDE_DIRS     := -I${CUPAULIPROP_ROOT}/include
 LIBRARY_DIRS     := -L${CUPAULIPROP_ROOT}/lib -L${CUPAULIPROP_ROOT}/lib64 -lcupauliprop
@@ -27,18 +42,42 @@ endif
 
 CXX_FLAGS = -std=c++17 $(INCLUDE_DIRS) $(LIBRARY_DIRS) $(ARCH_FLAGS)
 
-all: check-env kicked_ising_example kicked_ising_backward_diff_example
+# The multiprocess example is one binary supporting every provider compiled
+# in: single-process without MPI_ROOT, plus the MPI provider with MPI_ROOT,
+# plus the NCCL provider with NCCL_ROOT (which needs MPI for bootstrapping).
+# The provider is selected at runtime from the plugin filename in
+# $CUPAULIPROP_COMM_LIB.
+MULTIPROCESS_FLAGS :=
+ifdef MPI_ROOT
+  MULTIPROCESS_FLAGS += -DMPI_ENABLED -I${MPI_ROOT}/include -L${MPI_ROOT}/lib -lmpi
+  ifdef NCCL_LIB
+    MULTIPROCESS_FLAGS += -DNCCL_ENABLED -I${NCCL_ROOT}/include -Xlinker ${NCCL_LIB}
+  endif
+endif
+
+all: check-env kicked_ising_example kicked_ising_fused_example kicked_ising_backward_diff_example fused_operators_example kicked_ising_multiprocess_example
 
 kicked_ising_example:
 	${CUDA_PATH}/bin/nvcc kicked_ising_example.cpp ${CXX_FLAGS} -o kicked_ising_example
 
+kicked_ising_fused_example:
+	${CUDA_PATH}/bin/nvcc kicked_ising_fused_example.cpp ${CXX_FLAGS} -o kicked_ising_fused_example
+
 kicked_ising_backward_diff_example:
 	${CUDA_PATH}/bin/nvcc kicked_ising_backward_diff_example.cpp ${CXX_FLAGS} -o kicked_ising_backward_diff_example
+
+fused_operators_example:
+	${CUDA_PATH}/bin/nvcc fused_operators_example.cpp example_utils.cpp ${CXX_FLAGS} -o fused_operators_example
+
+kicked_ising_multiprocess_example:
+	${CUDA_PATH}/bin/nvcc kicked_ising_multiprocess_example.cpp ${CXX_FLAGS} ${MULTIPROCESS_FLAGS} -o kicked_ising_multiprocess_example
 
 check-env:
 	@ echo "" && \
 	echo "CUDA_PATH=${CUDA_PATH}"; \
 	echo "CUPAULIPROP_ROOT=${CUPAULIPROP_ROOT}"; \
+	echo "MPI_ROOT=${MPI_ROOT} (optional: MPI provider support in the multiprocess example)"; \
+	echo "NCCL_ROOT=${NCCL_ROOT} (optional: NCCL provider support in the multiprocess example)"; \
 	echo ""; \
 	if [[ -z "${CUPAULIPROP_ROOT}" ]]; \
 	then \
@@ -50,4 +89,7 @@ check-env:
 clean:
 	rm -f \
 		kicked_ising_example kicked_ising_example.o \
-		kicked_ising_backward_diff_example kicked_ising_backward_diff_example.o
+		kicked_ising_fused_example kicked_ising_fused_example.o \
+		kicked_ising_backward_diff_example kicked_ising_backward_diff_example.o \
+		fused_operators_example fused_operators_example.o example_utils.o \
+		kicked_ising_multiprocess_example kicked_ising_multiprocess_example.o

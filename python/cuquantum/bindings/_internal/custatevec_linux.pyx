@@ -2,61 +2,72 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1733+g9725189ff.d20260608. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.09.0. Do not modify it directly.
 
-from libc.stdint cimport intptr_t
 
-import threading
+
+# <<<< PREAMBLE CONTENT >>>>
+
+cdef extern from * nogil:
+    """
+    #if defined(_MSC_VER) && !defined(__clang__)
+        #include <intrin.h>
+        static __forceinline int atomic_int_load(int *p) {
+            int v = *(int volatile *)p; _ReadBarrier(); return v;
+        }
+        static __forceinline void atomic_int_store(int *p, int v) {
+            _WriteBarrier(); *(int volatile *)p = v;
+        }
+    #elif defined(__cplusplus)
+        /* GCC/Clang __atomic builtins work in any C++ standard without headers */
+        static inline int atomic_int_load(int *p) {
+            return __atomic_load_n(p, __ATOMIC_ACQUIRE);
+        }
+        static inline void atomic_int_store(int *p, int v) {
+            __atomic_store_n(p, v, __ATOMIC_RELEASE);
+        }
+    #else
+        #include <stdatomic.h>
+        static inline int atomic_int_load(int *p) {
+            return (int)atomic_load_explicit((atomic_int *)p, memory_order_acquire);
+        }
+        static inline void atomic_int_store(int *p, int v) {
+            atomic_store_explicit((atomic_int *)p, v, memory_order_release);
+        }
+    #endif
+
+    """
+    cdef int _cyb_atomic_int_load "atomic_int_load"(int *p) nogil
+    cdef void _cyb_atomic_int_store "atomic_int_store"(int *p, int v) nogil
+
+cdef extern from "<dlfcn.h>":
+    void* _cyb_dlsym "dlsym"(void*, const char*) nogil
+    const void * _cyb_RTLD_DEFAULT "RTLD_DEFAULT"
+
+from libc.stdint cimport (
+    int32_t,
+    intptr_t,
+    uint32_t,
+)
+
+import threading as _cyb_threading
+
+cdef int _cyb___py_custatevec_init = 0
+cdef dict _cyb_func_ptrs = None
+cdef object _cyb_symbol_lock = _cyb_threading.Lock()
+
+# <<<< END OF PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport uintptr_t
 
 from .._utils import FunctionNotFoundError, NotSupportedError
-
-
-###############################################################################
-# Extern
-###############################################################################
-
-# You must 'from .utils import NotSupportedError' before using this template
-
-cdef extern from "<dlfcn.h>" nogil:
-    void* dlopen(const char*, int)
-    char* dlerror()
-    void* dlsym(void*, const char*)
-    int dlclose(void*)
-
-    enum:
-        RTLD_LAZY
-        RTLD_NOW
-        RTLD_GLOBAL
-        RTLD_LOCAL
-
-    const void* RTLD_DEFAULT 'RTLD_DEFAULT'
-
-cdef int get_cuda_version():
-    cdef void* handle = NULL
-    cdef int err, driver_ver = 0
-
-    # Load driver to check version
-    handle = dlopen('libcuda.so.1', RTLD_NOW | RTLD_GLOBAL)
-    if handle == NULL:
-        err_msg = dlerror()
-        raise NotSupportedError(f'CUDA driver is not found ({err_msg.decode()})')
-    cuDriverGetVersion = dlsym(handle, "cuDriverGetVersion")
-    if cuDriverGetVersion == NULL:
-        raise RuntimeError('Did not find cuDriverGetVersion symbol in libcuda.so.1')
-    err = (<int (*)(int*) noexcept nogil>cuDriverGetVersion)(&driver_ver)
-    if err != 0:
-        raise RuntimeError(f'cuDriverGetVersion returned error code {err}')
-
-    return driver_ver
-
+from cuda.pathfinder import load_nvidia_dynamic_lib
 
 
 ###############################################################################
 # Wrapper init
 ###############################################################################
 
-cdef object __symbol_lock = threading.Lock()
-cdef bint __py_custatevec_init = False
 
 cdef void* __custatevecCreate = NULL
 cdef void* __custatevecDestroy = NULL
@@ -68,7 +79,9 @@ cdef void* __custatevecGetProperty = NULL
 cdef void* __custatevecGetVersion = NULL
 cdef void* __custatevecSetStream = NULL
 cdef void* __custatevecGetStream = NULL
+cdef void* __custatevecLoggerSetCallback = NULL
 cdef void* __custatevecLoggerSetCallbackData = NULL
+cdef void* __custatevecLoggerSetFile = NULL
 cdef void* __custatevecLoggerOpenFile = NULL
 cdef void* __custatevecLoggerSetLevel = NULL
 cdef void* __custatevecLoggerSetMask = NULL
@@ -133,563 +146,585 @@ cdef void* __custatevecComputeExpectationBatchedGetWorkspaceSize = NULL
 cdef void* __custatevecComputeExpectationBatched = NULL
 cdef void* __custatevecSetMathMode = NULL
 cdef void* __custatevecGetMathMode = NULL
+cdef void* __custatevecSVSwapWorkerCreateWithSemaphore = NULL
+cdef void* __custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores = NULL
 
-
-cdef void* load_library() except* nogil:
-    cdef void* handle
-    handle = dlopen("libcustatevec.so.1", RTLD_NOW | RTLD_GLOBAL)
-    if handle == NULL:
-        with gil:
-            err_msg = dlerror()
-            raise RuntimeError(f'Failed to dlopen libcustatevec ({err_msg.decode()})')
-    return handle
-
-
-cdef int _check_or_init_custatevec() except -1 nogil:
-    global __py_custatevec_init
-    if __py_custatevec_init:
-        return 0
-
+cdef int _init_custatevec() except -1 nogil:
+    global _cyb___py_custatevec_init
     cdef void* handle = NULL
+    with gil, _cyb_symbol_lock:
+        if _cyb___py_custatevec_init: return 0
 
-    with gil, __symbol_lock:
-        # Recheck the flag after obtaining the locks
-        if __py_custatevec_init:
-            return 0
-            
-        # Load function
         global __custatevecCreate
-        __custatevecCreate = dlsym(RTLD_DEFAULT, 'custatevecCreate')
+        __custatevecCreate = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecCreate')
         if __custatevecCreate == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecCreate = dlsym(handle, 'custatevecCreate')
+            __custatevecCreate = _cyb_dlsym(handle, 'custatevecCreate')
 
         global __custatevecDestroy
-        __custatevecDestroy = dlsym(RTLD_DEFAULT, 'custatevecDestroy')
+        __custatevecDestroy = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecDestroy')
         if __custatevecDestroy == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecDestroy = dlsym(handle, 'custatevecDestroy')
+            __custatevecDestroy = _cyb_dlsym(handle, 'custatevecDestroy')
 
         global __custatevecGetDefaultWorkspaceSize
-        __custatevecGetDefaultWorkspaceSize = dlsym(RTLD_DEFAULT, 'custatevecGetDefaultWorkspaceSize')
+        __custatevecGetDefaultWorkspaceSize = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecGetDefaultWorkspaceSize')
         if __custatevecGetDefaultWorkspaceSize == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecGetDefaultWorkspaceSize = dlsym(handle, 'custatevecGetDefaultWorkspaceSize')
+            __custatevecGetDefaultWorkspaceSize = _cyb_dlsym(handle, 'custatevecGetDefaultWorkspaceSize')
 
         global __custatevecSetWorkspace
-        __custatevecSetWorkspace = dlsym(RTLD_DEFAULT, 'custatevecSetWorkspace')
+        __custatevecSetWorkspace = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSetWorkspace')
         if __custatevecSetWorkspace == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSetWorkspace = dlsym(handle, 'custatevecSetWorkspace')
+            __custatevecSetWorkspace = _cyb_dlsym(handle, 'custatevecSetWorkspace')
 
         global __custatevecGetErrorName
-        __custatevecGetErrorName = dlsym(RTLD_DEFAULT, 'custatevecGetErrorName')
+        __custatevecGetErrorName = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecGetErrorName')
         if __custatevecGetErrorName == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecGetErrorName = dlsym(handle, 'custatevecGetErrorName')
+            __custatevecGetErrorName = _cyb_dlsym(handle, 'custatevecGetErrorName')
 
         global __custatevecGetErrorString
-        __custatevecGetErrorString = dlsym(RTLD_DEFAULT, 'custatevecGetErrorString')
+        __custatevecGetErrorString = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecGetErrorString')
         if __custatevecGetErrorString == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecGetErrorString = dlsym(handle, 'custatevecGetErrorString')
+            __custatevecGetErrorString = _cyb_dlsym(handle, 'custatevecGetErrorString')
 
         global __custatevecGetProperty
-        __custatevecGetProperty = dlsym(RTLD_DEFAULT, 'custatevecGetProperty')
+        __custatevecGetProperty = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecGetProperty')
         if __custatevecGetProperty == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecGetProperty = dlsym(handle, 'custatevecGetProperty')
+            __custatevecGetProperty = _cyb_dlsym(handle, 'custatevecGetProperty')
 
         global __custatevecGetVersion
-        __custatevecGetVersion = dlsym(RTLD_DEFAULT, 'custatevecGetVersion')
+        __custatevecGetVersion = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecGetVersion')
         if __custatevecGetVersion == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecGetVersion = dlsym(handle, 'custatevecGetVersion')
+            __custatevecGetVersion = _cyb_dlsym(handle, 'custatevecGetVersion')
 
         global __custatevecSetStream
-        __custatevecSetStream = dlsym(RTLD_DEFAULT, 'custatevecSetStream')
+        __custatevecSetStream = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSetStream')
         if __custatevecSetStream == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSetStream = dlsym(handle, 'custatevecSetStream')
+            __custatevecSetStream = _cyb_dlsym(handle, 'custatevecSetStream')
 
         global __custatevecGetStream
-        __custatevecGetStream = dlsym(RTLD_DEFAULT, 'custatevecGetStream')
+        __custatevecGetStream = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecGetStream')
         if __custatevecGetStream == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecGetStream = dlsym(handle, 'custatevecGetStream')
+            __custatevecGetStream = _cyb_dlsym(handle, 'custatevecGetStream')
+
+        global __custatevecLoggerSetCallback
+        __custatevecLoggerSetCallback = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecLoggerSetCallback')
+        if __custatevecLoggerSetCallback == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __custatevecLoggerSetCallback = _cyb_dlsym(handle, 'custatevecLoggerSetCallback')
 
         global __custatevecLoggerSetCallbackData
-        __custatevecLoggerSetCallbackData = dlsym(RTLD_DEFAULT, 'custatevecLoggerSetCallbackData')
+        __custatevecLoggerSetCallbackData = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecLoggerSetCallbackData')
         if __custatevecLoggerSetCallbackData == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecLoggerSetCallbackData = dlsym(handle, 'custatevecLoggerSetCallbackData')
+            __custatevecLoggerSetCallbackData = _cyb_dlsym(handle, 'custatevecLoggerSetCallbackData')
+
+        global __custatevecLoggerSetFile
+        __custatevecLoggerSetFile = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecLoggerSetFile')
+        if __custatevecLoggerSetFile == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __custatevecLoggerSetFile = _cyb_dlsym(handle, 'custatevecLoggerSetFile')
 
         global __custatevecLoggerOpenFile
-        __custatevecLoggerOpenFile = dlsym(RTLD_DEFAULT, 'custatevecLoggerOpenFile')
+        __custatevecLoggerOpenFile = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecLoggerOpenFile')
         if __custatevecLoggerOpenFile == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecLoggerOpenFile = dlsym(handle, 'custatevecLoggerOpenFile')
+            __custatevecLoggerOpenFile = _cyb_dlsym(handle, 'custatevecLoggerOpenFile')
 
         global __custatevecLoggerSetLevel
-        __custatevecLoggerSetLevel = dlsym(RTLD_DEFAULT, 'custatevecLoggerSetLevel')
+        __custatevecLoggerSetLevel = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecLoggerSetLevel')
         if __custatevecLoggerSetLevel == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecLoggerSetLevel = dlsym(handle, 'custatevecLoggerSetLevel')
+            __custatevecLoggerSetLevel = _cyb_dlsym(handle, 'custatevecLoggerSetLevel')
 
         global __custatevecLoggerSetMask
-        __custatevecLoggerSetMask = dlsym(RTLD_DEFAULT, 'custatevecLoggerSetMask')
+        __custatevecLoggerSetMask = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecLoggerSetMask')
         if __custatevecLoggerSetMask == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecLoggerSetMask = dlsym(handle, 'custatevecLoggerSetMask')
+            __custatevecLoggerSetMask = _cyb_dlsym(handle, 'custatevecLoggerSetMask')
 
         global __custatevecLoggerForceDisable
-        __custatevecLoggerForceDisable = dlsym(RTLD_DEFAULT, 'custatevecLoggerForceDisable')
+        __custatevecLoggerForceDisable = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecLoggerForceDisable')
         if __custatevecLoggerForceDisable == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecLoggerForceDisable = dlsym(handle, 'custatevecLoggerForceDisable')
+            __custatevecLoggerForceDisable = _cyb_dlsym(handle, 'custatevecLoggerForceDisable')
 
         global __custatevecGetDeviceMemHandler
-        __custatevecGetDeviceMemHandler = dlsym(RTLD_DEFAULT, 'custatevecGetDeviceMemHandler')
+        __custatevecGetDeviceMemHandler = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecGetDeviceMemHandler')
         if __custatevecGetDeviceMemHandler == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecGetDeviceMemHandler = dlsym(handle, 'custatevecGetDeviceMemHandler')
+            __custatevecGetDeviceMemHandler = _cyb_dlsym(handle, 'custatevecGetDeviceMemHandler')
 
         global __custatevecSetDeviceMemHandler
-        __custatevecSetDeviceMemHandler = dlsym(RTLD_DEFAULT, 'custatevecSetDeviceMemHandler')
+        __custatevecSetDeviceMemHandler = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSetDeviceMemHandler')
         if __custatevecSetDeviceMemHandler == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSetDeviceMemHandler = dlsym(handle, 'custatevecSetDeviceMemHandler')
+            __custatevecSetDeviceMemHandler = _cyb_dlsym(handle, 'custatevecSetDeviceMemHandler')
 
         global __custatevecAbs2SumOnZBasis
-        __custatevecAbs2SumOnZBasis = dlsym(RTLD_DEFAULT, 'custatevecAbs2SumOnZBasis')
+        __custatevecAbs2SumOnZBasis = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecAbs2SumOnZBasis')
         if __custatevecAbs2SumOnZBasis == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecAbs2SumOnZBasis = dlsym(handle, 'custatevecAbs2SumOnZBasis')
+            __custatevecAbs2SumOnZBasis = _cyb_dlsym(handle, 'custatevecAbs2SumOnZBasis')
 
         global __custatevecAbs2SumArray
-        __custatevecAbs2SumArray = dlsym(RTLD_DEFAULT, 'custatevecAbs2SumArray')
+        __custatevecAbs2SumArray = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecAbs2SumArray')
         if __custatevecAbs2SumArray == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecAbs2SumArray = dlsym(handle, 'custatevecAbs2SumArray')
+            __custatevecAbs2SumArray = _cyb_dlsym(handle, 'custatevecAbs2SumArray')
 
         global __custatevecCollapseOnZBasis
-        __custatevecCollapseOnZBasis = dlsym(RTLD_DEFAULT, 'custatevecCollapseOnZBasis')
+        __custatevecCollapseOnZBasis = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecCollapseOnZBasis')
         if __custatevecCollapseOnZBasis == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecCollapseOnZBasis = dlsym(handle, 'custatevecCollapseOnZBasis')
+            __custatevecCollapseOnZBasis = _cyb_dlsym(handle, 'custatevecCollapseOnZBasis')
 
         global __custatevecCollapseByBitString
-        __custatevecCollapseByBitString = dlsym(RTLD_DEFAULT, 'custatevecCollapseByBitString')
+        __custatevecCollapseByBitString = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecCollapseByBitString')
         if __custatevecCollapseByBitString == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecCollapseByBitString = dlsym(handle, 'custatevecCollapseByBitString')
+            __custatevecCollapseByBitString = _cyb_dlsym(handle, 'custatevecCollapseByBitString')
 
         global __custatevecMeasureOnZBasis
-        __custatevecMeasureOnZBasis = dlsym(RTLD_DEFAULT, 'custatevecMeasureOnZBasis')
+        __custatevecMeasureOnZBasis = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecMeasureOnZBasis')
         if __custatevecMeasureOnZBasis == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecMeasureOnZBasis = dlsym(handle, 'custatevecMeasureOnZBasis')
+            __custatevecMeasureOnZBasis = _cyb_dlsym(handle, 'custatevecMeasureOnZBasis')
 
         global __custatevecBatchMeasure
-        __custatevecBatchMeasure = dlsym(RTLD_DEFAULT, 'custatevecBatchMeasure')
+        __custatevecBatchMeasure = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecBatchMeasure')
         if __custatevecBatchMeasure == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecBatchMeasure = dlsym(handle, 'custatevecBatchMeasure')
+            __custatevecBatchMeasure = _cyb_dlsym(handle, 'custatevecBatchMeasure')
 
         global __custatevecBatchMeasureWithOffset
-        __custatevecBatchMeasureWithOffset = dlsym(RTLD_DEFAULT, 'custatevecBatchMeasureWithOffset')
+        __custatevecBatchMeasureWithOffset = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecBatchMeasureWithOffset')
         if __custatevecBatchMeasureWithOffset == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecBatchMeasureWithOffset = dlsym(handle, 'custatevecBatchMeasureWithOffset')
+            __custatevecBatchMeasureWithOffset = _cyb_dlsym(handle, 'custatevecBatchMeasureWithOffset')
 
         global __custatevecApplyPauliRotation
-        __custatevecApplyPauliRotation = dlsym(RTLD_DEFAULT, 'custatevecApplyPauliRotation')
+        __custatevecApplyPauliRotation = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecApplyPauliRotation')
         if __custatevecApplyPauliRotation == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecApplyPauliRotation = dlsym(handle, 'custatevecApplyPauliRotation')
+            __custatevecApplyPauliRotation = _cyb_dlsym(handle, 'custatevecApplyPauliRotation')
 
         global __custatevecApplyMatrixGetWorkspaceSize
-        __custatevecApplyMatrixGetWorkspaceSize = dlsym(RTLD_DEFAULT, 'custatevecApplyMatrixGetWorkspaceSize')
+        __custatevecApplyMatrixGetWorkspaceSize = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecApplyMatrixGetWorkspaceSize')
         if __custatevecApplyMatrixGetWorkspaceSize == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecApplyMatrixGetWorkspaceSize = dlsym(handle, 'custatevecApplyMatrixGetWorkspaceSize')
+            __custatevecApplyMatrixGetWorkspaceSize = _cyb_dlsym(handle, 'custatevecApplyMatrixGetWorkspaceSize')
 
         global __custatevecApplyMatrix
-        __custatevecApplyMatrix = dlsym(RTLD_DEFAULT, 'custatevecApplyMatrix')
+        __custatevecApplyMatrix = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecApplyMatrix')
         if __custatevecApplyMatrix == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecApplyMatrix = dlsym(handle, 'custatevecApplyMatrix')
+            __custatevecApplyMatrix = _cyb_dlsym(handle, 'custatevecApplyMatrix')
 
         global __custatevecComputeExpectationGetWorkspaceSize
-        __custatevecComputeExpectationGetWorkspaceSize = dlsym(RTLD_DEFAULT, 'custatevecComputeExpectationGetWorkspaceSize')
+        __custatevecComputeExpectationGetWorkspaceSize = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecComputeExpectationGetWorkspaceSize')
         if __custatevecComputeExpectationGetWorkspaceSize == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecComputeExpectationGetWorkspaceSize = dlsym(handle, 'custatevecComputeExpectationGetWorkspaceSize')
+            __custatevecComputeExpectationGetWorkspaceSize = _cyb_dlsym(handle, 'custatevecComputeExpectationGetWorkspaceSize')
 
         global __custatevecComputeExpectation
-        __custatevecComputeExpectation = dlsym(RTLD_DEFAULT, 'custatevecComputeExpectation')
+        __custatevecComputeExpectation = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecComputeExpectation')
         if __custatevecComputeExpectation == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecComputeExpectation = dlsym(handle, 'custatevecComputeExpectation')
+            __custatevecComputeExpectation = _cyb_dlsym(handle, 'custatevecComputeExpectation')
 
         global __custatevecSamplerCreate
-        __custatevecSamplerCreate = dlsym(RTLD_DEFAULT, 'custatevecSamplerCreate')
+        __custatevecSamplerCreate = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSamplerCreate')
         if __custatevecSamplerCreate == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSamplerCreate = dlsym(handle, 'custatevecSamplerCreate')
+            __custatevecSamplerCreate = _cyb_dlsym(handle, 'custatevecSamplerCreate')
 
         global __custatevecSamplerDestroy
-        __custatevecSamplerDestroy = dlsym(RTLD_DEFAULT, 'custatevecSamplerDestroy')
+        __custatevecSamplerDestroy = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSamplerDestroy')
         if __custatevecSamplerDestroy == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSamplerDestroy = dlsym(handle, 'custatevecSamplerDestroy')
+            __custatevecSamplerDestroy = _cyb_dlsym(handle, 'custatevecSamplerDestroy')
 
         global __custatevecSamplerPreprocess
-        __custatevecSamplerPreprocess = dlsym(RTLD_DEFAULT, 'custatevecSamplerPreprocess')
+        __custatevecSamplerPreprocess = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSamplerPreprocess')
         if __custatevecSamplerPreprocess == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSamplerPreprocess = dlsym(handle, 'custatevecSamplerPreprocess')
+            __custatevecSamplerPreprocess = _cyb_dlsym(handle, 'custatevecSamplerPreprocess')
 
         global __custatevecSamplerGetSquaredNorm
-        __custatevecSamplerGetSquaredNorm = dlsym(RTLD_DEFAULT, 'custatevecSamplerGetSquaredNorm')
+        __custatevecSamplerGetSquaredNorm = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSamplerGetSquaredNorm')
         if __custatevecSamplerGetSquaredNorm == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSamplerGetSquaredNorm = dlsym(handle, 'custatevecSamplerGetSquaredNorm')
+            __custatevecSamplerGetSquaredNorm = _cyb_dlsym(handle, 'custatevecSamplerGetSquaredNorm')
 
         global __custatevecSamplerApplySubSVOffset
-        __custatevecSamplerApplySubSVOffset = dlsym(RTLD_DEFAULT, 'custatevecSamplerApplySubSVOffset')
+        __custatevecSamplerApplySubSVOffset = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSamplerApplySubSVOffset')
         if __custatevecSamplerApplySubSVOffset == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSamplerApplySubSVOffset = dlsym(handle, 'custatevecSamplerApplySubSVOffset')
+            __custatevecSamplerApplySubSVOffset = _cyb_dlsym(handle, 'custatevecSamplerApplySubSVOffset')
 
         global __custatevecSamplerSample
-        __custatevecSamplerSample = dlsym(RTLD_DEFAULT, 'custatevecSamplerSample')
+        __custatevecSamplerSample = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSamplerSample')
         if __custatevecSamplerSample == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSamplerSample = dlsym(handle, 'custatevecSamplerSample')
+            __custatevecSamplerSample = _cyb_dlsym(handle, 'custatevecSamplerSample')
 
         global __custatevecApplyGeneralizedPermutationMatrixGetWorkspaceSize
-        __custatevecApplyGeneralizedPermutationMatrixGetWorkspaceSize = dlsym(RTLD_DEFAULT, 'custatevecApplyGeneralizedPermutationMatrixGetWorkspaceSize')
+        __custatevecApplyGeneralizedPermutationMatrixGetWorkspaceSize = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecApplyGeneralizedPermutationMatrixGetWorkspaceSize')
         if __custatevecApplyGeneralizedPermutationMatrixGetWorkspaceSize == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecApplyGeneralizedPermutationMatrixGetWorkspaceSize = dlsym(handle, 'custatevecApplyGeneralizedPermutationMatrixGetWorkspaceSize')
+            __custatevecApplyGeneralizedPermutationMatrixGetWorkspaceSize = _cyb_dlsym(handle, 'custatevecApplyGeneralizedPermutationMatrixGetWorkspaceSize')
 
         global __custatevecApplyGeneralizedPermutationMatrix
-        __custatevecApplyGeneralizedPermutationMatrix = dlsym(RTLD_DEFAULT, 'custatevecApplyGeneralizedPermutationMatrix')
+        __custatevecApplyGeneralizedPermutationMatrix = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecApplyGeneralizedPermutationMatrix')
         if __custatevecApplyGeneralizedPermutationMatrix == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecApplyGeneralizedPermutationMatrix = dlsym(handle, 'custatevecApplyGeneralizedPermutationMatrix')
+            __custatevecApplyGeneralizedPermutationMatrix = _cyb_dlsym(handle, 'custatevecApplyGeneralizedPermutationMatrix')
 
         global __custatevecComputeExpectationsOnPauliBasis
-        __custatevecComputeExpectationsOnPauliBasis = dlsym(RTLD_DEFAULT, 'custatevecComputeExpectationsOnPauliBasis')
+        __custatevecComputeExpectationsOnPauliBasis = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecComputeExpectationsOnPauliBasis')
         if __custatevecComputeExpectationsOnPauliBasis == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecComputeExpectationsOnPauliBasis = dlsym(handle, 'custatevecComputeExpectationsOnPauliBasis')
+            __custatevecComputeExpectationsOnPauliBasis = _cyb_dlsym(handle, 'custatevecComputeExpectationsOnPauliBasis')
 
         global __custatevecAccessorCreate
-        __custatevecAccessorCreate = dlsym(RTLD_DEFAULT, 'custatevecAccessorCreate')
+        __custatevecAccessorCreate = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecAccessorCreate')
         if __custatevecAccessorCreate == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecAccessorCreate = dlsym(handle, 'custatevecAccessorCreate')
+            __custatevecAccessorCreate = _cyb_dlsym(handle, 'custatevecAccessorCreate')
 
         global __custatevecAccessorCreateView
-        __custatevecAccessorCreateView = dlsym(RTLD_DEFAULT, 'custatevecAccessorCreateView')
+        __custatevecAccessorCreateView = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecAccessorCreateView')
         if __custatevecAccessorCreateView == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecAccessorCreateView = dlsym(handle, 'custatevecAccessorCreateView')
+            __custatevecAccessorCreateView = _cyb_dlsym(handle, 'custatevecAccessorCreateView')
 
         global __custatevecAccessorDestroy
-        __custatevecAccessorDestroy = dlsym(RTLD_DEFAULT, 'custatevecAccessorDestroy')
+        __custatevecAccessorDestroy = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecAccessorDestroy')
         if __custatevecAccessorDestroy == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecAccessorDestroy = dlsym(handle, 'custatevecAccessorDestroy')
+            __custatevecAccessorDestroy = _cyb_dlsym(handle, 'custatevecAccessorDestroy')
 
         global __custatevecAccessorSetExtraWorkspace
-        __custatevecAccessorSetExtraWorkspace = dlsym(RTLD_DEFAULT, 'custatevecAccessorSetExtraWorkspace')
+        __custatevecAccessorSetExtraWorkspace = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecAccessorSetExtraWorkspace')
         if __custatevecAccessorSetExtraWorkspace == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecAccessorSetExtraWorkspace = dlsym(handle, 'custatevecAccessorSetExtraWorkspace')
+            __custatevecAccessorSetExtraWorkspace = _cyb_dlsym(handle, 'custatevecAccessorSetExtraWorkspace')
 
         global __custatevecAccessorGet
-        __custatevecAccessorGet = dlsym(RTLD_DEFAULT, 'custatevecAccessorGet')
+        __custatevecAccessorGet = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecAccessorGet')
         if __custatevecAccessorGet == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecAccessorGet = dlsym(handle, 'custatevecAccessorGet')
+            __custatevecAccessorGet = _cyb_dlsym(handle, 'custatevecAccessorGet')
 
         global __custatevecAccessorSet
-        __custatevecAccessorSet = dlsym(RTLD_DEFAULT, 'custatevecAccessorSet')
+        __custatevecAccessorSet = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecAccessorSet')
         if __custatevecAccessorSet == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecAccessorSet = dlsym(handle, 'custatevecAccessorSet')
+            __custatevecAccessorSet = _cyb_dlsym(handle, 'custatevecAccessorSet')
 
         global __custatevecSwapIndexBits
-        __custatevecSwapIndexBits = dlsym(RTLD_DEFAULT, 'custatevecSwapIndexBits')
+        __custatevecSwapIndexBits = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSwapIndexBits')
         if __custatevecSwapIndexBits == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSwapIndexBits = dlsym(handle, 'custatevecSwapIndexBits')
+            __custatevecSwapIndexBits = _cyb_dlsym(handle, 'custatevecSwapIndexBits')
 
         global __custatevecTestMatrixTypeGetWorkspaceSize
-        __custatevecTestMatrixTypeGetWorkspaceSize = dlsym(RTLD_DEFAULT, 'custatevecTestMatrixTypeGetWorkspaceSize')
+        __custatevecTestMatrixTypeGetWorkspaceSize = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecTestMatrixTypeGetWorkspaceSize')
         if __custatevecTestMatrixTypeGetWorkspaceSize == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecTestMatrixTypeGetWorkspaceSize = dlsym(handle, 'custatevecTestMatrixTypeGetWorkspaceSize')
+            __custatevecTestMatrixTypeGetWorkspaceSize = _cyb_dlsym(handle, 'custatevecTestMatrixTypeGetWorkspaceSize')
 
         global __custatevecTestMatrixType
-        __custatevecTestMatrixType = dlsym(RTLD_DEFAULT, 'custatevecTestMatrixType')
+        __custatevecTestMatrixType = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecTestMatrixType')
         if __custatevecTestMatrixType == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecTestMatrixType = dlsym(handle, 'custatevecTestMatrixType')
+            __custatevecTestMatrixType = _cyb_dlsym(handle, 'custatevecTestMatrixType')
 
         global __custatevecMultiDeviceSwapIndexBits
-        __custatevecMultiDeviceSwapIndexBits = dlsym(RTLD_DEFAULT, 'custatevecMultiDeviceSwapIndexBits')
+        __custatevecMultiDeviceSwapIndexBits = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecMultiDeviceSwapIndexBits')
         if __custatevecMultiDeviceSwapIndexBits == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecMultiDeviceSwapIndexBits = dlsym(handle, 'custatevecMultiDeviceSwapIndexBits')
+            __custatevecMultiDeviceSwapIndexBits = _cyb_dlsym(handle, 'custatevecMultiDeviceSwapIndexBits')
 
         global __custatevecCommunicatorCreate
-        __custatevecCommunicatorCreate = dlsym(RTLD_DEFAULT, 'custatevecCommunicatorCreate')
+        __custatevecCommunicatorCreate = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecCommunicatorCreate')
         if __custatevecCommunicatorCreate == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecCommunicatorCreate = dlsym(handle, 'custatevecCommunicatorCreate')
+            __custatevecCommunicatorCreate = _cyb_dlsym(handle, 'custatevecCommunicatorCreate')
 
         global __custatevecCommunicatorDestroy
-        __custatevecCommunicatorDestroy = dlsym(RTLD_DEFAULT, 'custatevecCommunicatorDestroy')
+        __custatevecCommunicatorDestroy = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecCommunicatorDestroy')
         if __custatevecCommunicatorDestroy == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecCommunicatorDestroy = dlsym(handle, 'custatevecCommunicatorDestroy')
+            __custatevecCommunicatorDestroy = _cyb_dlsym(handle, 'custatevecCommunicatorDestroy')
 
         global __custatevecDistIndexBitSwapSchedulerCreate
-        __custatevecDistIndexBitSwapSchedulerCreate = dlsym(RTLD_DEFAULT, 'custatevecDistIndexBitSwapSchedulerCreate')
+        __custatevecDistIndexBitSwapSchedulerCreate = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecDistIndexBitSwapSchedulerCreate')
         if __custatevecDistIndexBitSwapSchedulerCreate == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecDistIndexBitSwapSchedulerCreate = dlsym(handle, 'custatevecDistIndexBitSwapSchedulerCreate')
+            __custatevecDistIndexBitSwapSchedulerCreate = _cyb_dlsym(handle, 'custatevecDistIndexBitSwapSchedulerCreate')
 
         global __custatevecDistIndexBitSwapSchedulerDestroy
-        __custatevecDistIndexBitSwapSchedulerDestroy = dlsym(RTLD_DEFAULT, 'custatevecDistIndexBitSwapSchedulerDestroy')
+        __custatevecDistIndexBitSwapSchedulerDestroy = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecDistIndexBitSwapSchedulerDestroy')
         if __custatevecDistIndexBitSwapSchedulerDestroy == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecDistIndexBitSwapSchedulerDestroy = dlsym(handle, 'custatevecDistIndexBitSwapSchedulerDestroy')
+            __custatevecDistIndexBitSwapSchedulerDestroy = _cyb_dlsym(handle, 'custatevecDistIndexBitSwapSchedulerDestroy')
 
         global __custatevecDistIndexBitSwapSchedulerSetIndexBitSwaps
-        __custatevecDistIndexBitSwapSchedulerSetIndexBitSwaps = dlsym(RTLD_DEFAULT, 'custatevecDistIndexBitSwapSchedulerSetIndexBitSwaps')
+        __custatevecDistIndexBitSwapSchedulerSetIndexBitSwaps = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecDistIndexBitSwapSchedulerSetIndexBitSwaps')
         if __custatevecDistIndexBitSwapSchedulerSetIndexBitSwaps == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecDistIndexBitSwapSchedulerSetIndexBitSwaps = dlsym(handle, 'custatevecDistIndexBitSwapSchedulerSetIndexBitSwaps')
+            __custatevecDistIndexBitSwapSchedulerSetIndexBitSwaps = _cyb_dlsym(handle, 'custatevecDistIndexBitSwapSchedulerSetIndexBitSwaps')
 
         global __custatevecDistIndexBitSwapSchedulerGetParameters
-        __custatevecDistIndexBitSwapSchedulerGetParameters = dlsym(RTLD_DEFAULT, 'custatevecDistIndexBitSwapSchedulerGetParameters')
+        __custatevecDistIndexBitSwapSchedulerGetParameters = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecDistIndexBitSwapSchedulerGetParameters')
         if __custatevecDistIndexBitSwapSchedulerGetParameters == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecDistIndexBitSwapSchedulerGetParameters = dlsym(handle, 'custatevecDistIndexBitSwapSchedulerGetParameters')
+            __custatevecDistIndexBitSwapSchedulerGetParameters = _cyb_dlsym(handle, 'custatevecDistIndexBitSwapSchedulerGetParameters')
 
         global __custatevecSVSwapWorkerCreate
-        __custatevecSVSwapWorkerCreate = dlsym(RTLD_DEFAULT, 'custatevecSVSwapWorkerCreate')
+        __custatevecSVSwapWorkerCreate = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSVSwapWorkerCreate')
         if __custatevecSVSwapWorkerCreate == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSVSwapWorkerCreate = dlsym(handle, 'custatevecSVSwapWorkerCreate')
+            __custatevecSVSwapWorkerCreate = _cyb_dlsym(handle, 'custatevecSVSwapWorkerCreate')
 
         global __custatevecSVSwapWorkerDestroy
-        __custatevecSVSwapWorkerDestroy = dlsym(RTLD_DEFAULT, 'custatevecSVSwapWorkerDestroy')
+        __custatevecSVSwapWorkerDestroy = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSVSwapWorkerDestroy')
         if __custatevecSVSwapWorkerDestroy == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSVSwapWorkerDestroy = dlsym(handle, 'custatevecSVSwapWorkerDestroy')
+            __custatevecSVSwapWorkerDestroy = _cyb_dlsym(handle, 'custatevecSVSwapWorkerDestroy')
 
         global __custatevecSVSwapWorkerSetExtraWorkspace
-        __custatevecSVSwapWorkerSetExtraWorkspace = dlsym(RTLD_DEFAULT, 'custatevecSVSwapWorkerSetExtraWorkspace')
+        __custatevecSVSwapWorkerSetExtraWorkspace = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSVSwapWorkerSetExtraWorkspace')
         if __custatevecSVSwapWorkerSetExtraWorkspace == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSVSwapWorkerSetExtraWorkspace = dlsym(handle, 'custatevecSVSwapWorkerSetExtraWorkspace')
+            __custatevecSVSwapWorkerSetExtraWorkspace = _cyb_dlsym(handle, 'custatevecSVSwapWorkerSetExtraWorkspace')
 
         global __custatevecSVSwapWorkerSetTransferWorkspace
-        __custatevecSVSwapWorkerSetTransferWorkspace = dlsym(RTLD_DEFAULT, 'custatevecSVSwapWorkerSetTransferWorkspace')
+        __custatevecSVSwapWorkerSetTransferWorkspace = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSVSwapWorkerSetTransferWorkspace')
         if __custatevecSVSwapWorkerSetTransferWorkspace == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSVSwapWorkerSetTransferWorkspace = dlsym(handle, 'custatevecSVSwapWorkerSetTransferWorkspace')
+            __custatevecSVSwapWorkerSetTransferWorkspace = _cyb_dlsym(handle, 'custatevecSVSwapWorkerSetTransferWorkspace')
 
         global __custatevecSVSwapWorkerSetSubSVsP2P
-        __custatevecSVSwapWorkerSetSubSVsP2P = dlsym(RTLD_DEFAULT, 'custatevecSVSwapWorkerSetSubSVsP2P')
+        __custatevecSVSwapWorkerSetSubSVsP2P = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSVSwapWorkerSetSubSVsP2P')
         if __custatevecSVSwapWorkerSetSubSVsP2P == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSVSwapWorkerSetSubSVsP2P = dlsym(handle, 'custatevecSVSwapWorkerSetSubSVsP2P')
+            __custatevecSVSwapWorkerSetSubSVsP2P = _cyb_dlsym(handle, 'custatevecSVSwapWorkerSetSubSVsP2P')
 
         global __custatevecSVSwapWorkerSetParameters
-        __custatevecSVSwapWorkerSetParameters = dlsym(RTLD_DEFAULT, 'custatevecSVSwapWorkerSetParameters')
+        __custatevecSVSwapWorkerSetParameters = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSVSwapWorkerSetParameters')
         if __custatevecSVSwapWorkerSetParameters == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSVSwapWorkerSetParameters = dlsym(handle, 'custatevecSVSwapWorkerSetParameters')
+            __custatevecSVSwapWorkerSetParameters = _cyb_dlsym(handle, 'custatevecSVSwapWorkerSetParameters')
 
         global __custatevecSVSwapWorkerExecute
-        __custatevecSVSwapWorkerExecute = dlsym(RTLD_DEFAULT, 'custatevecSVSwapWorkerExecute')
+        __custatevecSVSwapWorkerExecute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSVSwapWorkerExecute')
         if __custatevecSVSwapWorkerExecute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSVSwapWorkerExecute = dlsym(handle, 'custatevecSVSwapWorkerExecute')
+            __custatevecSVSwapWorkerExecute = _cyb_dlsym(handle, 'custatevecSVSwapWorkerExecute')
 
         global __custatevecInitializeStateVector
-        __custatevecInitializeStateVector = dlsym(RTLD_DEFAULT, 'custatevecInitializeStateVector')
+        __custatevecInitializeStateVector = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecInitializeStateVector')
         if __custatevecInitializeStateVector == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecInitializeStateVector = dlsym(handle, 'custatevecInitializeStateVector')
+            __custatevecInitializeStateVector = _cyb_dlsym(handle, 'custatevecInitializeStateVector')
 
         global __custatevecApplyMatrixBatchedGetWorkspaceSize
-        __custatevecApplyMatrixBatchedGetWorkspaceSize = dlsym(RTLD_DEFAULT, 'custatevecApplyMatrixBatchedGetWorkspaceSize')
+        __custatevecApplyMatrixBatchedGetWorkspaceSize = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecApplyMatrixBatchedGetWorkspaceSize')
         if __custatevecApplyMatrixBatchedGetWorkspaceSize == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecApplyMatrixBatchedGetWorkspaceSize = dlsym(handle, 'custatevecApplyMatrixBatchedGetWorkspaceSize')
+            __custatevecApplyMatrixBatchedGetWorkspaceSize = _cyb_dlsym(handle, 'custatevecApplyMatrixBatchedGetWorkspaceSize')
 
         global __custatevecApplyMatrixBatched
-        __custatevecApplyMatrixBatched = dlsym(RTLD_DEFAULT, 'custatevecApplyMatrixBatched')
+        __custatevecApplyMatrixBatched = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecApplyMatrixBatched')
         if __custatevecApplyMatrixBatched == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecApplyMatrixBatched = dlsym(handle, 'custatevecApplyMatrixBatched')
+            __custatevecApplyMatrixBatched = _cyb_dlsym(handle, 'custatevecApplyMatrixBatched')
 
         global __custatevecAbs2SumArrayBatched
-        __custatevecAbs2SumArrayBatched = dlsym(RTLD_DEFAULT, 'custatevecAbs2SumArrayBatched')
+        __custatevecAbs2SumArrayBatched = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecAbs2SumArrayBatched')
         if __custatevecAbs2SumArrayBatched == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecAbs2SumArrayBatched = dlsym(handle, 'custatevecAbs2SumArrayBatched')
+            __custatevecAbs2SumArrayBatched = _cyb_dlsym(handle, 'custatevecAbs2SumArrayBatched')
 
         global __custatevecCollapseByBitStringBatchedGetWorkspaceSize
-        __custatevecCollapseByBitStringBatchedGetWorkspaceSize = dlsym(RTLD_DEFAULT, 'custatevecCollapseByBitStringBatchedGetWorkspaceSize')
+        __custatevecCollapseByBitStringBatchedGetWorkspaceSize = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecCollapseByBitStringBatchedGetWorkspaceSize')
         if __custatevecCollapseByBitStringBatchedGetWorkspaceSize == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecCollapseByBitStringBatchedGetWorkspaceSize = dlsym(handle, 'custatevecCollapseByBitStringBatchedGetWorkspaceSize')
+            __custatevecCollapseByBitStringBatchedGetWorkspaceSize = _cyb_dlsym(handle, 'custatevecCollapseByBitStringBatchedGetWorkspaceSize')
 
         global __custatevecCollapseByBitStringBatched
-        __custatevecCollapseByBitStringBatched = dlsym(RTLD_DEFAULT, 'custatevecCollapseByBitStringBatched')
+        __custatevecCollapseByBitStringBatched = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecCollapseByBitStringBatched')
         if __custatevecCollapseByBitStringBatched == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecCollapseByBitStringBatched = dlsym(handle, 'custatevecCollapseByBitStringBatched')
+            __custatevecCollapseByBitStringBatched = _cyb_dlsym(handle, 'custatevecCollapseByBitStringBatched')
 
         global __custatevecMeasureBatched
-        __custatevecMeasureBatched = dlsym(RTLD_DEFAULT, 'custatevecMeasureBatched')
+        __custatevecMeasureBatched = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecMeasureBatched')
         if __custatevecMeasureBatched == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecMeasureBatched = dlsym(handle, 'custatevecMeasureBatched')
+            __custatevecMeasureBatched = _cyb_dlsym(handle, 'custatevecMeasureBatched')
 
         global __custatevecSubSVMigratorCreate
-        __custatevecSubSVMigratorCreate = dlsym(RTLD_DEFAULT, 'custatevecSubSVMigratorCreate')
+        __custatevecSubSVMigratorCreate = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSubSVMigratorCreate')
         if __custatevecSubSVMigratorCreate == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSubSVMigratorCreate = dlsym(handle, 'custatevecSubSVMigratorCreate')
+            __custatevecSubSVMigratorCreate = _cyb_dlsym(handle, 'custatevecSubSVMigratorCreate')
 
         global __custatevecSubSVMigratorDestroy
-        __custatevecSubSVMigratorDestroy = dlsym(RTLD_DEFAULT, 'custatevecSubSVMigratorDestroy')
+        __custatevecSubSVMigratorDestroy = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSubSVMigratorDestroy')
         if __custatevecSubSVMigratorDestroy == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSubSVMigratorDestroy = dlsym(handle, 'custatevecSubSVMigratorDestroy')
+            __custatevecSubSVMigratorDestroy = _cyb_dlsym(handle, 'custatevecSubSVMigratorDestroy')
 
         global __custatevecSubSVMigratorMigrate
-        __custatevecSubSVMigratorMigrate = dlsym(RTLD_DEFAULT, 'custatevecSubSVMigratorMigrate')
+        __custatevecSubSVMigratorMigrate = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSubSVMigratorMigrate')
         if __custatevecSubSVMigratorMigrate == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSubSVMigratorMigrate = dlsym(handle, 'custatevecSubSVMigratorMigrate')
+            __custatevecSubSVMigratorMigrate = _cyb_dlsym(handle, 'custatevecSubSVMigratorMigrate')
 
         global __custatevecComputeExpectationBatchedGetWorkspaceSize
-        __custatevecComputeExpectationBatchedGetWorkspaceSize = dlsym(RTLD_DEFAULT, 'custatevecComputeExpectationBatchedGetWorkspaceSize')
+        __custatevecComputeExpectationBatchedGetWorkspaceSize = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecComputeExpectationBatchedGetWorkspaceSize')
         if __custatevecComputeExpectationBatchedGetWorkspaceSize == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecComputeExpectationBatchedGetWorkspaceSize = dlsym(handle, 'custatevecComputeExpectationBatchedGetWorkspaceSize')
+            __custatevecComputeExpectationBatchedGetWorkspaceSize = _cyb_dlsym(handle, 'custatevecComputeExpectationBatchedGetWorkspaceSize')
 
         global __custatevecComputeExpectationBatched
-        __custatevecComputeExpectationBatched = dlsym(RTLD_DEFAULT, 'custatevecComputeExpectationBatched')
+        __custatevecComputeExpectationBatched = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecComputeExpectationBatched')
         if __custatevecComputeExpectationBatched == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecComputeExpectationBatched = dlsym(handle, 'custatevecComputeExpectationBatched')
+            __custatevecComputeExpectationBatched = _cyb_dlsym(handle, 'custatevecComputeExpectationBatched')
 
         global __custatevecSetMathMode
-        __custatevecSetMathMode = dlsym(RTLD_DEFAULT, 'custatevecSetMathMode')
+        __custatevecSetMathMode = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSetMathMode')
         if __custatevecSetMathMode == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecSetMathMode = dlsym(handle, 'custatevecSetMathMode')
+            __custatevecSetMathMode = _cyb_dlsym(handle, 'custatevecSetMathMode')
 
         global __custatevecGetMathMode
-        __custatevecGetMathMode = dlsym(RTLD_DEFAULT, 'custatevecGetMathMode')
+        __custatevecGetMathMode = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecGetMathMode')
         if __custatevecGetMathMode == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custatevecGetMathMode = dlsym(handle, 'custatevecGetMathMode')
-        __py_custatevec_init = True
+            __custatevecGetMathMode = _cyb_dlsym(handle, 'custatevecGetMathMode')
+
+        global __custatevecSVSwapWorkerCreateWithSemaphore
+        __custatevecSVSwapWorkerCreateWithSemaphore = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSVSwapWorkerCreateWithSemaphore')
+        if __custatevecSVSwapWorkerCreateWithSemaphore == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __custatevecSVSwapWorkerCreateWithSemaphore = _cyb_dlsym(handle, 'custatevecSVSwapWorkerCreateWithSemaphore')
+
+        global __custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores
+        __custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores')
+        if __custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores = _cyb_dlsym(handle, 'custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores')
+
+        _cyb_atomic_int_store(<int *>&_cyb___py_custatevec_init, 1)
         return 0
+
+cdef inline int _check_or_init_custatevec() except -1 nogil:
+    if _cyb_atomic_int_load(<int *>&_cyb___py_custatevec_init):
+        return 0
+
+    return _init_custatevec()
 
 
 cpdef dict _inspect_function_pointers():
+    global _cyb_func_ptrs
+    if _cyb_func_ptrs is not None:
+        return _cyb_func_ptrs
+
     _check_or_init_custatevec()
     cdef dict data = {}
-
     global __custatevecCreate
     data["__custatevecCreate"] = <intptr_t>__custatevecCreate
 
@@ -720,8 +755,14 @@ cpdef dict _inspect_function_pointers():
     global __custatevecGetStream
     data["__custatevecGetStream"] = <intptr_t>__custatevecGetStream
 
+    global __custatevecLoggerSetCallback
+    data["__custatevecLoggerSetCallback"] = <intptr_t>__custatevecLoggerSetCallback
+
     global __custatevecLoggerSetCallbackData
     data["__custatevecLoggerSetCallbackData"] = <intptr_t>__custatevecLoggerSetCallbackData
+
+    global __custatevecLoggerSetFile
+    data["__custatevecLoggerSetFile"] = <intptr_t>__custatevecLoggerSetFile
 
     global __custatevecLoggerOpenFile
     data["__custatevecLoggerOpenFile"] = <intptr_t>__custatevecLoggerOpenFile
@@ -915,7 +956,27 @@ cpdef dict _inspect_function_pointers():
     global __custatevecGetMathMode
     data["__custatevecGetMathMode"] = <intptr_t>__custatevecGetMathMode
 
+    global __custatevecSVSwapWorkerCreateWithSemaphore
+    data["__custatevecSVSwapWorkerCreateWithSemaphore"] = <intptr_t>__custatevecSVSwapWorkerCreateWithSemaphore
+
+    global __custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores
+    data["__custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores"] = <intptr_t>__custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores
+    _cyb_func_ptrs = data
     return data
+
+
+cpdef _inspect_function_pointer(str name):
+    global _cyb_func_ptrs
+    if _cyb_func_ptrs is None:
+        _cyb_func_ptrs = _inspect_function_pointers()
+    return _cyb_func_ptrs[name]
+
+
+
+
+cdef void* load_library() except* with gil:
+    cdef uintptr_t handle = load_nvidia_dynamic_lib("custatevec")._handle_uint
+    return <void*>handle
 
 
 ###############################################################################
@@ -1022,6 +1083,16 @@ cdef custatevecStatus_t _custatevecGetStream(custatevecHandle_t handle, cudaStre
         handle, streamId)
 
 
+cdef custatevecStatus_t _custatevecLoggerSetCallback(custatevecLoggerCallback_t callback) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __custatevecLoggerSetCallback
+    _check_or_init_custatevec()
+    if __custatevecLoggerSetCallback == NULL:
+        with gil:
+            raise FunctionNotFoundError("function custatevecLoggerSetCallback is not found")
+    return (<custatevecStatus_t (*)(custatevecLoggerCallback_t) noexcept nogil>__custatevecLoggerSetCallback)(
+        callback)
+
+
 cdef custatevecStatus_t _custatevecLoggerSetCallbackData(custatevecLoggerCallbackData_t callback, void* userData) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     global __custatevecLoggerSetCallbackData
     _check_or_init_custatevec()
@@ -1030,6 +1101,16 @@ cdef custatevecStatus_t _custatevecLoggerSetCallbackData(custatevecLoggerCallbac
             raise FunctionNotFoundError("function custatevecLoggerSetCallbackData is not found")
     return (<custatevecStatus_t (*)(custatevecLoggerCallbackData_t, void*) noexcept nogil>__custatevecLoggerSetCallbackData)(
         callback, userData)
+
+
+cdef custatevecStatus_t _custatevecLoggerSetFile(FILE* file) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __custatevecLoggerSetFile
+    _check_or_init_custatevec()
+    if __custatevecLoggerSetFile == NULL:
+        with gil:
+            raise FunctionNotFoundError("function custatevecLoggerSetFile is not found")
+    return (<custatevecStatus_t (*)(FILE*) noexcept nogil>__custatevecLoggerSetFile)(
+        file)
 
 
 cdef custatevecStatus_t _custatevecLoggerOpenFile(const char* logFile) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -1670,3 +1751,23 @@ cdef custatevecStatus_t _custatevecGetMathMode(custatevecHandle_t handle, custat
             raise FunctionNotFoundError("function custatevecGetMathMode is not found")
     return (<custatevecStatus_t (*)(custatevecHandle_t, custatevecMathMode_t*) noexcept nogil>__custatevecGetMathMode)(
         handle, mode)
+
+
+cdef custatevecStatus_t _custatevecSVSwapWorkerCreateWithSemaphore(custatevecHandle_t handle, custatevecSVSwapWorkerDescriptor_t* svSwapWorker, custatevecCommunicatorDescriptor_t communicator, void* orgSubSV, int32_t orgSubSVIndex, void* orgSemaphore, cudaDataType_t svDataType, cudaStream_t stream, size_t* extraWorkspaceSizeInBytes, size_t* minTransferWorkspaceSizeInBytes) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __custatevecSVSwapWorkerCreateWithSemaphore
+    _check_or_init_custatevec()
+    if __custatevecSVSwapWorkerCreateWithSemaphore == NULL:
+        with gil:
+            raise FunctionNotFoundError("function custatevecSVSwapWorkerCreateWithSemaphore is not found")
+    return (<custatevecStatus_t (*)(custatevecHandle_t, custatevecSVSwapWorkerDescriptor_t*, custatevecCommunicatorDescriptor_t, void*, int32_t, void*, cudaDataType_t, cudaStream_t, size_t*, size_t*) noexcept nogil>__custatevecSVSwapWorkerCreateWithSemaphore)(
+        handle, svSwapWorker, communicator, orgSubSV, orgSubSVIndex, orgSemaphore, svDataType, stream, extraWorkspaceSizeInBytes, minTransferWorkspaceSizeInBytes)
+
+
+cdef custatevecStatus_t _custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores(custatevecHandle_t handle, custatevecSVSwapWorkerDescriptor_t svSwapWorker, void** dstSubSVsP2P, const int32_t* dstSubSVIndicesP2P, void** dstSemaphores, const uint32_t nDstSubSVsP2P) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores
+    _check_or_init_custatevec()
+    if __custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores == NULL:
+        with gil:
+            raise FunctionNotFoundError("function custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores is not found")
+    return (<custatevecStatus_t (*)(custatevecHandle_t, custatevecSVSwapWorkerDescriptor_t, void**, const int32_t*, void**, const uint32_t) noexcept nogil>__custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores)(
+        handle, svSwapWorker, dstSubSVsP2P, dstSubSVIndicesP2P, dstSemaphores, nDstSubSVsP2P)

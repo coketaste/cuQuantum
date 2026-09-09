@@ -5,8 +5,6 @@
 """ Interface for pluggable memory handlers.
 """
 
-from typing import Optional, Union
-
 __all__ = ['BaseCUDAMemoryManager', 'MemoryPointer', 'MemoryLimitExceeded']
 
 from nvmath.memory import BaseCUDAMemoryManager, MemoryPointer
@@ -24,7 +22,6 @@ class MemoryLimitExceeded(MemoryError):
         - device_id: int
             The device selected to run the operation.
 
-    If the options was set to str, this value is the calculated limit.
     """
     limit: int
     device_id: int
@@ -33,13 +30,10 @@ class MemoryLimitExceeded(MemoryError):
     def __init__(self,
                  limit:int,
                  requirement:int,
-                 device_id:int,
-                 specified: Optional[Union[str, int]]=None):
+                 device_id:int):
         message = f"""GPU memory limit exceeded. Device id: {device_id}.
 The memory limit is {limit}, while the minimum workspace size needed is {requirement}.
 """
-        if specified is not None:
-            message += f"Memory limit specified by options: {specified}."
 
         super().__init__(message)
         self.limit = limit

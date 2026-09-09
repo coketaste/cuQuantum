@@ -546,7 +546,8 @@ int main(int argc, char** argv) {
   std::cout << std::endl;
 
   // Begin timing before any gates are applied
-  auto startTime = std::chrono::high_resolution_clock::now();
+  HANDLE_CUDA_ERROR(cudaStreamSynchronize(stream));
+  auto startTime = std::chrono::steady_clock::now();
   int64_t maxNumTerms = 0;
 
   // Iterate the circuit in reverse to effect the adjoint of the total circuit
@@ -584,9 +585,16 @@ int main(int argc, char** argv) {
       &reqWorkspaceMem));
 
     // Verify that our existing buffers and workspace have sufficient memory
-    assert(reqExpansionPauliMem <= expansionPauliMem);
-    assert(reqExpansionCoefMem  <= expansionCoefMem);
-    assert(reqWorkspaceMem      <= workspaceMem);
+    if (reqExpansionPauliMem > static_cast<int64_t>(expansionPauliMem) ||
+        reqExpansionCoefMem  > static_cast<int64_t>(expansionCoefMem)  ||
+        reqWorkspaceMem      > static_cast<int64_t>(workspaceMem))
+    {
+      std::cout
+        << "Insufficient outExpansion capacity and/or workspace buffer size "
+        << "to perform operator application. Exiting..."
+        << std::endl;
+      std::abort();
+    }
 
     // Beware that cupaulipropPauliExpansionViewPrepareOperatorApplication() above
     // detaches the memory buffer from the workspace, which we here re-attach.
@@ -642,7 +650,12 @@ int main(int argc, char** argv) {
     handle, workspace,
     CUPAULIPROP_MEMSPACE_DEVICE, CUPAULIPROP_WORKSPACE_SCRATCH,
     &reqWorkspaceMem));
-  assert(reqWorkspaceMem <= workspaceMem);
+  if (reqWorkspaceMem > static_cast<int64_t>(workspaceMem)) {
+    std::cout
+      << "Insufficient workspace buffer size to compute the trace. Exiting..."
+      << std::endl;
+    std::abort();
+  }
 
   // Beware that we must now reattach the buffer to the workspace
   HANDLE_CUPP_ERROR(cupaulipropWorkspaceSetMemory(
@@ -655,10 +668,13 @@ int main(int argc, char** argv) {
   double expecExponent;
   HANDLE_CUPP_ERROR(cupaulipropPauliExpansionViewComputeTraceWithZeroState(
     handle, outView, &expecSignificand, &expecExponent, workspace, stream));
+
+  // The CUDA stream must be synchronized before accessing the trace output.
+  HANDLE_CUDA_ERROR(cudaStreamSynchronize(stream));
   double expec = expecSignificand * std::pow(2.0, expecExponent);
 
   // End timing after trace is evaluated
-  auto endTime = std::chrono::high_resolution_clock::now();
+  auto endTime = std::chrono::steady_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
   auto durationSecs = (duration.count() / 1e6);
 

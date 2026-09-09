@@ -8,9 +8,9 @@
 
 #include <algorithm>
 #include <array>
-#include <cassert>
 #include <cmath>
 #include <cstdlib>
+#include <iostream>
 #include <numeric>
 #include <vector>
 
@@ -85,10 +85,17 @@ void prepareSingleOperatorApplication(
     CUPAULIPROP_MEMSPACE_DEVICE, CUPAULIPROP_WORKSPACE_SCRATCH,
     &requiredWorkspaceSize) );
 
-  // Assert the pre-allocated buffers are all sufficiently sized
-  assert(requiredPauliSize     <= static_cast<int64_t>(pauliBufferSize));
-  assert(requiredCoefSize      <= static_cast<int64_t>(coefBufferSize));
-  assert(requiredWorkspaceSize <= static_cast<int64_t>(workspaceBufferSize));
+  // Ensure the pre-allocated buffers are all sufficiently sized
+  if (requiredPauliSize     > static_cast<int64_t>(pauliBufferSize) ||
+      requiredCoefSize      > static_cast<int64_t>(coefBufferSize)  ||
+      requiredWorkspaceSize > static_cast<int64_t>(workspaceBufferSize))
+  {
+    std::cout
+      << "Insufficient outExpansion capacity and/or workspace buffer size "
+      << "to perform operator application. Exiting..."
+      << std::endl;
+    std::abort();
+  }
 
   // Re-attach the existing workspace buffer
   HANDLE_CUPP_ERROR( cupaulipropWorkspaceSetMemory(

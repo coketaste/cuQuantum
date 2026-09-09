@@ -2,7 +2,19 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 25.11.0 to 26.03.1, generator version 0.3.1.dev1520+g79061d461. Do not modify it directly.
+# This code was automatically generated across versions from 25.11.0 to 26.09.0. Do not modify it directly.
+
+
+# <<<< PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport (
+    int32_t,
+    int64_t,
+    uint64_t,
+)
+
+
+# <<<< END OF PREAMBLE CONTENT >>>>
 
 from ._internal cimport custabilizer as _custabilizer
 
@@ -69,3 +81,19 @@ cdef custabilizerStatus_t custabilizerGF2SparseDenseMatrixMultiply(custabilizerH
 
 cdef custabilizerStatus_t custabilizerGF2SparseSparseMatrixMultiply(custabilizerHandle_t handle, uint64_t m, uint64_t n, uint64_t k, const uint64_t* aColumnIndices, const uint64_t* aRowOffsets, uint64_t bNNZ, const uint64_t* bColumnIndices, const uint64_t* bRowOffsets, int32_t beta, custabilizerBitInt_t* C, cudaStream_t stream) except?_CUSTABILIZERSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     return _custabilizer._custabilizerGF2SparseSparseMatrixMultiply(handle, m, n, k, aColumnIndices, aRowOffsets, bNNZ, bColumnIndices, bRowOffsets, beta, C, stream)
+
+
+cdef custabilizerStatus_t custabilizerCircuitGetAttribute(const custabilizerHandle_t handle, const custabilizerCircuit_t circuit, custabilizerCircuitAttributes_t attribute, void* buffer, size_t sizeInBytes) except?_CUSTABILIZERSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _custabilizer._custabilizerCircuitGetAttribute(handle, circuit, attribute, buffer, sizeInBytes)
+
+
+cdef custabilizerStatus_t custabilizerCreateLeakageFrameSimulator(const custabilizerHandle_t handle, int64_t numQubits, int64_t numShots, int64_t numMeasurements, int64_t tableStrideMajor, custabilizerLeakageFrameSimulator_t* leakageFrameSimulator) except?_CUSTABILIZERSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _custabilizer._custabilizerCreateLeakageFrameSimulator(handle, numQubits, numShots, numMeasurements, tableStrideMajor, leakageFrameSimulator)
+
+
+cdef custabilizerStatus_t custabilizerDestroyLeakageFrameSimulator(custabilizerLeakageFrameSimulator_t leakageFrameSimulator) except?_CUSTABILIZERSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _custabilizer._custabilizerDestroyLeakageFrameSimulator(leakageFrameSimulator)
+
+
+cdef custabilizerStatus_t custabilizerLeakageFrameSimulatorApplyCircuit(const custabilizerHandle_t handle, custabilizerLeakageFrameSimulator_t leakageFrameSimulator, const custabilizerCircuit_t circuit, int randomizeFrameAfterMeasurement, uint64_t seed, custabilizerBitInt_t* xTableDevice, custabilizerBitInt_t* zTableDevice, custabilizerBitInt_t* lTableDevice, custabilizerBitInt_t* mTableDevice, cudaStream_t stream) except?_CUSTABILIZERSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _custabilizer._custabilizerLeakageFrameSimulatorApplyCircuit(handle, leakageFrameSimulator, circuit, randomizeFrameAfterMeasurement, seed, xTableDevice, zTableDevice, lTableDevice, mTableDevice, stream)

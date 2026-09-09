@@ -85,6 +85,110 @@ def real_circuit_exact_sv_L0(real_circuit_L0):
 def complex_circuit_L0(request):
     return request.param
 
+# --------------------------------------------------------------------------
+# Helpers for the MPS bond-minimality tests in TestNetworkStateBasicFunctionality.
+#
+# A bond is "overcomplete" when its dimension exceeds min(chi_left * d,
+# d * chi_right); the surplus directions are null padding. That is the invariant
+# areMPSBondExtentsValid() enforces at the ProjectionMPS entry point and that
+# MatrixProductState relies on as a precondition. Sequential value-based
+# truncation violates it: a relative cutoff decides per bond against that bond's
+# own largest singular value, but the discarded Schmidt component is global, so
+# discarding it at an inner bond retroactively lowers the rank across an outer
+# bond that was already finalized.
+#
+# The engineered state's weak branch (_BM_DELTA = 0.085) clears the 10% relative
+# threshold at bond 3 (max 0.7045) and misses it at bond 2 (max 0.9964). No RNG.
+# --------------------------------------------------------------------------
+
+_BM_NUM_QUBITS = 6
+
+_BM_DELTA = 0.085
+
+def _build_state():
+    chi1 = np.zeros((2, 2, 2), dtype=np.complex128)
+    chi1[0, 0, 0] = chi1[0, 1, 1] = 0.5
+    chi1[1, 0, 1] = chi1[1, 1, 0] = 0.5
+    chi2 = np.zeros((2, 2, 2), dtype=np.complex128)
+    chi2[0, 0, 0] = 1.0 / np.sqrt(2.0)
+    chi2[0, 1, 1] = -1.0 / np.sqrt(2.0)
+    psi = np.zeros((2,) * _BM_NUM_QUBITS, dtype=np.complex128)
+    psi[0, 0, 0] += np.sqrt(1.0 - _BM_DELTA * _BM_DELTA) * chi1
+    psi[0, 0, 1] += _BM_DELTA * chi2
+    return psi
+
+def _dense_to_minimal_mps(psi):
+    """Exact dense -> MPS conversion; output bond dims equal the Schmidt ranks."""
+    tensors = []
+    rest = psi.reshape(1, -1)
+    chi_l = 1
+    for _ in range(_BM_NUM_QUBITS - 1):
+        mat = rest.reshape(chi_l * 2, -1)
+        u, s, vh = np.linalg.svd(mat, full_matrices=False)
+        rank = int(np.sum(s > 1e-12))
+        tensors.append(u[:, :rank].reshape(chi_l, 2, rank))
+        rest = s[:rank, None] * vh[:rank, :]
+        chi_l = rank
+    tensors.append(rest.reshape(chi_l, 2))
+    tensors[0] = tensors[0].reshape(2, tensors[0].shape[2])
+    return tensors
+
+def _capacity_violations(shapes):
+    """Bonds whose dimension exceeds the local capacity min(chi_left*d, d*chi_right)."""
+    violations = []
+    for i in range(_BM_NUM_QUBITS - 1):
+        bond = shapes[i][-1]
+        left_capacity = (shapes[i][0] if i > 0 else 1) * 2
+        right_capacity = 2 * (shapes[i + 1][-1] if i + 1 < _BM_NUM_QUBITS - 1 else 1)
+        if bond > min(left_capacity, right_capacity):
+            violations.append((i, bond, min(left_capacity, right_capacity)))
+    return violations
+
+def _pad_bond(tensors, bond_index, new_dim):
+    """Zero-pad one bond to make the representation overcomplete but exact."""
+    left, right = tensors[bond_index], tensors[bond_index + 1]
+    old_dim = left.shape[-1]
+    assert new_dim > old_dim
+    left_padded = np.zeros(left.shape[:-1] + (new_dim,), dtype=left.dtype)
+    left_padded[..., :old_dim] = left
+    right_padded = np.zeros((new_dim,) + right.shape[1:], dtype=right.dtype)
+    right_padded[:old_dim, ...] = right
+    tensors = list(tensors)
+    tensors[bond_index], tensors[bond_index + 1] = left_padded, right_padded
+    return tensors
+
+def _overcomplete_mps():
+    """Valid but non-minimal MPS: product state on 0-2, entangled pair on 3-5,
+    with bond (3,4) padded from 2 to 3 against a left capacity of 1*2 = 2.
+    Shapes: (2,1) (1,2,1) (1,2,1) (1,2,3) (3,2,2) (2,2)."""
+    psi = np.zeros((2,) * _BM_NUM_QUBITS, dtype=np.complex128)
+    psi[0, 0, 0, 0, 0, 0] = 1.0 / np.sqrt(2.0)
+    psi[0, 0, 0, 1, 1, 1] = 1.0 / np.sqrt(2.0)
+    return _pad_bond(_dense_to_minimal_mps(psi), 3, 3)
+
+def _dense_to_right_canonical_mps(psi):
+    """Exact dense -> MPS with the orthogonality center on the FIRST site."""
+    tensors = [None] * _BM_NUM_QUBITS
+    rest, chi_r = psi.reshape(-1, 1), 1
+    for site in range(_BM_NUM_QUBITS - 1, 0, -1):
+        u, s, vh = np.linalg.svd(rest.reshape(-1, 2 * chi_r), full_matrices=False)
+        rank = int(np.sum(s > 1e-12))
+        u, s, vh = u[:, :rank], s[:rank], vh[:rank, :]
+        tensors[site] = (
+            vh.reshape(rank, 2, chi_r) if site < _BM_NUM_QUBITS - 1 else vh.reshape(rank, 2)
+        )
+        rest, chi_r = u * s, rank
+    tensors[0] = rest.reshape(2, chi_r)
+    return tensors
+
+def _computed_output_shapes(mps_in, **config_kwargs):
+    with NetworkState(
+        (2,) * _BM_NUM_QUBITS, dtype="complex128", config=MPSConfig(**config_kwargs)
+    ) as state:
+        state.set_initial_mps([np.array(t, copy=True) for t in mps_in])
+        return [tuple(TensorBackend.to_numpy(t).shape) for t in state.compute_output_state()]
+
+
 class TestNetworkStateBasicFunctionality(_BaseTester):
 
     def test_from_circuit(self, circuit_L0, circuit_exact_sv_L0):
@@ -967,6 +1071,110 @@ class TestNetworkStateBasicFunctionality(_BaseTester):
             exp = state.compute_expectation(tn_operator)
             exp_ref = PropertyComputeHelper.expectation_from_sv(circuit_exact_sv_L0, pauli_strings)
             assert TensorBackend.verify_close(exp, exp_ref)
+
+
+    @pytest.mark.parametrize("gauge_option", ["free", "simple"])
+    def test_canonical_center_sweep_keeps_bonds_minimal(self, gauge_option):
+        config = MPSConfig(
+            gauge_option=gauge_option,
+            max_extent=3,
+            canonical_center=2,
+            rel_cutoff=0.1,
+            normalization="L2",
+        )
+        mps_in = _dense_to_minimal_mps(_build_state())
+        with NetworkState((2,) * _BM_NUM_QUBITS, dtype="complex128", config=config) as state:
+            state.set_initial_mps([np.array(t, copy=True) for t in mps_in])
+            out = state.compute_output_state()
+            shapes = [tuple(TensorBackend.to_numpy(t).shape) for t in out]
+            violations = _capacity_violations(shapes)
+            assert not violations, (
+                f"overcomplete output bonds {violations} in shapes {shapes}"
+            )
+
+    @pytest.mark.parametrize("gauge_option", ["free", "simple"])
+    def test_sampler_accepts_overcomplete_input_mps(self, gauge_option):
+        """NetworkState-level contract: a valid but overcomplete initial MPS samples.
+
+        Overcomplete (dimension > rank) bonds are exact, valid representations:
+        here bond (3,4) carries dimension 3 while its left capacity is 1*2 = 2.
+        State computation, amplitudes, and expectation values all accept such
+        states; sampling must too.
+
+        Deliberately configured with NO truncation settings, so the exit sweeps are
+        skipped entirely and the overcomplete state reaches the sampler untouched.
+        That isolates the consumer: the sweeping sampler wraps the tensors in a
+        MatrixProductState, whose bond-minimality precondition the ProjectionMPS
+        entry point validates via areMPSBondExtentsValid() but the sampler path does
+        not. Overcomplete states must be routed to the generic sampler instead of
+        failing with an opaque internal error.
+        """
+        config = MPSConfig(gauge_option=gauge_option)
+        mps_in = _overcomplete_mps()
+        with NetworkState((2,) * _BM_NUM_QUBITS, dtype="complex128", config=config) as state:
+            state.set_initial_mps([np.array(t, copy=True) for t in mps_in])
+            samples = state.compute_sampling(64)
+            assert samples
+
+    @pytest.mark.parametrize(
+        "gauge_option",
+        [
+            pytest.param(
+                "free",
+                marks=pytest.mark.xfail(
+                    reason="Without a requested canonical center the bond-minimality "
+                    "repair pass is scoped off -- it would re-gauge the output, and "
+                    "truncation is gauge-sensitive -- so an overcomplete bond survives "
+                    "into the computed output. The MPS sweeping sampler guards against "
+                    "consuming such a state (see test above), but it is still handed to "
+                    "the caller, and the ProjectionMPS entry point rejects it.",
+                    strict=True,
+                ),
+            ),
+            # 'simple' re-minimizes on ingest via its unconditional gauge-setup sweep.
+            pytest.param("simple"),
+        ],
+    )
+    def test_computed_output_is_bond_minimal_without_canonical_center(self, gauge_option):
+        """The computed output should satisfy bond minimality with or without a center."""
+        shapes = _computed_output_shapes(_overcomplete_mps(), gauge_option=gauge_option)
+        violations = _capacity_violations(shapes)
+        assert not violations, f"overcomplete output bonds {violations} in shapes {shapes}"
+
+    @pytest.mark.xfail(
+        reason="Truncation is only performed where the orthogonality center is: a "
+        "sweep starting from the opposite boundary decomposes isometries, whose "
+        "singular values are all 1, so it silently truncates nothing at all. "
+        "Compression therefore depends on the gauge the input happens to arrive in. "
+        "Fixing it means always truncating at the center, a semantics change that "
+        "must land together with the NumPy reference in _internal/mps_utils.py, "
+        "which mirrors this sweep structure bond for bond.",
+        strict=True,
+    )
+    def test_truncation_does_not_depend_on_input_gauge(self):
+        """One state, two exact gauges, one config -> the same compression.
+
+        Both inputs represent the identical state exactly; they differ only in
+        which site carries the orthogonality center. With canonical_center=3 the
+        left-canonical input is swept from the boundary the center is NOT at, so
+        nothing is truncated despite rel_cutoff=0.1; the right-canonical input is
+        swept from the center and compresses as requested.
+        """
+        psi = _build_state()
+        config = dict(
+            gauge_option="free",
+            max_extent=3,
+            canonical_center=3,
+            rel_cutoff=0.1,
+            normalization="L2",
+        )
+        left = _computed_output_shapes(_dense_to_minimal_mps(psi), **config)
+        right = _computed_output_shapes(_dense_to_right_canonical_mps(psi), **config)
+        assert left == right, (
+            f"compression depends on the input gauge:\n"
+            f"  from left-canonical : {left}\n"
+            f"  from right-canonical: {right}"
+        )
 
 
 @pytest.fixture(params=CircuitStateMatrix.L1(), scope="class")

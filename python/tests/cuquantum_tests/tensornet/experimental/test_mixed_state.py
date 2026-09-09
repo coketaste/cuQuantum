@@ -18,6 +18,7 @@ import numpy as np
 
 from cuquantum.tensornet.experimental import NetworkState, TNConfig, NetworkOperator
 
+from ..utils.circuit_ifc import QuantumStateTestHelper
 from ..utils.helpers import _BaseTester, get_contraction_tolerance
 
 
@@ -1282,8 +1283,9 @@ class TestMixedStateExpectationGradient(_BaseTester):
 def _numpy_depol_rdm(n_qubits, channel_targets, rate, where):
     """Numpy reference: depolarizing channel(s) applied to |0...0>, then partial trace.
 
-    The result is returned in little-endian mode ordering (mode 0 = fastest-varying
-    index) to match the library convention.
+    The result is a C-contiguous (2**n_keep, 2**n_keep) matrix whose first axis is
+    mode ``where[0]``. That matches ``NetworkState.compute_reduced_density_matrix``,
+    which allocates C-order storage and passes those strides through.
     """
     dim = 2 ** n_qubits
     psi = np.zeros(dim, dtype=np.complex128)
@@ -1305,11 +1307,7 @@ def _numpy_depol_rdm(n_qubits, channel_targets, rate, where):
     for q in sorted(traced, reverse=True):
         rho_t = np.trace(rho_t, axis1=q, axis2=q + n_cur)
         n_cur -= 1
-    n_keep = len(where)
-    ket_perm = list(range(n_keep - 1, -1, -1))
-    bra_perm = list(range(2 * n_keep - 1, n_keep - 1, -1))
-    rho_t = rho_t.transpose(ket_perm + bra_perm)
-    dim_where = 2 ** n_keep
+    dim_where = 2 ** len(where)
     return rho_t.reshape(dim_where, dim_where)
 
 
@@ -1360,9 +1358,11 @@ class TestMixedStateUnitaryChannel(_BaseTester):
         all_modes = tuple(range(n_qubits))
         rho_ref = _numpy_depol_rdm(n_qubits, [(0,)], self.RATE, all_modes)
         dim = 2 ** n_qubits
+        # rho_ref is C-order: qubit 0 is the most significant bit of the matrix index.
+        msb = 1 << (n_qubits - 1)
         Z_full = np.zeros((dim, dim), dtype=np.complex128)
         for i in range(dim):
-            Z_full[i, i] = 1.0 if (i & 1) == 0 else -1.0
+            Z_full[i, i] = 1.0 if (i & msb) == 0 else -1.0
         ref_val = np.trace(Z_full @ rho_ref).real
 
         hamiltonian = {"Z" + "I" * (n_qubits - 1): 1.0}
@@ -1387,7 +1387,9 @@ class TestMixedStateUnitaryChannel(_BaseTester):
         with NetworkState((2,) * n_qubits, dtype=dtype, pure_state=False, config=TNConfig()) as state:
             state.apply_unitary_tensor_channel((0,), ops, weights)
             for idx in range(2 ** n_qubits):
-                bs = tuple((idx >> k) & 1 for k in range(n_qubits))
+                # compute_amplitude takes a per-qubit bitstring; rho_ref is C-order
+                # (qubit 0 = most significant bit of the matrix index).
+                bs = tuple((idx >> (n_qubits - 1 - k)) & 1 for k in range(n_qubits))
                 amp = state.compute_amplitude((bs, bs))
                 np.testing.assert_allclose(amp.real, rho_ref[idx, idx].real, atol=1e-10,
                     err_msg=f"Amplitude mismatch for bitstring {bs}")

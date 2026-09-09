@@ -339,16 +339,8 @@ def decompose(
                 if s.name != "cuda":
                     s.tensor = s.tensor[:reduced_extent]
                 else:
-                    s.tensor = s.module.wrap_external(
-                        s.tensor, 
-                        s.data_ptr, 
-                        s.dtype, 
-                        (reduced_extent, ),  # 1D
-                        (1, ),  # 1D
-                        s.device_id, 
-                        s.itemsize, 
-                        strides_in_bytes=False
-                    )
+                    layout = s.module.StridedLayout((reduced_extent,), (1,), s.itemsize)
+                    s.tensor = s.tensor.as_strided(layout)
     finally:
         # when host workspace is allocated, synchronize stream before return
         if workspaces.get(cutn.Memspace.HOST) is not None:
@@ -482,6 +474,15 @@ class SVDMethod:
     gesvdj_max_sweeps: Optional[int] = 0
     gesvdr_oversampling: Optional[int] = 0
     gesvdr_niters: Optional[int] = 0
+
+    @property
+    def _has_value_based_truncation(self) -> bool:
+        """True if cutoffs can shrink the shared extent below the planned capacity."""
+        return bool(
+            (self.abs_cutoff or 0.0) > 0.0
+            or (self.rel_cutoff or 0.0) > 0.0
+            or (self.discarded_weight_cutoff or 0.0) > 0.0
+        )
 
     def __str__(self):
 

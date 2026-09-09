@@ -69,9 +69,8 @@ def run_distributed_index_bit_swaps(
     #
     # Built-in communicators dynamically resolve required MPI functions by using dlopen().
     # This Python sample relies on mpi4py loading libmpi.so and initializing MPI for us.
-    # The deviation of the treatment for Open MPI and MPICH stems from the fact that the
-    # scope of the loaded MPI symbols (by mpi4py) are different due to a Python limitation
-    # (NVIDIA/cuQuantum#31), so we have to work around it.
+    # The soname passed below names the MPI library to load.  When mpi4py has already made
+    # the MPI symbols visible in this process, cuStateVec uses them and ignores the soname.
     #
     # An external communicator can be used for MPI libraries that are not ABI compatible
     # with Open MPI or MPICH. It uses a shared library that wraps the MPI library of choice.
@@ -87,7 +86,6 @@ def run_distributed_index_bit_swaps(
     elif name == "MPICH":
         # use built-in MPICH communicator
         communicator_type = cusv.CommunicatorType.MPICH
-        # work around a Python limitation as discussed in NVIDIA/cuQuantum#31
         soname = "libmpi.so"
     else:
         # use external communicator

@@ -44,8 +44,9 @@ def test_samples_included(sample):
             # - an mpi sample using bindings under 'samples/bindings/cutensornet/' 
             # - an mpi sample using bindings under 'samples/bindings/custatevec/
             # - an mpi or nccl sample under 'samples/densitymat/'
+            # - an mpi or nccl sample under 'samples/pauliprop/'
             assert '_mpi' in sample
-            assert 'bindings/custatevec' in sample or 'bindings/cutensornet' in sample or '/tensornet' in sample or '/densitymat' in sample
+            assert 'bindings/custatevec' in sample or 'bindings/cutensornet' in sample or '/tensornet' in sample or '/densitymat' in sample or '/pauliprop' in sample
     elif sample.endswith('.ipynb'):
         assert sample in testing_notebook_samples
     else:

@@ -426,7 +426,7 @@ auto timeSingleOperatorSequence(
     workspace, d_workspaceBuffer, workspaceBufferSize);
   HANDLE_CUDA_ERROR( cudaStreamSynchronize(stream) );
 
-  const auto start = std::chrono::high_resolution_clock::now();
+  const auto start = std::chrono::steady_clock::now();
 
   // Apply every operator in-turn
   for (auto quantumOp : quantumOps) {
@@ -441,7 +441,7 @@ auto timeSingleOperatorSequence(
 
   HANDLE_CUDA_ERROR( cudaStreamSynchronize(stream) );
 
-  const auto end = std::chrono::high_resolution_clock::now();
+  const auto end = std::chrono::steady_clock::now();
 
   // Destroy workspace outside of timing
   HANDLE_CUPP_ERROR( cupaulipropDestroyWorkspaceDescriptor(workspace) );
@@ -475,7 +475,7 @@ auto timeFusedOperatorSequence(
     minWorkspace, maxWorkspace, avgWorkspace);
   HANDLE_CUDA_ERROR( cudaStreamSynchronize(stream) );
 
-  const auto start = std::chrono::high_resolution_clock::now();
+  const auto start = std::chrono::steady_clock::now();
 
   applyFusedOperators(
     handle, stream,
@@ -484,7 +484,7 @@ auto timeFusedOperatorSequence(
     minWorkspace, maxWorkspace, avgWorkspace);
   HANDLE_CUDA_ERROR( cudaStreamSynchronize(stream) );
 
-  const auto end = std::chrono::high_resolution_clock::now();
+  const auto end = std::chrono::steady_clock::now();
 
   HANDLE_CUPP_ERROR( cupaulipropDestroyWorkspaceDescriptor(minWorkspace) );
   HANDLE_CUPP_ERROR( cupaulipropDestroyWorkspaceDescriptor(maxWorkspace) );

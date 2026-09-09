@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated with version 26.06.0, generator version 0.3.1.dev1663+gc4ecc6582.d20260605. Do not modify it directly.
+# This code was automatically generated with version 26.06.0. Do not modify it directly.
 
 from libc.stdint cimport int32_t, int64_t, uint32_t, uint64_t
 from libc.stdio cimport FILE
@@ -88,12 +88,14 @@ ctypedef enum cudensitymatTimePropagationScopeSplitKind_t "cudensitymatTimePropa
 
 ctypedef enum cudensitymatEigenDecompositionScopeSplitKind_t "cudensitymatEigenDecompositionScopeSplitKind_t":
     CUDENSITYMAT_EIGEN_SCOPE_SPLIT_DMRG "CUDENSITYMAT_EIGEN_SCOPE_SPLIT_DMRG" = 0
+    CUDENSITYMAT_EIGEN_SCOPE_SPLIT_SHIFT_INVERT_DMRG "CUDENSITYMAT_EIGEN_SCOPE_SPLIT_SHIFT_INVERT_DMRG" = 1
 
 ctypedef enum cudensitymatTimePropagationApproachKind_t "cudensitymatTimePropagationApproachKind_t":
     CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV "CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV" = 0
 
 ctypedef enum cudensitymatEigenDecompositionApproachKind_t "cudensitymatEigenDecompositionApproachKind_t":
     CUDENSITYMAT_EIGEN_APPROACH_KRYLOV "CUDENSITYMAT_EIGEN_APPROACH_KRYLOV" = 0
+    CUDENSITYMAT_EIGEN_APPROACH_LINEAR "CUDENSITYMAT_EIGEN_APPROACH_LINEAR" = 1
 
 ctypedef enum cudensitymatTimePropagationAttribute_t "cudensitymatTimePropagationAttribute_t":
     CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_KIND "CUDENSITYMAT_PROPAGATION_SPLIT_SCOPE_KIND" = 0
@@ -104,6 +106,7 @@ ctypedef enum cudensitymatEigenDecompositionAttribute_t "cudensitymatEigenDecomp
     CUDENSITYMAT_EIGEN_SPLIT_SCOPE_KIND "CUDENSITYMAT_EIGEN_SPLIT_SCOPE_KIND" = 0
     CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_CONFIG "CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_CONFIG" = 3
     CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_CONFIG "CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_CONFIG" = 10
+    CUDENSITYMAT_EIGEN_APPROACH_LINEAR_CONFIG "CUDENSITYMAT_EIGEN_APPROACH_LINEAR_CONFIG" = 11
 
 ctypedef enum cudensitymatTimePropagationApproachKrylovConfigAttribute_t "cudensitymatTimePropagationApproachKrylovConfigAttribute_t":
     CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_TOLERANCE "CUDENSITYMAT_PROPAGATION_APPROACH_KRYLOV_TOLERANCE" = 0
@@ -126,6 +129,10 @@ ctypedef enum cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t "cud
     CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_SVD_CONFIG "CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_SVD_CONFIG" = 1
     CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_MAX_SWEEPS "CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_MAX_SWEEPS" = 2
     CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_ENERGY_TOLERANCE "CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_ENERGY_TOLERANCE" = 3
+    CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_MAX_POWER_ITERATIONS "CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_MAX_POWER_ITERATIONS" = 4
+
+ctypedef enum cudensitymatEigenDecompositionApproachLinearConfigAttribute_t "cudensitymatEigenDecompositionApproachLinearConfigAttribute_t":
+    CUDENSITYMAT_EIGEN_APPROACH_LINEAR_MAX_ITERATIONS "CUDENSITYMAT_EIGEN_APPROACH_LINEAR_MAX_ITERATIONS" = 0
 
 ctypedef enum cudensitymatStateFittingScopeKind_t "cudensitymatStateFittingScopeKind_t":
     CUDENSITYMAT_FITTING_SCOPE_FULL "CUDENSITYMAT_FITTING_SCOPE_FULL" = 0
@@ -231,6 +238,8 @@ ctypedef void* cudensitymatEigenDecompositionApproachKrylovConfig_t 'cudensityma
 ctypedef void* cudensitymatTimePropagationScopeSplitTDVPConfig_t 'cudensitymatTimePropagationScopeSplitTDVPConfig_t'
 
 ctypedef void* cudensitymatEigenDecompositionScopeSplitDMRGConfig_t 'cudensitymatEigenDecompositionScopeSplitDMRGConfig_t'
+
+ctypedef void* cudensitymatEigenDecompositionApproachLinearConfig_t 'cudensitymatEigenDecompositionApproachLinearConfig_t'
 
 ctypedef void* cudensitymatStateFittingScopeSplitALSConfig_t 'cudensitymatStateFittingScopeSplitALSConfig_t'
 
@@ -451,6 +460,10 @@ cdef cudensitymatStatus_t cudensitymatCreateEigenDecompositionApproachKrylovConf
 cdef cudensitymatStatus_t cudensitymatDestroyEigenDecompositionApproachKrylovConfig(cudensitymatEigenDecompositionApproachKrylovConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionApproachKrylovConfig_t config, cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatEigenDecompositionApproachKrylovConfig_t config, cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatCreateEigenDecompositionApproachLinearConfig(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionApproachLinearConfig_t* config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatDestroyEigenDecompositionApproachLinearConfig(cudensitymatEigenDecompositionApproachLinearConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatEigenDecompositionApproachLinearConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionApproachLinearConfig_t config, cudensitymatEigenDecompositionApproachLinearConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cudensitymatStatus_t cudensitymatEigenDecompositionApproachLinearConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatEigenDecompositionApproachLinearConfig_t config, cudensitymatEigenDecompositionApproachLinearConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatCreateEigenDecomposition(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, int32_t isHermitian, cudensitymatEigenDecompositionSpectrumKind_t spectrumKind, cudensitymatEigenDecompositionScopeKind_t scopeKind, cudensitymatEigenDecompositionApproachKind_t approachKind, cudensitymatEigenDecomposition_t* eigenDecomposition) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatDestroyEigenDecomposition(cudensitymatEigenDecomposition_t eigenDecomposition) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cudensitymatStatus_t cudensitymatEigenDecompositionConfigure(const cudensitymatHandle_t handle, cudensitymatEigenDecomposition_t eigenDecomposition, cudensitymatEigenDecompositionAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil

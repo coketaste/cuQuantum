@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -44,6 +44,11 @@ has_mpichversion:=$(shell which mpichversion > /dev/null; echo $$?)
 ifeq ($(has_mpichversion), 0)
 	CXX := $(shell mpicxx -link_info | cut -c -4)
 	MPI_LINKER_FLAGS := $(shell mpicxx -link_info | cut -c 5-)
+	# For the MPI standard ABI (USE_MPI_ABI_COMMUNICATOR in
+	# distributedIndexBitSwap.cpp), use mpicxx_abi, which links libmpi_abi.so.
+	# Use it in place of the two lines above:
+	#   CXX := $(shell mpicxx_abi -link_info | cut -c -4)
+	#   MPI_LINKER_FLAGS := $(shell mpicxx_abi -link_info | cut -c 5-)
 endif
 
 INCLUDE_DIRS     := $(MPI_INCLUDES) -I$(CUDA_TOOLKIT)/include -I$(CUSTATEVEC_ROOT)/include

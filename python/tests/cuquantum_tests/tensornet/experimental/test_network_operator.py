@@ -24,7 +24,7 @@ class TestNetworkOperator:
     @pytest.mark.uncollect_if(func=deselect_invalid_network_operator_tests)
     @pytest.mark.parametrize("backend", BACKEND_MEMSPACE)
     @pytest.mark.parametrize("state_dim_extents",(3, 4, 7, (3, 2, 4, 5), (4, 5, 2, 3, 2)))
-    @pytest.mark.parametrize("dtype", STATE_SUPPORTED_DTYPE_NAMES)
+    @pytest.mark.parametrize("dtype", sorted(STATE_SUPPORTED_DTYPE_NAMES))
     @pytest.mark.parametrize('device_id', (None, 0, 2))
     def test_network_operator(self, backend, state_dim_extents, dtype, device_id):
         if isinstance(state_dim_extents, int):
@@ -40,7 +40,7 @@ class TestNetworkOperator:
     @pytest.mark.parametrize("backend", BACKEND_MEMSPACE)
     @pytest.mark.parametrize("n_qubits", (3, 4, 5, 8, 12))
     @pytest.mark.parametrize("num_pauli_strings", (None, 1, 4))
-    @pytest.mark.parametrize("dtype", STATE_SUPPORTED_DTYPE_NAMES)
+    @pytest.mark.parametrize("dtype", sorted(STATE_SUPPORTED_DTYPE_NAMES))
     @pytest.mark.parametrize('device_id', (None, 0, 2))
     def test_from_pauli_strings(self, backend, n_qubits, num_pauli_strings, dtype, device_id):
         expected_backend, expected_device = get_state_internal_backend_device(backend, device_id)

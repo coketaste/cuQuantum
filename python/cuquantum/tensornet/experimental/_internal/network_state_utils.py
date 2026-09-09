@@ -9,6 +9,7 @@ import numpy as np
 from nvmath.internal import tensor_wrapper, utils
 from cuquantum.bindings import cutensornet as cutn
 from ..._internal.helpers import transpose_tensor, swap_bra_ket_tensor
+from ...._internal.tensor_wrapper import check_valid_package
 
 # constant parameters for MPS and tensor network simulation
 STATE_DEFAULT_DTYPE = 'complex128'
@@ -85,6 +86,30 @@ def state_labels_wrapper(*, marker_index=None, key=None, marker_type='seq'):
                 else:
                     kwargs[key] = new_indices
                 return func(*args, **kwargs)
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+def resolve_unitary_kwarg(operand_arg_index, resolver_name):
+    """Resolve ``unitary=None`` into a concrete bool by calling ``resolver_name``
+    on the decorated object with the raw native operand, before any operand
+    wrapping or device transfer (the native operand is guaranteed to carry
+    array arithmetic there; the post-transfer buffer for numpy-backend states
+    is not). Explicit flags pass through untouched."""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            if kwargs.get('unitary', None) is None:
+                operand = args[operand_arg_index]
+                try:
+                    kwargs['unitary'] = getattr(args[0], resolver_name)(operand, args, kwargs)
+                except (AttributeError, TypeError):
+                    # An operand that is not ndarray-like fails classification
+                    # with a raw attribute/type error; surface the canonical
+                    # unsupported-operand error instead. If the package check
+                    # passes, the failure is genuinely unexpected: re-raise it.
+                    check_valid_package([operand])
+                    raise
             return func(*args, **kwargs)
         return wrapper
     return decorator

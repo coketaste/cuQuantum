@@ -9,11 +9,6 @@ Public surface:
                        bit-packed (m, n // 32) uint32
 """
 
-from cuquantum.bindings._internal import custabilizer as _cust
-_cust._inspect_function_pointers()  # load libcustabilizer.so with the right flags
-
-import jax
-
 try:
     from ._build_info import check_jax_abi as _check_jax_abi
 except ImportError:
@@ -22,11 +17,6 @@ else:
     _check_jax_abi()
     del _check_jax_abi
 
-
-from cuquantum.lib import custabilizer_jax as _ffi_mod
-
-for _name, _value in _ffi_mod.registrations().items():
-    jax.ffi.register_ffi_target(_name, _value, platform="CUDA")
 
 from .pysrc._ffi import matmul_gf2_spdn
 

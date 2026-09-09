@@ -17,6 +17,10 @@ The SpDn matmul computes ``C = A @ B`` over GF(2):
 
 from __future__ import annotations
 
+import subprocess
+import sys
+import textwrap
+
 import numpy as np
 import pytest
 
@@ -26,6 +30,26 @@ import jax.numpy as jnp  # noqa: E402
 from jax.experimental import sparse  # noqa: E402
 
 from cuquantum.stabilizer.jax import matmul_gf2_spdn  # noqa: E402
+
+
+def test_lazy_loading():
+    """
+    Test that cuStabilizer-JAX defers loading its native FFI extension until first use.
+
+    Runs in a subprocess so that `sys.modules` starts clean, regardless of what other
+    tests in the same pytest session may have already imported.
+    """
+    script = textwrap.dedent("""
+        import sys
+        import cuquantum.stabilizer.jax
+        assert "cuquantum.lib.custabilizer_jax" not in sys.modules
+
+        from cuquantum.stabilizer.jax.pysrc._ffi import _register_ffi_targets
+        _register_ffi_targets()
+        assert "cuquantum.lib.custabilizer_jax" in sys.modules
+    """)
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True)
+    assert result.returncode == 0, result.stderr.decode()
 
 
 def _reference(a: np.ndarray, b: np.ndarray) -> np.ndarray:

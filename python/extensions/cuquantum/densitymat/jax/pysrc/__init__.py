@@ -6,3 +6,4 @@ from .elementary_operator import ElementaryOperator
 from .matrix_operator import MatrixOperator
 from .operator_term import OperatorTerm
 from .operator import Operator
+from .simplifier_config import SimplifierConfig

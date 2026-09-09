@@ -11,7 +11,7 @@ Array = Union[np.ndarray, "cupy.ndarray", "torch.Tensor"] #noqa: F821
 Stream = Union[int, "cupy.cuda.Stream", "torch.cuda.Stream", "cuda.core.Stream"] #noqa: F821
 
 from ._options import Options
-from .simulator import FrameSimulator, Circuit
+from .simulator import FrameSimulator, LeakageFrameSimulator, Circuit
 from .pauli_table import PauliTable, PauliFrame
 from .bit_matrix import BitMatrixCSR
 from .dem_sampling import (
@@ -19,9 +19,11 @@ from .dem_sampling import (
     BitMatrixSampler,
     BitMatrixSparseSampler,
 )
+from .circuit_converter import DeltakitParserOptions
 
 __all__ = [
     "FrameSimulator",
+    "LeakageFrameSimulator",
     "Circuit",
     "Options",
     "PauliTable",
@@ -30,4 +32,5 @@ __all__ = [
     "BitMatrixSampler",
     "BitMatrixSparseSampler",
     "DEMSampler",
+    "DeltakitParserOptions",
 ]

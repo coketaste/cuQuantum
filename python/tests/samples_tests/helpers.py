@@ -60,7 +60,14 @@ def run_sample(samples_path, filename, use_subprocess=False):
                 else:
                     raise RuntimeError(f"Subprocess failed: {result.stderr}")
         else:
-            exec(script, {})
+            # Run the sample as if invoked as `python <sample>.py`. With a bare
+            # `exec(script, {})` the globals have no `__name__`, so it defaults to
+            # 'builtins' and any `if __name__ == "__main__": main()` guard is
+            # False -> main() never runs and the "sample test" only executes the
+            # module-level imports/defs, not the sample's actual logic. Seeding
+            # __name__/__file__ makes the guard fire so the sample truly runs
+            # (in-process, so coverage is captured).
+            exec(script, {"__name__": "__main__", "__file__": fullpath})
     except ImportError as e:
         # for samples/notebooks requiring any of optional dependencies
         for m in ('torch', 'cupy', 'qiskit', 'cirq'):

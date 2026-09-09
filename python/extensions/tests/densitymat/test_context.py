@@ -6,6 +6,10 @@
 Tests for context manager.
 """
 
+import subprocess
+import sys
+import textwrap
+
 import pytest
 
 import jax
@@ -16,6 +20,26 @@ jax.config.update("jax_enable_x64", True)
 from cuquantum.bindings import cudensitymat as cudm
 from cuquantum.densitymat.jax import ElementaryOperator, OperatorTerm, Operator
 from cuquantum.densitymat.jax.pysrc.context import CudensitymatContext, OperatorContext, StateContext
+
+
+def test_lazy_loading():
+    """
+    Test that cuDensityMat-JAX defers loading its native FFI extension until first use.
+
+    Runs in a subprocess so that `sys.modules` starts clean, regardless of what other
+    tests in the same pytest session may have already imported.
+    """
+    script = textwrap.dedent("""
+        import sys
+        import cuquantum.densitymat.jax
+        assert "cuquantum.lib.cudensitymat_jax" not in sys.modules
+
+        from cuquantum.densitymat.jax.operator_action import _register_ffi_targets
+        _register_ffi_targets()
+        assert "cuquantum.lib.cudensitymat_jax" in sys.modules
+    """)
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True)
+    assert result.returncode == 0, result.stderr.decode()
 
 
 def generate_operator(dims, dtype):

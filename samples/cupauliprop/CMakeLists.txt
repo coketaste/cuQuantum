@@ -113,6 +113,31 @@ target_link_libraries(kicked_ising_example
     CUDA::cudart
 )
 
+# Kicked Ising example using fused Clifford application
+add_executable(kicked_ising_fused_example
+  kicked_ising_fused_example.cpp
+)
+set_target_properties(kicked_ising_fused_example
+  PROPERTIES
+    CXX_STANDARD ${CMAKE_CXX_STANDARD}
+    CUDA_STANDARD ${CMAKE_CUDA_STANDARD}
+    POSITION_INDEPENDENT_CODE ON
+)
+target_include_directories(kicked_ising_fused_example
+  PUBLIC
+    ${CUPAULIPROP_INC_DIR}
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+)
+target_link_directories(kicked_ising_fused_example
+  PUBLIC
+    ${CUPAULIPROP_LIB_DIR}
+)
+target_link_libraries(kicked_ising_fused_example
+  PUBLIC
+    cupauliprop
+    CUDA::cudart
+)
+
 # Kicked Ising backward-diff example on heavy-hexagonal lattice
 add_executable(kicked_ising_backward_diff_example
   kicked_ising_backward_diff_example.cpp
@@ -137,6 +162,77 @@ target_link_libraries(kicked_ising_backward_diff_example
     cupauliprop
     CUDA::cudart
 )
+
+# Optional distributed-provider support for the multiprocess example.
+option(ENABLE_MPI "Enable MPI provider support in the multiprocess example" OFF)
+option(ENABLE_NCCL "Enable NCCL provider support in the multiprocess example (requires MPI)" OFF)
+
+if(ENABLE_MPI)
+  find_package(MPI REQUIRED)
+endif()
+
+if(ENABLE_NCCL)
+  if(NOT ENABLE_MPI)
+    message(FATAL_ERROR "ENABLE_NCCL requires ENABLE_MPI: the NCCL provider is bootstrapped over MPI.")
+  endif()
+  if(DEFINED ENV{NCCL_ROOT} AND NOT DEFINED NCCL_ROOT)
+    set(NCCL_ROOT "$ENV{NCCL_ROOT}")
+  endif()
+  if(NOT DEFINED NCCL_ROOT)
+    message(FATAL_ERROR "ENABLE_NCCL requires NCCL_ROOT to point to an NCCL installation.")
+  endif()
+  set(NCCL_INCLUDE_DIR ${NCCL_ROOT}/include)
+  if(EXISTS "${NCCL_ROOT}/lib")
+    set(NCCL_LIB_DIR "${NCCL_ROOT}/lib")
+  elseif(EXISTS "${NCCL_ROOT}/lib64")
+    set(NCCL_LIB_DIR "${NCCL_ROOT}/lib64")
+  endif()
+  find_library(NCCL_LIBRARY
+    NAMES nccl libnccl.so libnccl.so.2
+    PATHS ${NCCL_LIB_DIR}
+    NO_DEFAULT_PATH
+  )
+  if(NOT EXISTS "${NCCL_INCLUDE_DIR}/nccl.h" OR NOT NCCL_LIBRARY)
+    message(FATAL_ERROR "Could not find NCCL under NCCL_ROOT: ${NCCL_ROOT}")
+  endif()
+  message(STATUS "Found NCCL: ${NCCL_LIBRARY}")
+endif()
+
+# Multiprocess kicked Ising example: one binary supporting every provider
+# compiled in (single-process always; MPI and NCCL when enabled). The provider
+# is selected at runtime from the plugin filename in $CUPAULIPROP_COMM_LIB.
+add_executable(kicked_ising_multiprocess_example
+  kicked_ising_multiprocess_example.cpp
+)
+set_target_properties(kicked_ising_multiprocess_example
+  PROPERTIES
+    CXX_STANDARD ${CMAKE_CXX_STANDARD}
+    CUDA_STANDARD ${CMAKE_CUDA_STANDARD}
+    POSITION_INDEPENDENT_CODE ON
+)
+target_include_directories(kicked_ising_multiprocess_example
+  PUBLIC
+    ${CUPAULIPROP_INC_DIR}
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+)
+target_link_directories(kicked_ising_multiprocess_example
+  PUBLIC
+    ${CUPAULIPROP_LIB_DIR}
+)
+target_link_libraries(kicked_ising_multiprocess_example
+  PUBLIC
+    cupauliprop
+    CUDA::cudart
+)
+if(ENABLE_MPI)
+  target_compile_definitions(kicked_ising_multiprocess_example PRIVATE MPI_ENABLED)
+  target_link_libraries(kicked_ising_multiprocess_example PRIVATE MPI::MPI_CXX)
+endif()
+if(ENABLE_NCCL)
+  target_compile_definitions(kicked_ising_multiprocess_example PRIVATE NCCL_ENABLED)
+  target_include_directories(kicked_ising_multiprocess_example PRIVATE ${NCCL_INCLUDE_DIR})
+  target_link_libraries(kicked_ising_multiprocess_example PRIVATE ${NCCL_LIBRARY})
+endif()
 
 # fused API demo
 add_executable(fused_operators_example

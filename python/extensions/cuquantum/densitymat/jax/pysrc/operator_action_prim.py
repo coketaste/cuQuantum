@@ -14,7 +14,7 @@ from jax.interpreters import mlir
 
 from cuquantum.bindings import cudensitymat as cudm
 
-from ..utils import fuse_batched_inputs, unfuse_batched_outputs, is_vmap_traced
+from ..utils import fuse_batched_inputs, unfuse_batched_outputs
 from .base import BasePrimitive, register_primitive
 from .context import CudensitymatContext
 from .operator import Operator
@@ -44,6 +44,7 @@ class OperatorActionPrimitive(BasePrimitive):
                  other_in_types: tuple[int, ...],
                  other_in_ptrs: tuple[int, ...],
                  other_in_has_batch: tuple[bool, ...],
+                 op_ndim: int,
                  op_ptr: int,
                  state_shape: tuple[int, ...],
                  purity: cudm.StatePurity,
@@ -109,6 +110,7 @@ class OperatorActionPrimitive(BasePrimitive):
                  other_in_types: tuple[int, ...],
                  other_in_ptrs: tuple[int, ...],
                  other_in_has_batch: tuple[bool, ...],
+                 op_ndim: int,
                  op_ptr: int,
                  state_shape: tuple[int, ...],
                  purity: cudm.StatePurity,
@@ -126,7 +128,8 @@ class OperatorActionPrimitive(BasePrimitive):
         # Buffers without a batch dim (non-batched op data, 1D coeffs): Fortran → (0, 1, ..., ndim-1).
         # State buffers always have a batch dim (added by maybe_expand_dim for non-batched states).
         # other_in_has_batch[m] records whether other_in_bufs[m] has a leading batch dim, computed
-        # from is_vmap_traced / base_op.batch_size in operator_action_prim before the bind call.
+        # from the stored batch sizes (_op_term/_op_prod_batch_sizes, base_op._batch_size, which
+        # already fold in vmap and concrete batching) in operator_action_prim before the bind call.
         def _layout_for_ndim(ndim, has_batch_dim):
             if ndim == 0:
                 return ()
@@ -173,12 +176,33 @@ class OperatorActionPrimitive(BasePrimitive):
         """
         OperatorActionPrimitive.logger.info("Calling primal evaluation")
 
+        # The following block checks that the batch size of the state matches the batch size of the
+        # other input buffers, after batcher resolves all the true buffer sizes.
+        if (
+            (kwargs['purity'].value == 1 and args[0].ndim - 2 * kwargs['op_ndim'] == 1)
+            or (kwargs['purity'].value == 0 and args[0].ndim - kwargs['op_ndim'] == 1)
+        ):  # we cannot use args[0].ndim % kwargs['op_ndim'] == 1 since ndim might be 1
+            state_batch_size = args[0].shape[0]
+        else:
+            state_batch_size = 1
+
+        for buf, typ in zip(args[kwargs['num_state_components']:], kwargs['other_in_types']):
+            if typ in (0, 1) and buf.ndim % 2 == 0:  # nonbatched base operator
+                other_in_batch_size = 1
+            else:
+                other_in_batch_size = buf.shape[0]
+
+            if other_in_batch_size != state_batch_size:
+                raise ValueError(
+                    "The batch size of an input operator buffer does not match the state batch size."
+                )
+
         assert OperatorActionPrimitive.inner_primitive is not None
         _, *out = OperatorActionPrimitive.inner_primitive.bind(*args, **kwargs)
         return out
 
     @staticmethod
-    def batcher(batched_args, batch_dims, **kwargs):
+    def batcher(batched_args, batch_axes, **kwargs):
         """
         Batching rule of the operator action primitive.
         """
@@ -186,30 +210,30 @@ class OperatorActionPrimitive(BasePrimitive):
 
         num_state_components = kwargs['num_state_components']
 
-        # Fuse pivot batch axis with vmap axis.
-        fused_inputs, batch_sizes, vmap_sizes = fuse_batched_inputs(
-            (0,) * len(batched_args),
-            batched_args,
-            batch_dims,
-            num_state_components,
-        )
+        # state_shape always carries exactly one leading batch dim (set in operator_action),
+        # so the remaining dims are physical.
+        physical_state_ndim = len(kwargs['state_shape']) - 1
 
-        # TODO: These kwargs will need to be updated when we support nested vmaps.
-        # kwargs = dict(kwargs)
-        # kwargs['state_shape'] = tuple(fused_inputs[0].shape)
-        # kwargs['batch_size'] = int(fused_inputs[0].shape[0])
+        # Fuse the current batch axis with any already-accumulated inner batch dims.
+        fused_inputs, batch_sizes_new, batch_sizes_accumulated, accumulated_axes_present = fuse_batched_inputs(
+            batched_args,
+            batch_axes,
+            physical_state_ndim,
+        )
 
         # Invoke outer primitive.
         outputs = OperatorActionPrimitive.outer_primitive.bind(*fused_inputs, **kwargs)
 
-        # Unfuse pivot batch axis and vmap axis.
+        # Unfuse the new batch axis back out of the flat backend batch.
         outputs[:num_state_components] = unfuse_batched_outputs(
             outputs[:num_state_components],
-            (0,) * num_state_components,
-            batch_sizes,
-            vmap_sizes,
+            batch_sizes_new[:num_state_components],
+            batch_sizes_accumulated[:num_state_components],
+            accumulated_axes_present[:num_state_components],
         )
-        return outputs, (0,) * len(outputs)
+        # unfuse_batched_outputs always leaves the batch axis at dim 0, regardless of which
+        # axis the input was batched on, so the reported out-axes must be 0, not batch_axes.
+        return outputs, (0,) * num_state_components
 
 register_primitive(OperatorActionPrimitive)
 
@@ -239,7 +263,7 @@ def operator_action_prim(op: Operator,
     for i in op_term_coeffs_indices:
         buf = op.coeffs[i]
         other_in_bufs.append(buf)
-        other_in_has_batch.append(op._op_term_batch_sizes[i] > 1)  # 1D coeff; False unless vmap-traced
+        other_in_has_batch.append(op._op_term_batch_sizes[i] > 1)
 
     for i, j in op_prod_coeffs_indices:
         buf = op[i].coeffs[j]
@@ -252,7 +276,7 @@ def operator_action_prim(op: Operator,
         other_in_bufs.append(buf)
         # Has a leading batch dim if currently vmap-traced (batch fused in by batcher)
         # or if the operator itself carries an explicit batch dimension.
-        other_in_has_batch.append(base_op.batch_size > 1)
+        other_in_has_batch.append(base_op._batch_size > 1)
 
     out = OperatorActionPrimitive.outer_primitive.bind(
         *state_in_bufs,
@@ -263,6 +287,7 @@ def operator_action_prim(op: Operator,
         other_in_types=tuple(other_in_types),
         other_in_ptrs=tuple(other_in_ptrs),
         other_in_has_batch=tuple(other_in_has_batch),
+        op_ndim=len(op.dims),
         op_ptr=op._ptr,
         state_shape=state_shape,
         purity=purity,
@@ -295,6 +320,8 @@ class OperatorActionBackwardDiffPrimitive(BasePrimitive):
                  other_in_has_batch: tuple[bool, ...],
                  other_out_shape_dtypes: tuple[jax.ShapeDtypeStruct, ...],
                  other_out_ptrs: tuple[int, ...],
+                 other_out_to_in_indices: tuple[int, ...],
+                 op_ndim: int,
                  op_ptr: int,
                  state_shape: tuple[int, ...],
                  purity: cudm.StatePurity,
@@ -367,6 +394,8 @@ class OperatorActionBackwardDiffPrimitive(BasePrimitive):
                  other_in_has_batch: tuple[bool, ...],
                  other_out_shape_dtypes: tuple[jax.ShapeDtypeStruct, ...],
                  other_out_ptrs: tuple[int, ...],
+                 other_out_to_in_indices: tuple[int, ...],
+                 op_ndim: int,
                  op_ptr: int,
                  state_shape: tuple[int, ...],
                  purity: cudm.StatePurity,
@@ -428,44 +457,92 @@ class OperatorActionBackwardDiffPrimitive(BasePrimitive):
         """
         OperatorActionBackwardDiffPrimitive.logger.info("Calling primal evaluation")
 
+        # The following block checks that the batch size of the state matches the batch size of the
+        # other input buffers, after batcher resolves all the true buffer sizes.
+        if (
+            kwargs['purity'].value == 1 and args[0].ndim - 2 * kwargs['op_ndim'] == 1
+            or kwargs['purity'].value == 0 and args[0].ndim - kwargs['op_ndim'] == 1
+        ):  # we cannot use args[0].ndim % kwargs['op_ndim'] == 1 since ndim might be 1
+            state_batch_size = args[0].shape[0]
+        else:
+            state_batch_size = 1
+
+        for buf, typ in zip(args[2 * kwargs['num_state_components']:], kwargs['other_in_types']):
+            if typ in (0, 1) and buf.ndim % 2 == 0:  # nonbatched base operator
+                other_in_batch_size = 1
+            else:
+                other_in_batch_size = buf.shape[0]
+
+            if other_in_batch_size != state_batch_size:
+                raise ValueError(
+                    "The batch size of an input operator buffer does not match the state batch size."
+                )
+
         assert OperatorActionBackwardDiffPrimitive.inner_primitive is not None
         _, *out = OperatorActionBackwardDiffPrimitive.inner_primitive.bind(*args, **kwargs)
         return out
 
     @staticmethod
-    def batcher(batched_args, batch_dims, **kwargs):
+    def batcher(batched_args, batch_axes, **kwargs):
         """
         Batching rule of the operator action backward differentiation primitive.
         """
         OperatorActionBackwardDiffPrimitive.logger.info("Calling batcher")
 
+        # state_shape always carries exactly one leading batch dim (set in operator_action),
+        # so the remaining dims are physical.
         num_state_components = kwargs['num_state_components']
+        other_out_to_in_indices = kwargs['other_out_to_in_indices']
+        physical_state_ndim = len(kwargs['state_shape']) - 1
 
-        # Fuse pivot batch axis with vmap axis.
-        fused_inputs, batch_sizes, vmap_sizes = fuse_batched_inputs(
-            (0,) * len(batched_args),
+        # Fuse the current batch axis with any already-accumulated inner batch dims.
+        fused_inputs, batch_sizes_new, batch_sizes_accumulated, accumulated_axes_present = fuse_batched_inputs(
             batched_args,
-            batch_dims,
-            num_state_components,
+            batch_axes,
+            physical_state_ndim,
         )
-
-        # TODO: These kwargs will need to be updated when we support nested vmaps.
-        # kwargs = dict(kwargs)
-        # kwargs['state_shape'] = tuple(fused_inputs[0].shape)
-        # kwargs['batch_size'] = int(fused_inputs[0].shape[0])
 
         # Invoke outer primitive.
-        outputs = OperatorActionBackwardDiffPrimitive.outer_primitive.bind(
-            *fused_inputs, **kwargs)
+        fused_outputs = list(OperatorActionBackwardDiffPrimitive.outer_primitive.bind(
+            *fused_inputs, **kwargs))
 
-        # Unfuse pivot batch axis and vmap axis for state adjoint outputs only.
-        outputs[:num_state_components] = unfuse_batched_outputs(
-            outputs[:num_state_components],
-            (0,) * num_state_components,
-            batch_sizes,
-            vmap_sizes,
+        # For gradient outputs whose corresponding input was not mapped by vmap (batch_axis=None),
+        # the primitive computed one gradient contribution per fused-batch element for a coefficient
+        # that was broadcast across all of them. Sum those contributions to get the total gradient
+        # for that shared input, so the unfuse step produces the correct scalar / (1,) shape.
+        for k, i in enumerate(other_out_to_in_indices):
+            if batch_axes[i + 2 * num_state_components] is None:
+                fused_outputs[num_state_components + k] = fused_outputs[num_state_components + k].sum()
+
+        # Unfuse ALL outputs: state adjoints and gradient buffers alike. Every buffer
+        # has a fused leading batch axis that must be split back into
+        # [batch_size_new, batch_size_accumulated, ...]; otherwise the inner vmap level
+        # would see the fused product at dim 0 and fail to map it.
+        batch_sizes_new_ = batch_sizes_new[:num_state_components]
+        batch_sizes_accumulated_ = batch_sizes_accumulated[:num_state_components]
+        accumulated_axes_present_ = accumulated_axes_present[:num_state_components]
+        for i in other_out_to_in_indices:
+            batch_sizes_new_ += (batch_sizes_new[i + 2 * num_state_components],)
+            batch_sizes_accumulated_ += (batch_sizes_accumulated[i + 2 * num_state_components],)
+            accumulated_axes_present_ += (accumulated_axes_present[i + 2 * num_state_components],)
+        unfused_outputs = unfuse_batched_outputs(
+            fused_outputs,
+            batch_sizes_new_,
+            batch_sizes_accumulated_,
+            accumulated_axes_present_,
         )
-        return outputs, (0,) * len(outputs)
+        # unfuse_batched_outputs always leaves the batch axis at dim 0, regardless of which
+        # axis each input was batched on, so state adjoints (always mapped) and mapped
+        # gradient outputs report 0. Gradient outputs summed above (line ~514) because their
+        # input was NOT mapped (in_axes=None, e.g. a shared operator-level coefficient) must
+        # report None instead: they carry no batch axis at all, and reporting 0 makes JAX
+        # treat the reduced value as if it still varied per-batch-element, which mismatches
+        # the unbatched primal's shape and JAX rejects the backward rule.
+        other_out_axes = tuple(
+            None if batch_axes[i + 2 * num_state_components] is None else 0
+            for i in other_out_to_in_indices
+        )
+        return unfused_outputs, (0,) * num_state_components + other_out_axes
 
 register_primitive(OperatorActionBackwardDiffPrimitive)
 
@@ -497,22 +574,31 @@ def operator_action_backward_diff_prim(op: Operator,
     other_in_bufs = []
     other_in_has_batch = []
 
-    # Extract buffers using the same index structure as operator_action.
+    # Extract buffers using the same index structure as operator_action. The stored
+    # batch sizes already fold in both vmap and concrete batching (set at append /
+    # construction), so `> 1` is the single has-batch predicate, matching the forward
+    # wrapper above.
     for i in op_term_coeffs_indices:
         buf = op.coeffs[i]
         other_in_bufs.append(buf)
-        other_in_has_batch.append(is_vmap_traced(buf))
+        other_in_has_batch.append(op._op_term_batch_sizes[i] > 1)
 
     for i, j in op_prod_coeffs_indices:
         buf = op[i].coeffs[j]
         other_in_bufs.append(buf)
-        other_in_has_batch.append(is_vmap_traced(buf))
+        other_in_has_batch.append(op[i]._op_prod_batch_sizes[j] > 1)
 
     for i, j, k in base_op_indices:
         base_op = op[i][j][k]
         buf = base_op.data
         other_in_bufs.append(buf)
-        other_in_has_batch.append(is_vmap_traced(buf) or base_op.batch_size > 1)
+        # Has a leading batch dim if currently vmap-traced (batch fused in by batcher)
+        # or if the operator itself carries an explicit batch dimension.
+        other_in_has_batch.append(base_op._batch_size > 1)
+
+    other_in_indices = op_term_coeffs_indices + op_prod_coeffs_indices + base_op_indices
+    other_out_indices = op_term_coeff_grad_indices + op_prod_coeff_grad_indices + base_op_grad_indices
+    other_out_to_in_indices = [other_in_indices.index(i) for i in other_out_indices]
 
     out = OperatorActionBackwardDiffPrimitive.outer_primitive.bind(
         *state_in_bufs,
@@ -528,6 +614,8 @@ def operator_action_backward_diff_prim(op: Operator,
         other_in_has_batch=tuple(other_in_has_batch),
         other_out_shape_dtypes=other_out_shape_dtypes,
         other_out_ptrs=other_out_ptrs,
+        other_out_to_in_indices=tuple(other_out_to_in_indices),
+        op_ndim=len(op.dims),
         op_ptr=op._ptr,
     )
 
@@ -548,7 +636,7 @@ def operator_action_backward_diff_prim(op: Operator,
         for j, op_prod in enumerate(op_term.op_prods):
             op_grad[i].coeffs[j] = jnp.zeros_like(op_grad[i].coeffs[j])
             for k, base_op in enumerate(op_prod):
-                if base_op.requires_grad:
+                if base_op._requires_grad:
                     op_grad[i][j][k].data = jnp.zeros_like(op_grad[i][j][k].data)
 
     for i in op_term_coeff_grad_indices:

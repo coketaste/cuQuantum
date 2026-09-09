@@ -5,7 +5,12 @@
 """Pythonic API for cuStabilizer FrameSimulator."""
 
 import numpy as np
-from typing import Optional, Tuple, Union, Literal
+from typing import TYPE_CHECKING, Optional, Tuple, Union, Literal
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from .circuit_converter import DeltakitParserOptions
 
 try:
     import cupy as cp
@@ -33,7 +38,7 @@ from .pauli_table import PauliTable
 
 
 class Circuit:
-    """Represents a quantum circuit for the frame simulator.
+    r"""Represents a quantum circuit for the frame simulator.
 
     This class wraps a circuit defined in Stim-compatible string format.
     The circuit owns the device buffer where the circuit data is stored.
@@ -44,10 +49,18 @@ class Circuit:
         options: Optional Options object for configuration.
 
     Example:
-        >>> circuit = Circuit("H 0\\nCNOT 0 1\\nM 0 1")
+        >>> circuit = Circuit(
+        ...     "H 0\n"
+        ...     "CNOT 0 1\n"
+        ...     "M 0 1\n"
+        ... )
         >>> # Or with options
         >>> options = Options(device_id=0)
-        >>> circuit = Circuit("H 0\\nCNOT 0 1", options=options)
+        >>> circuit = Circuit(
+        ...     "H 0\n"
+        ...     "CNOT 0 1\n",
+        ...     options=options,
+        ... )
     """
 
     _options: _ManagedOptions
@@ -89,6 +102,54 @@ class Circuit:
 
         self._logger.debug(f"Created circuit with {buffer_size} bytes buffer")
 
+    @classmethod
+    def from_deltakit_stim(
+        cls,
+        circuit: str,
+        *,
+        parser_options: Optional[Union["DeltakitParserOptions", dict]] = None,
+        stream: Stream = None,
+        options: Optional[Options] = None,
+    ) -> "Circuit":
+        """Create a circuit from deltakit-stim text.
+
+        Args:
+            circuit: Deltakit-stim circuit text.
+            parser_options: A
+                :class:`~cuquantum.stabilizer.DeltakitParserOptions` instance,
+                compatible dictionary, or ``None``.
+            stream: Optional CUDA stream identifier.
+            options: Optional cuStabilizer configuration.
+        """
+        from .circuit_converter import DeltakitCircuitConverter
+
+        converter = DeltakitCircuitConverter(circuit, options=parser_options)
+        return cls(converter.to_custabilizer_text(), stream=stream, options=options)
+
+    @classmethod
+    def from_deltakit_stim_file(
+        cls,
+        path: "Path | str",
+        *,
+        parser_options: Optional[Union["DeltakitParserOptions", dict]] = None,
+        stream: Stream = None,
+        options: Optional[Options] = None,
+    ) -> "Circuit":
+        """Create a circuit from a deltakit-stim file.
+
+        Args:
+            path: Path to a deltakit-stim circuit file.
+            parser_options: A
+                :class:`~cuquantum.stabilizer.DeltakitParserOptions` instance,
+                compatible dictionary, or ``None``.
+            stream: Optional CUDA stream identifier.
+            options: Optional cuStabilizer configuration.
+        """
+        from .circuit_converter import DeltakitCircuitConverter
+
+        converter = DeltakitCircuitConverter.from_file(path, options=parser_options)
+        return cls(converter.to_custabilizer_text(), stream=stream, options=options)
+
     @property
     def _logger(self):
         return self._options.logger
@@ -103,6 +164,73 @@ class Circuit:
         """Return the underlying C handle object."""
         return self._options.handle
 
+    def _get_attr(self, attribute: custab.CircuitAttribute) -> int:
+        out = np.empty(1, dtype=custab.get_circuit_attribute_dtype(attribute))
+        custab.circuit_get_attribute(
+            self.handle, self._circuit, attribute, out.ctypes.data, out.itemsize
+        )
+        return int(out[0])
+
+    @property
+    def num_qubits(self) -> int:
+        """Number of qubits = max qubit index + 1 (0 for an empty circuit)."""
+        return self._get_attr(custab.CircuitAttribute.NUM_QUBITS)
+
+    @property
+    def num_measurements(self) -> int:
+        """Total measurement table rows: measurement gates plus herald leakage readouts."""
+        return self._get_attr(custab.CircuitAttribute.NUM_MEASUREMENT_BITS)
+
+    @property
+    def num_measurement_gates(self) -> int:
+        """Ordinary measurement readout rows (M, MX, MY, MR*); excludes herald leakage readouts."""
+        return self._get_attr(custab.CircuitAttribute.NUM_MEASUREMENT_GATES)
+
+    @property
+    def num_detectors(self) -> int:
+        """Number of ``DETECTOR`` instructions in the circuit."""
+        return self._get_attr(custab.CircuitAttribute.NUM_DETECTORS)
+
+    @property
+    def num_repeat_blocks(self) -> int:
+        """Number of ``REPEAT`` blocks across all nesting levels."""
+        return self._get_attr(custab.CircuitAttribute.NUM_REPEAT_BLOCKS)
+
+    @property
+    def num_resets(self) -> int:
+        """Total reset operations, per target."""
+        return self._get_attr(custab.CircuitAttribute.NUM_RESETS)
+
+    @property
+    def num_1q_gates(self) -> int:
+        """Number of single-qubit Clifford gates (one per target)."""
+        return self._get_attr(custab.CircuitAttribute.NUM_1Q_GATES)
+
+    @property
+    def num_2q_gates(self) -> int:
+        """Number of two-qubit Clifford gates (one per control-target pair)."""
+        return self._get_attr(custab.CircuitAttribute.NUM_2Q_GATES)
+
+    @property
+    def has_noise(self) -> bool:
+        """Whether the circuit contains any noise/error instruction."""
+        return bool(self._get_attr(custab.CircuitAttribute.HAS_NOISE))
+
+    @property
+    def num_leakage_instructions(self) -> int:
+        """Total number of leakage instructions in the circuit."""
+        return self._get_attr(custab.CircuitAttribute.NUM_LEAKAGE_INSTRUCTIONS)
+
+    @property
+    def has_leakage(self) -> bool:
+        """Whether the circuit contains any leakage instruction."""
+        return self.num_leakage_instructions > 0
+
+    @property
+    def num_leakage_readouts(self) -> int:
+        """Number of herald leakage readout rows (``HERALD_LEAKAGE_EVENT`` targets)."""
+        return self._get_attr(custab.CircuitAttribute.NUM_LEAKAGE_READOUTS)
+
     def __del__(self):
         """Clean up circuit and device buffer."""
         self._options.logger.debug("Circuit destructor called")
@@ -111,7 +239,7 @@ class Circuit:
 
 
 class FrameSimulator:
-    """Simulates quantum circuits using the stabilizer frame formalism.
+    r"""Simulates quantum circuits using the stabilizer frame formalism.
 
     This class simulates quantum circuits by tracking Pauli frame errors.
     It manages the X and Z bit tables, measurement table, and applies circuits.
@@ -122,7 +250,11 @@ class FrameSimulator:
         num_measurements: Number of measurements.
 
     Example:
-        >>> circ = Circuit("H 0\\nCNOT 0 1\\nM 1")
+        >>> circ = Circuit(
+        ...     "H 0\n"
+        ...     "CNOT 0 1\n"
+        ...     "M 1\n"
+        ... )
         >>> sim = FrameSimulator(2, 1024, num_measurements=1)
         >>> sim.apply(circ)
         >>> measurements = sim.get_measurement_bits()
@@ -235,17 +367,52 @@ class FrameSimulator:
         )
 
         # Create frame simulator handle
-        self._frame_simulator = custab.create_frame_simulator(
+        self._simulator_handle = self._create_simulator_handle()
+
+        self._logger.debug(
+            f"Created {self.__class__.__name__}: {num_qubits} qubits, "
+            f"{num_paulis} samples, stride={self._table_stride_major}"
+        )
+
+    def _create_simulator_handle(self) -> int:
+        """Create the underlying C simulator object."""
+        return custab.create_frame_simulator(
             self.handle,
-            num_qubits,
-            num_paulis,
-            num_measurements,
+            self.num_qubits,
+            self.num_paulis,
+            self.num_measurements,
             self._table_stride_major,
         )
 
-        self._logger.debug(
-            f"Created FrameSimulator: {num_qubits} qubits, "
-            f"{num_paulis} samples, stride={self._table_stride_major}"
+    def _destroy_simulator_handle(self) -> None:
+        """Destroy the underlying C simulator object."""
+        custab.destroy_frame_simulator(self._simulator_handle)
+
+    @classmethod
+    def from_circuit(cls, circuit: "Circuit", num_paulis: int, **kwargs) -> "FrameSimulator":
+        """Create a frame simulator for simulating a particular circuit.
+
+        Remaining keyword arguments are forwarded to :class:`FrameSimulator`.
+
+        Args:
+            circuit: The :class:`Circuit` to simulate.
+            num_paulis: Number of Pauli frame samples.
+            **kwargs: Forwarded to :class:`FrameSimulator`.
+
+        Returns:
+            FrameSimulator: A simulator for ``circuit``.
+        """
+        for reserved in ("num_qubits", "num_measurements", "num_detectors"):
+            if reserved in kwargs:
+                raise TypeError(
+                    f"{reserved!r} is derived from `circuit`; omit it from from_circuit()."
+                )
+        return cls(
+            circuit.num_qubits,
+            num_paulis,
+            num_measurements=circuit.num_measurements,
+            num_detectors=circuit.num_detectors,
+            **kwargs,
         )
 
     @property
@@ -304,13 +471,22 @@ class FrameSimulator:
             stream: Optional CUDA stream for the operation.
 
         Raises:
-            ValueError: If circuit has more qubits than simulator.
+            ValueError: If circuit exceeds simulator's qubit or measurement-row capacity.
         """
-        # The C API allows circuits with fewer qubits
-        # Circuit must have <= num_qubits and <= num_measurements
         if not isinstance(circuit, Circuit):
             raise ValueError(
                 f"circuit argument must be custabilizer.Circuit, got {circuit.__class__}"
+            )
+        if self.num_qubits < circuit.num_qubits:
+            raise ValueError(
+                f"simulator has {self.num_qubits} qubits, "
+                f"circuit needs {circuit.num_qubits}"
+            )
+        if self.num_measurements < circuit.num_measurements:
+            raise ValueError(
+                f"simulator has {self.num_measurements} measurement rows, "
+                f"circuit needs {circuit.num_measurements} "
+                f"(measurement gates + herald leakage readouts)"
             )
 
         seed_ = seed if seed is not None else self._rng.integers(0, 2**31)
@@ -322,21 +498,25 @@ class FrameSimulator:
             self.last_compute_event,
             elapsed,
         ):
-            custab.frame_simulator_apply_circuit(
-                self.handle,
-                self._frame_simulator,
-                circuit.circuit,
-                self.randomize_measurements,
-                seed_,
-                _get_memptr(self._x_table_ptr),
-                _get_memptr(self._z_table_ptr),
-                _get_memptr(self._measurement_table_ptr),
-                stream_holder.ptr,
-            )
+            self._c_apply_circuit(circuit, seed_, stream_holder.ptr)
         if elapsed.data is not None:
             self._options.logger.info(f"The simulation took {elapsed.data:.3f} ms")
 
         self._options.logger.debug("Applied circuit to frame simulator")
+
+    def _c_apply_circuit(self, circuit: Circuit, seed: int, stream_ptr) -> None:
+        """Issue the C apply-circuit call."""
+        custab.frame_simulator_apply_circuit(
+            self.handle,
+            self._simulator_handle,
+            circuit.circuit,
+            self.randomize_measurements,
+            seed,
+            _get_memptr(self._x_table_ptr),
+            _get_memptr(self._z_table_ptr),
+            _get_memptr(self._measurement_table_ptr),
+            stream_ptr,
+        )
 
     def get_pauli_table(self, bit_packed: bool = True) -> PauliTable:
         """Retrieve the X and Z Pauli tables.
@@ -449,6 +629,28 @@ class FrameSimulator:
             m = m.reshape((self.num_measurements, self.num_paulis))
         return m
 
+    def _validate_table_size(
+        self, name: str, table, num_rows: int, bit_packed: bool
+    ) -> None:
+        """Raise if a user-provided table is too small for ``num_rows`` x ``num_paulis``."""
+        if table is None:
+            return
+        if bit_packed:
+            expected = num_rows * self._table_stride_major
+            actual = getattr(
+                table, "nbytes", int(np.prod(table.shape)) * table.dtype.itemsize
+            )
+            unit = "bytes"
+        else:
+            expected = num_rows * self.num_paulis
+            actual = int(getattr(table, "size", np.prod(table.shape)))
+            unit = "elements"
+        if actual < expected:
+            raise ValueError(
+                f"{name} table too small for {num_rows} rows x {self.num_paulis} "
+                f"shots (bit_packed={bit_packed}): need {expected} {unit}, got {actual}"
+            )
+
     def set_input_tables(
         self,
         x: Union[Array, None] = None,
@@ -481,6 +683,10 @@ class FrameSimulator:
 
         xz_len = self.num_paulis
         m_len = self.num_paulis
+
+        self._validate_table_size("X", x, self.num_qubits,       bit_packed)
+        self._validate_table_size("Z", z, self.num_qubits,       bit_packed)
+        self._validate_table_size("M", m, self.num_measurements, bit_packed)
 
         if x is not None and z is not None:
             if x.__class__ != z.__class__:
@@ -541,5 +747,221 @@ class FrameSimulator:
 
     def __del__(self):
         """Clean up frame simulator."""
-        if hasattr(self, "_frame_simulator") and self._frame_simulator is not None:
-            custab.destroy_frame_simulator(self._frame_simulator)
+        if hasattr(self, "_simulator_handle") and self._simulator_handle is not None:
+            self._destroy_simulator_handle()
+
+
+class LeakageFrameSimulator(FrameSimulator):
+    r"""Simulates quantum circuits with leakage-aware Pauli frame tracking.
+
+    In addition to the X/Z Pauli frame and measurement tables of
+    :class:`FrameSimulator`, this simulator tracks a leakage bit table (L)
+    with one bit per (qubit, sample) marking whether the qubit is in the
+    leaked subspace. ``HERALD_LEAKAGE_EVENT`` instructions copy leakage
+    flags into the measurement table, so ``num_measurements`` must count
+    ordinary measurement readouts plus herald leakage readouts
+    (:attr:`Circuit.num_measurements`, which for a leakage circuit already
+    includes herald readouts).
+
+    Example:
+        >>> circ = Circuit(
+        ...     "R 0 1\n"
+        ...     "LEAKAGE_MARK1(0.1) 0\n"
+        ...     "HERALD_LEAKAGE_EVENT 0\n"
+        ...     "M 0 1\n"
+        ... )
+        >>> sim = LeakageFrameSimulator.from_circuit(circ, 1024)
+        >>> sim.apply(circ)
+        >>> leakage = sim.get_leakage_bits()
+    """
+
+    _l_table_ptr: Union[memory.MemoryPointer, "cp.ndarray", None]
+
+    def __init__(
+        self,
+        num_qubits: int,
+        num_paulis: int,
+        num_measurements: int = 0,
+        num_detectors: int = 0,
+        randomize_measurements: bool = True,
+        x_table: Optional[Array] = None,
+        z_table: Optional[Array] = None,
+        l_table: Optional[Array] = None,
+        measurement_table: Optional[Array] = None,
+        bit_packed: bool = False,
+        package: Literal["numpy", "cupy"] = "numpy",
+        seed: Optional[int] = None,
+        stream: Stream = None,
+        options: Optional[Options] = None,
+    ):
+        """Initialize a LeakageFrameSimulator.
+
+        Args:
+            num_qubits: Number of qubits to simulate.
+            num_paulis: Number of Pauli frame samples.
+            num_measurements: Number of measurement table rows: ordinary
+                measurement readouts plus herald leakage readouts.
+            num_detectors: Number of detector instructions.
+            randomize_measurements: Randomize frame after measurement gates.
+            x_table: Pre-allocated X bit table.
+            z_table: Pre-allocated Z bit table. Must accompany ``x_table``.
+            l_table: Pre-allocated leakage bit table. When omitted, an internal
+                zero-initialized (unleaked) table is allocated.
+            measurement_table: Pre-allocated measurement table.
+            bit_packed: Whether the input tables are in bit-packed format.
+            package: Package to use for the tables, either ``"numpy"`` or ``"cupy"``.
+            seed: Seed for a generator that will produce default seed for every
+                call of :meth:`apply`.
+            stream: Optional CUDA stream.
+            options: Optional Options configuration.
+        """
+        self._l_table_ptr = None
+        super().__init__(
+            num_qubits,
+            num_paulis,
+            num_measurements=num_measurements,
+            num_detectors=num_detectors,
+            randomize_measurements=randomize_measurements,
+            x_table=x_table,
+            z_table=z_table,
+            measurement_table=measurement_table,
+            bit_packed=bit_packed,
+            package=package,
+            seed=seed,
+            stream=stream,
+            options=options,
+        )
+        if l_table is None:
+            bit_bytes = num_qubits * self._table_stride_major
+            self._logger.debug(
+                f"Allocating L table with {num_qubits} qubits and {num_paulis} samples: {bit_bytes} bytes"
+            )
+            self._l_table_ptr = self._options.allocate_memory(
+                bit_bytes, stream, reset=True
+            )
+        else:
+            self.set_input_tables(l=l_table, bit_packed=bit_packed, stream=stream)
+
+    @classmethod
+    def from_circuit(cls, circuit: "Circuit", num_paulis: int, **kwargs) -> "LeakageFrameSimulator":
+        """Create a LeakageFrameSimulator sized directly from a circuit's attributes.
+
+        Sizes the measurement table as :attr:`Circuit.num_measurements`
+        (which for a leakage circuit already counts measurement gates plus
+        herald leakage readouts), and otherwise behaves like
+        :meth:`FrameSimulator.from_circuit`.
+
+        Args:
+            circuit: The :class:`Circuit` whose attributes determine the sizes.
+            num_paulis: Number of Pauli frame samples.
+            **kwargs: Additional keyword arguments forwarded to the constructor.
+                Passing ``num_qubits``, ``num_measurements``, or ``num_detectors``
+                explicitly is rejected to avoid disagreeing with ``circuit``.
+
+        Returns:
+            LeakageFrameSimulator: A simulator sized for ``circuit``.
+        """
+        for reserved in ("num_qubits", "num_measurements", "num_detectors"):
+            if reserved in kwargs:
+                raise TypeError(
+                    f"{reserved!r} is derived from `circuit`; omit it from from_circuit()."
+                )
+        return cls(
+            circuit.num_qubits,
+            num_paulis,
+            num_measurements=circuit.num_measurements,
+            num_detectors=circuit.num_detectors,
+            **kwargs,
+        )
+
+    def _create_simulator_handle(self) -> int:
+        return custab.create_leakage_frame_simulator(
+            self.handle,
+            self.num_qubits,
+            self.num_paulis,
+            self.num_measurements,
+            self._table_stride_major,
+        )
+
+    def _destroy_simulator_handle(self) -> None:
+        custab.destroy_leakage_frame_simulator(self._simulator_handle)
+
+    def _c_apply_circuit(self, circuit: Circuit, seed: int, stream_ptr) -> None:
+        custab.leakage_frame_simulator_apply_circuit(
+            self.handle,
+            self._simulator_handle,
+            circuit.circuit,
+            self.randomize_measurements,
+            seed,
+            _get_memptr(self._x_table_ptr),
+            _get_memptr(self._z_table_ptr),
+            _get_memptr(self._l_table_ptr),
+            _get_memptr(self._measurement_table_ptr),
+            stream_ptr,
+        )
+
+    def get_leakage_bits(self, bit_packed: bool = True) -> Array:
+        """Retrieve the leakage bit table.
+
+        Args:
+            bit_packed: If `True`, return as bit-packed array (default).
+                If `False`, unpack bits and return as (num_qubits, num_paulis) array.
+
+        Returns:
+            Leakage flags array; bit ``(q, shot)`` is 1 when qubit ``q`` is in
+            the leaked subspace for sample ``shot``.
+
+        If ``bit_packed=False``, and :attr:`operands_package` is ``"cupy"``, the
+        returned array is a view into the simulator state.
+        In other cases, the returned array is a copy of the simulator state.
+        """
+        bit_shape = (self.num_qubits, self._table_stride_major)
+        bit_size = bit_shape[0] * bit_shape[1]
+        l = _ptr_as_cupy(self._l_table_ptr, bit_size, shape=bit_shape, dtype="uint8")
+        if not bit_packed:
+            (l,) = _unpack_arrays(self.num_paulis, l)
+            l = l.reshape((self.num_qubits, self.num_paulis))
+        if self._options.operands_package == "numpy":
+            l = l.get()
+        return l
+
+    def set_input_tables(
+        self,
+        x: Union[Array, None] = None,
+        z: Union[Array, None] = None,
+        m: Union[Array, None] = None,
+        l: Union[Array, None] = None,
+        bit_packed: bool = True,
+        stream: Stream = None,
+    ) -> None:
+        """Set the X, Z, measurement, and leakage tables.
+
+        Extends :meth:`FrameSimulator.set_input_tables` with the leakage
+        table ``l``; see that method for conversion and ownership semantics.
+        """
+        super().set_input_tables(x=x, z=z, m=m, bit_packed=bit_packed, stream=stream)
+        self._validate_table_size("L", l, self.num_qubits, bit_packed)
+        if l is None:
+            return
+
+        tables_wrap = tensor_wrapper.wrap_operands((l,))
+        self._options.on_new_operands(
+            nvmath_utils.get_operands_package(tables_wrap),
+            nvmath_utils.get_operands_device_id(tables_wrap),
+        )
+
+        if isinstance(l, np.ndarray):
+            stream_holder = self._options.get_or_create_stream(stream)
+            self._options.logger.debug(
+                f"Converting L input of size {l.nbytes} to device {self._options.operands_device_id} with package {self._options.package}"
+            )
+            with (
+                nvmath_utils.device_ctx(self._options.device_id),
+                stream_holder.ctx,
+            ):
+                l = cp.asarray(l)
+
+        if not bit_packed:
+            (l,) = _pack_arrays(self.num_paulis, l)
+
+        self._l_table_ptr = l

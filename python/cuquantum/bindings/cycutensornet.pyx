@@ -2,7 +2,19 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1668+gb1eb0b259. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.09.0. Do not modify it directly.
+
+
+# <<<< PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport (
+    int32_t,
+    int64_t,
+    uint64_t,
+)
+
+
+# <<<< END OF PREAMBLE CONTENT >>>>
 
 from ._internal cimport cutensornet as _cutensornet
 
@@ -603,5 +615,33 @@ cdef cutensornetStatus_t cutensornetStateProjectionMPSUpdateDualTensors(const cu
     return _cutensornet._cutensornetStateProjectionMPSUpdateDualTensors(handle, tensorNetworkProjection, maxExtents, validExtents, strides, dualTensorsData, orthoSpec, cudaStream)
 
 
+cdef const char* cutensornetGetLastError() except?NULL nogil:
+    return _cutensornet._cutensornetGetLastError()
+
+
 cdef cutensornetStatus_t cutensornetCreateMarginalDiagonal(const cutensornetHandle_t handle, cutensornetState_t tensorNetworkState, int32_t numMarginalModes, const int32_t* marginalModes, int32_t numProjectedModes, const int32_t* projectedModes, const int64_t* marginalDiagonalTensorStrides, cutensornetStateMarginal_t* tensorNetworkMarginal) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     return _cutensornet._cutensornetCreateMarginalDiagonal(handle, tensorNetworkState, numMarginalModes, marginalModes, numProjectedModes, projectedModes, marginalDiagonalTensorStrides, tensorNetworkMarginal)
+
+
+cdef cutensornetStatus_t cutensornetCreateDistributedTensorDescriptor(const cutensornetHandle_t handle, int32_t numModes, const int64_t extents[], const int64_t elementStrides[], const int64_t blockSizes[], const int64_t blockStrides[], const int64_t nranksPerMode[], const int32_t modeLabels[], cudaDataType_t dataType, cutensornetTensorDescriptor_t* tensorDesc) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cutensornet._cutensornetCreateDistributedTensorDescriptor(handle, numModes, extents, elementStrides, blockSizes, blockStrides, nranksPerMode, modeLabels, dataType, tensorDesc)
+
+
+cdef cutensornetStatus_t cutensornetCreateBinaryTensorContraction(cutensornetHandle_t handle, cutensornetTensorDescriptor_t descA, cutensornetTensorDescriptor_t descB, cutensornetTensorDescriptor_t descC, cutensornetTensorDescriptor_t descD, cutensornetComputeType_t computeType, cutensornetBinaryTensorContraction_t* contraction) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cutensornet._cutensornetCreateBinaryTensorContraction(handle, descA, descB, descC, descD, computeType, contraction)
+
+
+cdef cutensornetStatus_t cutensornetBinaryTensorContractionPrepare(cutensornetHandle_t handle, cutensornetBinaryTensorContraction_t contraction, cutensornetWorkspaceDescriptor_t workDesc) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cutensornet._cutensornetBinaryTensorContractionPrepare(handle, contraction, workDesc)
+
+
+cdef cutensornetStatus_t cutensornetBinaryTensorContractionCompute(cutensornetHandle_t handle, cutensornetBinaryTensorContraction_t contraction, const void* alpha, const void* A, const void* B, const void* beta, const void* C, void* D, cutensornetWorkspaceDescriptor_t workDesc, cudaStream_t stream) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cutensornet._cutensornetBinaryTensorContractionCompute(handle, contraction, alpha, A, B, beta, C, D, workDesc, stream)
+
+
+cdef cutensornetStatus_t cutensornetDestroyBinaryTensorContraction(cutensornetBinaryTensorContraction_t contraction) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cutensornet._cutensornetDestroyBinaryTensorContraction(contraction)
+
+
+cdef cutensornetStatus_t cutensornetTensorDescriptorGetAttribute(const cutensornetHandle_t handle, const cutensornetTensorDescriptor_t tensorDesc, cutensornetTensorDescriptorAttributes_t attr, void* buffer, size_t sizeInBytes) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cutensornet._cutensornetTensorDescriptorGetAttribute(handle, tensorDesc, attr, buffer, sizeInBytes)

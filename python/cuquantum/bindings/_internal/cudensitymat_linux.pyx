@@ -2,40 +2,68 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated with version 26.06.0, generator version 0.3.1.dev1663+gc4ecc6582.d20260605. Do not modify it directly.
+# This code was automatically generated with version 26.06.0. Do not modify it directly.
 
-from libc.stdint cimport intptr_t
 
-import threading
+
+# <<<< PREAMBLE CONTENT >>>>
+
+cdef extern from * nogil:
+    """
+    #if defined(_MSC_VER) && !defined(__clang__)
+        #include <intrin.h>
+        static __forceinline int atomic_int_load(int *p) {
+            int v = *(int volatile *)p; _ReadBarrier(); return v;
+        }
+        static __forceinline void atomic_int_store(int *p, int v) {
+            _WriteBarrier(); *(int volatile *)p = v;
+        }
+    #elif defined(__cplusplus)
+        /* GCC/Clang __atomic builtins work in any C++ standard without headers */
+        static inline int atomic_int_load(int *p) {
+            return __atomic_load_n(p, __ATOMIC_ACQUIRE);
+        }
+        static inline void atomic_int_store(int *p, int v) {
+            __atomic_store_n(p, v, __ATOMIC_RELEASE);
+        }
+    #else
+        #include <stdatomic.h>
+        static inline int atomic_int_load(int *p) {
+            return (int)atomic_load_explicit((atomic_int *)p, memory_order_acquire);
+        }
+        static inline void atomic_int_store(int *p, int v) {
+            atomic_store_explicit((atomic_int *)p, v, memory_order_release);
+        }
+    #endif
+
+    """
+    cdef int _cyb_atomic_int_load "atomic_int_load"(int *p) nogil
+    cdef void _cyb_atomic_int_store "atomic_int_store"(int *p, int v) nogil
+
+cdef extern from "<dlfcn.h>":
+    void* _cyb_dlsym "dlsym"(void*, const char*) nogil
+    const void * _cyb_RTLD_DEFAULT "RTLD_DEFAULT"
+
+from libc.stdint cimport intptr_t as _cyb_intptr_t
+
+import threading as _cyb_threading
+
+cdef int _cyb___py_cudensitymat_init = 0
+cdef dict _cyb_func_ptrs = None
+cdef object _cyb_symbol_lock = _cyb_threading.Lock()
+
+# <<<< END OF PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport uintptr_t
 
 from .._utils import FunctionNotFoundError, NotSupportedError
-
-
-###############################################################################
-# Extern
-###############################################################################
-
-cdef extern from "<dlfcn.h>" nogil:
-    void* dlopen(const char*, int)
-    char* dlerror()
-    void* dlsym(void*, const char*)
-    int dlclose(void*)
-
-    enum:
-        RTLD_LAZY
-        RTLD_NOW
-        RTLD_GLOBAL
-        RTLD_LOCAL
-
-    const void* RTLD_DEFAULT 'RTLD_DEFAULT'
+from cuda.pathfinder import load_nvidia_dynamic_lib
 
 
 ###############################################################################
 # Wrapper init
 ###############################################################################
 
-cdef object __symbol_lock = threading.Lock()
-cdef bint __py_cudensitymat_init = False
 
 cdef void* __cudensitymatGetVersion = NULL
 cdef void* __cudensitymatCreate = NULL
@@ -131,6 +159,10 @@ cdef void* __cudensitymatCreateEigenDecompositionApproachKrylovConfig = NULL
 cdef void* __cudensitymatDestroyEigenDecompositionApproachKrylovConfig = NULL
 cdef void* __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute = NULL
 cdef void* __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute = NULL
+cdef void* __cudensitymatCreateEigenDecompositionApproachLinearConfig = NULL
+cdef void* __cudensitymatDestroyEigenDecompositionApproachLinearConfig = NULL
+cdef void* __cudensitymatEigenDecompositionApproachLinearConfigSetAttribute = NULL
+cdef void* __cudensitymatEigenDecompositionApproachLinearConfigGetAttribute = NULL
 cdef void* __cudensitymatCreateEigenDecomposition = NULL
 cdef void* __cudensitymatDestroyEigenDecomposition = NULL
 cdef void* __cudensitymatEigenDecompositionConfigure = NULL
@@ -144,1098 +176,1144 @@ cdef void* __cudensitymatWorkspaceGetMemory = NULL
 cdef void* __cudensitymatElementaryOperatorAttachBuffer = NULL
 cdef void* __cudensitymatMatrixOperatorDenseLocalAttachBuffer = NULL
 
-
-cdef void* load_library() except* nogil:
-    cdef void* handle
-    handle = dlopen("libcudensitymat.so.0", RTLD_NOW | RTLD_GLOBAL)
-    if handle == NULL:
-        with gil:
-            err_msg = dlerror()
-            raise RuntimeError(f'Failed to dlopen libcudensitymat ({err_msg.decode()})')
-    return handle
-
-
-cdef int _check_or_init_cudensitymat() except -1 nogil:
-    global __py_cudensitymat_init
-    if __py_cudensitymat_init:
-        return 0
-
+cdef int _init_cudensitymat() except -1 nogil:
+    global _cyb___py_cudensitymat_init
     cdef void* handle = NULL
+    with gil, _cyb_symbol_lock:
+        if _cyb___py_cudensitymat_init: return 0
 
-    with gil, __symbol_lock:
-        # Recheck the flag after obtaining the locks
-        if __py_cudensitymat_init:
-            return 0
-            
-        # Load function
         global __cudensitymatGetVersion
-        __cudensitymatGetVersion = dlsym(RTLD_DEFAULT, 'cudensitymatGetVersion')
+        __cudensitymatGetVersion = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatGetVersion')
         if __cudensitymatGetVersion == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatGetVersion = dlsym(handle, 'cudensitymatGetVersion')
+            __cudensitymatGetVersion = _cyb_dlsym(handle, 'cudensitymatGetVersion')
 
         global __cudensitymatCreate
-        __cudensitymatCreate = dlsym(RTLD_DEFAULT, 'cudensitymatCreate')
+        __cudensitymatCreate = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreate')
         if __cudensitymatCreate == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreate = dlsym(handle, 'cudensitymatCreate')
+            __cudensitymatCreate = _cyb_dlsym(handle, 'cudensitymatCreate')
 
         global __cudensitymatDestroy
-        __cudensitymatDestroy = dlsym(RTLD_DEFAULT, 'cudensitymatDestroy')
+        __cudensitymatDestroy = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroy')
         if __cudensitymatDestroy == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroy = dlsym(handle, 'cudensitymatDestroy')
+            __cudensitymatDestroy = _cyb_dlsym(handle, 'cudensitymatDestroy')
 
         global __cudensitymatResetDistributedConfiguration
-        __cudensitymatResetDistributedConfiguration = dlsym(RTLD_DEFAULT, 'cudensitymatResetDistributedConfiguration')
+        __cudensitymatResetDistributedConfiguration = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatResetDistributedConfiguration')
         if __cudensitymatResetDistributedConfiguration == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatResetDistributedConfiguration = dlsym(handle, 'cudensitymatResetDistributedConfiguration')
+            __cudensitymatResetDistributedConfiguration = _cyb_dlsym(handle, 'cudensitymatResetDistributedConfiguration')
 
         global __cudensitymatGetNumRanks
-        __cudensitymatGetNumRanks = dlsym(RTLD_DEFAULT, 'cudensitymatGetNumRanks')
+        __cudensitymatGetNumRanks = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatGetNumRanks')
         if __cudensitymatGetNumRanks == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatGetNumRanks = dlsym(handle, 'cudensitymatGetNumRanks')
+            __cudensitymatGetNumRanks = _cyb_dlsym(handle, 'cudensitymatGetNumRanks')
 
         global __cudensitymatGetProcRank
-        __cudensitymatGetProcRank = dlsym(RTLD_DEFAULT, 'cudensitymatGetProcRank')
+        __cudensitymatGetProcRank = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatGetProcRank')
         if __cudensitymatGetProcRank == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatGetProcRank = dlsym(handle, 'cudensitymatGetProcRank')
+            __cudensitymatGetProcRank = _cyb_dlsym(handle, 'cudensitymatGetProcRank')
 
         global __cudensitymatResetRandomSeed
-        __cudensitymatResetRandomSeed = dlsym(RTLD_DEFAULT, 'cudensitymatResetRandomSeed')
+        __cudensitymatResetRandomSeed = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatResetRandomSeed')
         if __cudensitymatResetRandomSeed == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatResetRandomSeed = dlsym(handle, 'cudensitymatResetRandomSeed')
+            __cudensitymatResetRandomSeed = _cyb_dlsym(handle, 'cudensitymatResetRandomSeed')
 
         global __cudensitymatCreateState
-        __cudensitymatCreateState = dlsym(RTLD_DEFAULT, 'cudensitymatCreateState')
+        __cudensitymatCreateState = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateState')
         if __cudensitymatCreateState == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateState = dlsym(handle, 'cudensitymatCreateState')
+            __cudensitymatCreateState = _cyb_dlsym(handle, 'cudensitymatCreateState')
 
         global __cudensitymatCreateStateMPS
-        __cudensitymatCreateStateMPS = dlsym(RTLD_DEFAULT, 'cudensitymatCreateStateMPS')
+        __cudensitymatCreateStateMPS = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateStateMPS')
         if __cudensitymatCreateStateMPS == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateStateMPS = dlsym(handle, 'cudensitymatCreateStateMPS')
+            __cudensitymatCreateStateMPS = _cyb_dlsym(handle, 'cudensitymatCreateStateMPS')
 
         global __cudensitymatStateMPSSetCurrentBondExtents
-        __cudensitymatStateMPSSetCurrentBondExtents = dlsym(RTLD_DEFAULT, 'cudensitymatStateMPSSetCurrentBondExtents')
+        __cudensitymatStateMPSSetCurrentBondExtents = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateMPSSetCurrentBondExtents')
         if __cudensitymatStateMPSSetCurrentBondExtents == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateMPSSetCurrentBondExtents = dlsym(handle, 'cudensitymatStateMPSSetCurrentBondExtents')
+            __cudensitymatStateMPSSetCurrentBondExtents = _cyb_dlsym(handle, 'cudensitymatStateMPSSetCurrentBondExtents')
 
         global __cudensitymatStateMPSGetCurrentBondExtents
-        __cudensitymatStateMPSGetCurrentBondExtents = dlsym(RTLD_DEFAULT, 'cudensitymatStateMPSGetCurrentBondExtents')
+        __cudensitymatStateMPSGetCurrentBondExtents = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateMPSGetCurrentBondExtents')
         if __cudensitymatStateMPSGetCurrentBondExtents == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateMPSGetCurrentBondExtents = dlsym(handle, 'cudensitymatStateMPSGetCurrentBondExtents')
+            __cudensitymatStateMPSGetCurrentBondExtents = _cyb_dlsym(handle, 'cudensitymatStateMPSGetCurrentBondExtents')
 
         global __cudensitymatDestroyState
-        __cudensitymatDestroyState = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyState')
+        __cudensitymatDestroyState = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyState')
         if __cudensitymatDestroyState == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyState = dlsym(handle, 'cudensitymatDestroyState')
+            __cudensitymatDestroyState = _cyb_dlsym(handle, 'cudensitymatDestroyState')
 
         global __cudensitymatStateGetNumComponents
-        __cudensitymatStateGetNumComponents = dlsym(RTLD_DEFAULT, 'cudensitymatStateGetNumComponents')
+        __cudensitymatStateGetNumComponents = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateGetNumComponents')
         if __cudensitymatStateGetNumComponents == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateGetNumComponents = dlsym(handle, 'cudensitymatStateGetNumComponents')
+            __cudensitymatStateGetNumComponents = _cyb_dlsym(handle, 'cudensitymatStateGetNumComponents')
 
         global __cudensitymatStateGetComponentStorageSize
-        __cudensitymatStateGetComponentStorageSize = dlsym(RTLD_DEFAULT, 'cudensitymatStateGetComponentStorageSize')
+        __cudensitymatStateGetComponentStorageSize = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateGetComponentStorageSize')
         if __cudensitymatStateGetComponentStorageSize == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateGetComponentStorageSize = dlsym(handle, 'cudensitymatStateGetComponentStorageSize')
+            __cudensitymatStateGetComponentStorageSize = _cyb_dlsym(handle, 'cudensitymatStateGetComponentStorageSize')
 
         global __cudensitymatStateAttachComponentStorage
-        __cudensitymatStateAttachComponentStorage = dlsym(RTLD_DEFAULT, 'cudensitymatStateAttachComponentStorage')
+        __cudensitymatStateAttachComponentStorage = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateAttachComponentStorage')
         if __cudensitymatStateAttachComponentStorage == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateAttachComponentStorage = dlsym(handle, 'cudensitymatStateAttachComponentStorage')
+            __cudensitymatStateAttachComponentStorage = _cyb_dlsym(handle, 'cudensitymatStateAttachComponentStorage')
 
         global __cudensitymatStateGetComponentNumModes
-        __cudensitymatStateGetComponentNumModes = dlsym(RTLD_DEFAULT, 'cudensitymatStateGetComponentNumModes')
+        __cudensitymatStateGetComponentNumModes = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateGetComponentNumModes')
         if __cudensitymatStateGetComponentNumModes == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateGetComponentNumModes = dlsym(handle, 'cudensitymatStateGetComponentNumModes')
+            __cudensitymatStateGetComponentNumModes = _cyb_dlsym(handle, 'cudensitymatStateGetComponentNumModes')
 
         global __cudensitymatStateGetComponentInfo
-        __cudensitymatStateGetComponentInfo = dlsym(RTLD_DEFAULT, 'cudensitymatStateGetComponentInfo')
+        __cudensitymatStateGetComponentInfo = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateGetComponentInfo')
         if __cudensitymatStateGetComponentInfo == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateGetComponentInfo = dlsym(handle, 'cudensitymatStateGetComponentInfo')
+            __cudensitymatStateGetComponentInfo = _cyb_dlsym(handle, 'cudensitymatStateGetComponentInfo')
 
         global __cudensitymatStateInitializeZero
-        __cudensitymatStateInitializeZero = dlsym(RTLD_DEFAULT, 'cudensitymatStateInitializeZero')
+        __cudensitymatStateInitializeZero = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateInitializeZero')
         if __cudensitymatStateInitializeZero == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateInitializeZero = dlsym(handle, 'cudensitymatStateInitializeZero')
+            __cudensitymatStateInitializeZero = _cyb_dlsym(handle, 'cudensitymatStateInitializeZero')
 
         global __cudensitymatStateComputeScaling
-        __cudensitymatStateComputeScaling = dlsym(RTLD_DEFAULT, 'cudensitymatStateComputeScaling')
+        __cudensitymatStateComputeScaling = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateComputeScaling')
         if __cudensitymatStateComputeScaling == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateComputeScaling = dlsym(handle, 'cudensitymatStateComputeScaling')
+            __cudensitymatStateComputeScaling = _cyb_dlsym(handle, 'cudensitymatStateComputeScaling')
 
         global __cudensitymatStateComputeNorm
-        __cudensitymatStateComputeNorm = dlsym(RTLD_DEFAULT, 'cudensitymatStateComputeNorm')
+        __cudensitymatStateComputeNorm = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateComputeNorm')
         if __cudensitymatStateComputeNorm == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateComputeNorm = dlsym(handle, 'cudensitymatStateComputeNorm')
+            __cudensitymatStateComputeNorm = _cyb_dlsym(handle, 'cudensitymatStateComputeNorm')
 
         global __cudensitymatStateComputeTrace
-        __cudensitymatStateComputeTrace = dlsym(RTLD_DEFAULT, 'cudensitymatStateComputeTrace')
+        __cudensitymatStateComputeTrace = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateComputeTrace')
         if __cudensitymatStateComputeTrace == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateComputeTrace = dlsym(handle, 'cudensitymatStateComputeTrace')
+            __cudensitymatStateComputeTrace = _cyb_dlsym(handle, 'cudensitymatStateComputeTrace')
 
         global __cudensitymatStateComputeAccumulation
-        __cudensitymatStateComputeAccumulation = dlsym(RTLD_DEFAULT, 'cudensitymatStateComputeAccumulation')
+        __cudensitymatStateComputeAccumulation = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateComputeAccumulation')
         if __cudensitymatStateComputeAccumulation == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateComputeAccumulation = dlsym(handle, 'cudensitymatStateComputeAccumulation')
+            __cudensitymatStateComputeAccumulation = _cyb_dlsym(handle, 'cudensitymatStateComputeAccumulation')
 
         global __cudensitymatStateComputeInnerProduct
-        __cudensitymatStateComputeInnerProduct = dlsym(RTLD_DEFAULT, 'cudensitymatStateComputeInnerProduct')
+        __cudensitymatStateComputeInnerProduct = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateComputeInnerProduct')
         if __cudensitymatStateComputeInnerProduct == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateComputeInnerProduct = dlsym(handle, 'cudensitymatStateComputeInnerProduct')
+            __cudensitymatStateComputeInnerProduct = _cyb_dlsym(handle, 'cudensitymatStateComputeInnerProduct')
 
         global __cudensitymatCreateElementaryOperator
-        __cudensitymatCreateElementaryOperator = dlsym(RTLD_DEFAULT, 'cudensitymatCreateElementaryOperator')
+        __cudensitymatCreateElementaryOperator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateElementaryOperator')
         if __cudensitymatCreateElementaryOperator == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateElementaryOperator = dlsym(handle, 'cudensitymatCreateElementaryOperator')
+            __cudensitymatCreateElementaryOperator = _cyb_dlsym(handle, 'cudensitymatCreateElementaryOperator')
 
         global __cudensitymatCreateElementaryOperatorBatch
-        __cudensitymatCreateElementaryOperatorBatch = dlsym(RTLD_DEFAULT, 'cudensitymatCreateElementaryOperatorBatch')
+        __cudensitymatCreateElementaryOperatorBatch = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateElementaryOperatorBatch')
         if __cudensitymatCreateElementaryOperatorBatch == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateElementaryOperatorBatch = dlsym(handle, 'cudensitymatCreateElementaryOperatorBatch')
+            __cudensitymatCreateElementaryOperatorBatch = _cyb_dlsym(handle, 'cudensitymatCreateElementaryOperatorBatch')
 
         global __cudensitymatDestroyElementaryOperator
-        __cudensitymatDestroyElementaryOperator = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyElementaryOperator')
+        __cudensitymatDestroyElementaryOperator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyElementaryOperator')
         if __cudensitymatDestroyElementaryOperator == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyElementaryOperator = dlsym(handle, 'cudensitymatDestroyElementaryOperator')
+            __cudensitymatDestroyElementaryOperator = _cyb_dlsym(handle, 'cudensitymatDestroyElementaryOperator')
 
         global __cudensitymatCreateMatrixOperatorDenseLocal
-        __cudensitymatCreateMatrixOperatorDenseLocal = dlsym(RTLD_DEFAULT, 'cudensitymatCreateMatrixOperatorDenseLocal')
+        __cudensitymatCreateMatrixOperatorDenseLocal = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateMatrixOperatorDenseLocal')
         if __cudensitymatCreateMatrixOperatorDenseLocal == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateMatrixOperatorDenseLocal = dlsym(handle, 'cudensitymatCreateMatrixOperatorDenseLocal')
+            __cudensitymatCreateMatrixOperatorDenseLocal = _cyb_dlsym(handle, 'cudensitymatCreateMatrixOperatorDenseLocal')
 
         global __cudensitymatCreateMatrixOperatorDenseLocalBatch
-        __cudensitymatCreateMatrixOperatorDenseLocalBatch = dlsym(RTLD_DEFAULT, 'cudensitymatCreateMatrixOperatorDenseLocalBatch')
+        __cudensitymatCreateMatrixOperatorDenseLocalBatch = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateMatrixOperatorDenseLocalBatch')
         if __cudensitymatCreateMatrixOperatorDenseLocalBatch == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateMatrixOperatorDenseLocalBatch = dlsym(handle, 'cudensitymatCreateMatrixOperatorDenseLocalBatch')
+            __cudensitymatCreateMatrixOperatorDenseLocalBatch = _cyb_dlsym(handle, 'cudensitymatCreateMatrixOperatorDenseLocalBatch')
 
         global __cudensitymatDestroyMatrixOperator
-        __cudensitymatDestroyMatrixOperator = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyMatrixOperator')
+        __cudensitymatDestroyMatrixOperator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyMatrixOperator')
         if __cudensitymatDestroyMatrixOperator == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyMatrixOperator = dlsym(handle, 'cudensitymatDestroyMatrixOperator')
+            __cudensitymatDestroyMatrixOperator = _cyb_dlsym(handle, 'cudensitymatDestroyMatrixOperator')
 
         global __cudensitymatCreateMatrixProductOperator
-        __cudensitymatCreateMatrixProductOperator = dlsym(RTLD_DEFAULT, 'cudensitymatCreateMatrixProductOperator')
+        __cudensitymatCreateMatrixProductOperator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateMatrixProductOperator')
         if __cudensitymatCreateMatrixProductOperator == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateMatrixProductOperator = dlsym(handle, 'cudensitymatCreateMatrixProductOperator')
+            __cudensitymatCreateMatrixProductOperator = _cyb_dlsym(handle, 'cudensitymatCreateMatrixProductOperator')
 
         global __cudensitymatDestroyMatrixProductOperator
-        __cudensitymatDestroyMatrixProductOperator = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyMatrixProductOperator')
+        __cudensitymatDestroyMatrixProductOperator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyMatrixProductOperator')
         if __cudensitymatDestroyMatrixProductOperator == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyMatrixProductOperator = dlsym(handle, 'cudensitymatDestroyMatrixProductOperator')
+            __cudensitymatDestroyMatrixProductOperator = _cyb_dlsym(handle, 'cudensitymatDestroyMatrixProductOperator')
 
         global __cudensitymatCreateOperatorTerm
-        __cudensitymatCreateOperatorTerm = dlsym(RTLD_DEFAULT, 'cudensitymatCreateOperatorTerm')
+        __cudensitymatCreateOperatorTerm = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateOperatorTerm')
         if __cudensitymatCreateOperatorTerm == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateOperatorTerm = dlsym(handle, 'cudensitymatCreateOperatorTerm')
+            __cudensitymatCreateOperatorTerm = _cyb_dlsym(handle, 'cudensitymatCreateOperatorTerm')
 
         global __cudensitymatDestroyOperatorTerm
-        __cudensitymatDestroyOperatorTerm = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyOperatorTerm')
+        __cudensitymatDestroyOperatorTerm = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyOperatorTerm')
         if __cudensitymatDestroyOperatorTerm == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyOperatorTerm = dlsym(handle, 'cudensitymatDestroyOperatorTerm')
+            __cudensitymatDestroyOperatorTerm = _cyb_dlsym(handle, 'cudensitymatDestroyOperatorTerm')
 
         global __cudensitymatOperatorTermAppendElementaryProduct
-        __cudensitymatOperatorTermAppendElementaryProduct = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorTermAppendElementaryProduct')
+        __cudensitymatOperatorTermAppendElementaryProduct = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorTermAppendElementaryProduct')
         if __cudensitymatOperatorTermAppendElementaryProduct == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorTermAppendElementaryProduct = dlsym(handle, 'cudensitymatOperatorTermAppendElementaryProduct')
+            __cudensitymatOperatorTermAppendElementaryProduct = _cyb_dlsym(handle, 'cudensitymatOperatorTermAppendElementaryProduct')
 
         global __cudensitymatOperatorTermAppendElementaryProductBatch
-        __cudensitymatOperatorTermAppendElementaryProductBatch = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorTermAppendElementaryProductBatch')
+        __cudensitymatOperatorTermAppendElementaryProductBatch = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorTermAppendElementaryProductBatch')
         if __cudensitymatOperatorTermAppendElementaryProductBatch == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorTermAppendElementaryProductBatch = dlsym(handle, 'cudensitymatOperatorTermAppendElementaryProductBatch')
+            __cudensitymatOperatorTermAppendElementaryProductBatch = _cyb_dlsym(handle, 'cudensitymatOperatorTermAppendElementaryProductBatch')
 
         global __cudensitymatOperatorTermAppendMatrixProduct
-        __cudensitymatOperatorTermAppendMatrixProduct = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorTermAppendMatrixProduct')
+        __cudensitymatOperatorTermAppendMatrixProduct = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorTermAppendMatrixProduct')
         if __cudensitymatOperatorTermAppendMatrixProduct == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorTermAppendMatrixProduct = dlsym(handle, 'cudensitymatOperatorTermAppendMatrixProduct')
+            __cudensitymatOperatorTermAppendMatrixProduct = _cyb_dlsym(handle, 'cudensitymatOperatorTermAppendMatrixProduct')
 
         global __cudensitymatOperatorTermAppendMatrixProductBatch
-        __cudensitymatOperatorTermAppendMatrixProductBatch = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorTermAppendMatrixProductBatch')
+        __cudensitymatOperatorTermAppendMatrixProductBatch = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorTermAppendMatrixProductBatch')
         if __cudensitymatOperatorTermAppendMatrixProductBatch == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorTermAppendMatrixProductBatch = dlsym(handle, 'cudensitymatOperatorTermAppendMatrixProductBatch')
+            __cudensitymatOperatorTermAppendMatrixProductBatch = _cyb_dlsym(handle, 'cudensitymatOperatorTermAppendMatrixProductBatch')
 
         global __cudensitymatOperatorTermAppendMPOProduct
-        __cudensitymatOperatorTermAppendMPOProduct = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorTermAppendMPOProduct')
+        __cudensitymatOperatorTermAppendMPOProduct = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorTermAppendMPOProduct')
         if __cudensitymatOperatorTermAppendMPOProduct == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorTermAppendMPOProduct = dlsym(handle, 'cudensitymatOperatorTermAppendMPOProduct')
+            __cudensitymatOperatorTermAppendMPOProduct = _cyb_dlsym(handle, 'cudensitymatOperatorTermAppendMPOProduct')
 
         global __cudensitymatCreateOperator
-        __cudensitymatCreateOperator = dlsym(RTLD_DEFAULT, 'cudensitymatCreateOperator')
+        __cudensitymatCreateOperator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateOperator')
         if __cudensitymatCreateOperator == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateOperator = dlsym(handle, 'cudensitymatCreateOperator')
+            __cudensitymatCreateOperator = _cyb_dlsym(handle, 'cudensitymatCreateOperator')
 
         global __cudensitymatDestroyOperator
-        __cudensitymatDestroyOperator = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyOperator')
+        __cudensitymatDestroyOperator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyOperator')
         if __cudensitymatDestroyOperator == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyOperator = dlsym(handle, 'cudensitymatDestroyOperator')
+            __cudensitymatDestroyOperator = _cyb_dlsym(handle, 'cudensitymatDestroyOperator')
 
         global __cudensitymatOperatorAppendTerm
-        __cudensitymatOperatorAppendTerm = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorAppendTerm')
+        __cudensitymatOperatorAppendTerm = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorAppendTerm')
         if __cudensitymatOperatorAppendTerm == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorAppendTerm = dlsym(handle, 'cudensitymatOperatorAppendTerm')
+            __cudensitymatOperatorAppendTerm = _cyb_dlsym(handle, 'cudensitymatOperatorAppendTerm')
 
         global __cudensitymatOperatorAppendTermBatch
-        __cudensitymatOperatorAppendTermBatch = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorAppendTermBatch')
+        __cudensitymatOperatorAppendTermBatch = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorAppendTermBatch')
         if __cudensitymatOperatorAppendTermBatch == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorAppendTermBatch = dlsym(handle, 'cudensitymatOperatorAppendTermBatch')
+            __cudensitymatOperatorAppendTermBatch = _cyb_dlsym(handle, 'cudensitymatOperatorAppendTermBatch')
 
         global __cudensitymatAttachBatchedCoefficients
-        __cudensitymatAttachBatchedCoefficients = dlsym(RTLD_DEFAULT, 'cudensitymatAttachBatchedCoefficients')
+        __cudensitymatAttachBatchedCoefficients = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatAttachBatchedCoefficients')
         if __cudensitymatAttachBatchedCoefficients == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatAttachBatchedCoefficients = dlsym(handle, 'cudensitymatAttachBatchedCoefficients')
+            __cudensitymatAttachBatchedCoefficients = _cyb_dlsym(handle, 'cudensitymatAttachBatchedCoefficients')
 
         global __cudensitymatCreateStateFittingScopeSplitALSConfig
-        __cudensitymatCreateStateFittingScopeSplitALSConfig = dlsym(RTLD_DEFAULT, 'cudensitymatCreateStateFittingScopeSplitALSConfig')
+        __cudensitymatCreateStateFittingScopeSplitALSConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateStateFittingScopeSplitALSConfig')
         if __cudensitymatCreateStateFittingScopeSplitALSConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateStateFittingScopeSplitALSConfig = dlsym(handle, 'cudensitymatCreateStateFittingScopeSplitALSConfig')
+            __cudensitymatCreateStateFittingScopeSplitALSConfig = _cyb_dlsym(handle, 'cudensitymatCreateStateFittingScopeSplitALSConfig')
 
         global __cudensitymatDestroyStateFittingScopeSplitALSConfig
-        __cudensitymatDestroyStateFittingScopeSplitALSConfig = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyStateFittingScopeSplitALSConfig')
+        __cudensitymatDestroyStateFittingScopeSplitALSConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyStateFittingScopeSplitALSConfig')
         if __cudensitymatDestroyStateFittingScopeSplitALSConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyStateFittingScopeSplitALSConfig = dlsym(handle, 'cudensitymatDestroyStateFittingScopeSplitALSConfig')
+            __cudensitymatDestroyStateFittingScopeSplitALSConfig = _cyb_dlsym(handle, 'cudensitymatDestroyStateFittingScopeSplitALSConfig')
 
         global __cudensitymatStateFittingScopeSplitALSConfigSetAttribute
-        __cudensitymatStateFittingScopeSplitALSConfigSetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatStateFittingScopeSplitALSConfigSetAttribute')
+        __cudensitymatStateFittingScopeSplitALSConfigSetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateFittingScopeSplitALSConfigSetAttribute')
         if __cudensitymatStateFittingScopeSplitALSConfigSetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateFittingScopeSplitALSConfigSetAttribute = dlsym(handle, 'cudensitymatStateFittingScopeSplitALSConfigSetAttribute')
+            __cudensitymatStateFittingScopeSplitALSConfigSetAttribute = _cyb_dlsym(handle, 'cudensitymatStateFittingScopeSplitALSConfigSetAttribute')
 
         global __cudensitymatStateFittingScopeSplitALSConfigGetAttribute
-        __cudensitymatStateFittingScopeSplitALSConfigGetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatStateFittingScopeSplitALSConfigGetAttribute')
+        __cudensitymatStateFittingScopeSplitALSConfigGetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateFittingScopeSplitALSConfigGetAttribute')
         if __cudensitymatStateFittingScopeSplitALSConfigGetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateFittingScopeSplitALSConfigGetAttribute = dlsym(handle, 'cudensitymatStateFittingScopeSplitALSConfigGetAttribute')
+            __cudensitymatStateFittingScopeSplitALSConfigGetAttribute = _cyb_dlsym(handle, 'cudensitymatStateFittingScopeSplitALSConfigGetAttribute')
 
         global __cudensitymatCreateStateFittingApproachLinSolveConfig
-        __cudensitymatCreateStateFittingApproachLinSolveConfig = dlsym(RTLD_DEFAULT, 'cudensitymatCreateStateFittingApproachLinSolveConfig')
+        __cudensitymatCreateStateFittingApproachLinSolveConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateStateFittingApproachLinSolveConfig')
         if __cudensitymatCreateStateFittingApproachLinSolveConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateStateFittingApproachLinSolveConfig = dlsym(handle, 'cudensitymatCreateStateFittingApproachLinSolveConfig')
+            __cudensitymatCreateStateFittingApproachLinSolveConfig = _cyb_dlsym(handle, 'cudensitymatCreateStateFittingApproachLinSolveConfig')
 
         global __cudensitymatDestroyStateFittingApproachLinSolveConfig
-        __cudensitymatDestroyStateFittingApproachLinSolveConfig = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyStateFittingApproachLinSolveConfig')
+        __cudensitymatDestroyStateFittingApproachLinSolveConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyStateFittingApproachLinSolveConfig')
         if __cudensitymatDestroyStateFittingApproachLinSolveConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyStateFittingApproachLinSolveConfig = dlsym(handle, 'cudensitymatDestroyStateFittingApproachLinSolveConfig')
+            __cudensitymatDestroyStateFittingApproachLinSolveConfig = _cyb_dlsym(handle, 'cudensitymatDestroyStateFittingApproachLinSolveConfig')
 
         global __cudensitymatStateFittingApproachLinSolveConfigSetAttribute
-        __cudensitymatStateFittingApproachLinSolveConfigSetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatStateFittingApproachLinSolveConfigSetAttribute')
+        __cudensitymatStateFittingApproachLinSolveConfigSetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateFittingApproachLinSolveConfigSetAttribute')
         if __cudensitymatStateFittingApproachLinSolveConfigSetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateFittingApproachLinSolveConfigSetAttribute = dlsym(handle, 'cudensitymatStateFittingApproachLinSolveConfigSetAttribute')
+            __cudensitymatStateFittingApproachLinSolveConfigSetAttribute = _cyb_dlsym(handle, 'cudensitymatStateFittingApproachLinSolveConfigSetAttribute')
 
         global __cudensitymatStateFittingApproachLinSolveConfigGetAttribute
-        __cudensitymatStateFittingApproachLinSolveConfigGetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatStateFittingApproachLinSolveConfigGetAttribute')
+        __cudensitymatStateFittingApproachLinSolveConfigGetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatStateFittingApproachLinSolveConfigGetAttribute')
         if __cudensitymatStateFittingApproachLinSolveConfigGetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatStateFittingApproachLinSolveConfigGetAttribute = dlsym(handle, 'cudensitymatStateFittingApproachLinSolveConfigGetAttribute')
+            __cudensitymatStateFittingApproachLinSolveConfigGetAttribute = _cyb_dlsym(handle, 'cudensitymatStateFittingApproachLinSolveConfigGetAttribute')
 
         global __cudensitymatOperatorPrepareAction
-        __cudensitymatOperatorPrepareAction = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorPrepareAction')
+        __cudensitymatOperatorPrepareAction = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorPrepareAction')
         if __cudensitymatOperatorPrepareAction == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorPrepareAction = dlsym(handle, 'cudensitymatOperatorPrepareAction')
+            __cudensitymatOperatorPrepareAction = _cyb_dlsym(handle, 'cudensitymatOperatorPrepareAction')
 
         global __cudensitymatOperatorComputeAction
-        __cudensitymatOperatorComputeAction = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorComputeAction')
+        __cudensitymatOperatorComputeAction = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorComputeAction')
         if __cudensitymatOperatorComputeAction == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorComputeAction = dlsym(handle, 'cudensitymatOperatorComputeAction')
+            __cudensitymatOperatorComputeAction = _cyb_dlsym(handle, 'cudensitymatOperatorComputeAction')
 
         global __cudensitymatOperatorPrepareActionBackwardDiff
-        __cudensitymatOperatorPrepareActionBackwardDiff = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorPrepareActionBackwardDiff')
+        __cudensitymatOperatorPrepareActionBackwardDiff = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorPrepareActionBackwardDiff')
         if __cudensitymatOperatorPrepareActionBackwardDiff == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorPrepareActionBackwardDiff = dlsym(handle, 'cudensitymatOperatorPrepareActionBackwardDiff')
+            __cudensitymatOperatorPrepareActionBackwardDiff = _cyb_dlsym(handle, 'cudensitymatOperatorPrepareActionBackwardDiff')
 
         global __cudensitymatOperatorComputeActionBackwardDiff
-        __cudensitymatOperatorComputeActionBackwardDiff = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorComputeActionBackwardDiff')
+        __cudensitymatOperatorComputeActionBackwardDiff = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorComputeActionBackwardDiff')
         if __cudensitymatOperatorComputeActionBackwardDiff == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorComputeActionBackwardDiff = dlsym(handle, 'cudensitymatOperatorComputeActionBackwardDiff')
+            __cudensitymatOperatorComputeActionBackwardDiff = _cyb_dlsym(handle, 'cudensitymatOperatorComputeActionBackwardDiff')
 
         global __cudensitymatCreateOperatorAction
-        __cudensitymatCreateOperatorAction = dlsym(RTLD_DEFAULT, 'cudensitymatCreateOperatorAction')
+        __cudensitymatCreateOperatorAction = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateOperatorAction')
         if __cudensitymatCreateOperatorAction == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateOperatorAction = dlsym(handle, 'cudensitymatCreateOperatorAction')
+            __cudensitymatCreateOperatorAction = _cyb_dlsym(handle, 'cudensitymatCreateOperatorAction')
 
         global __cudensitymatDestroyOperatorAction
-        __cudensitymatDestroyOperatorAction = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyOperatorAction')
+        __cudensitymatDestroyOperatorAction = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyOperatorAction')
         if __cudensitymatDestroyOperatorAction == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyOperatorAction = dlsym(handle, 'cudensitymatDestroyOperatorAction')
+            __cudensitymatDestroyOperatorAction = _cyb_dlsym(handle, 'cudensitymatDestroyOperatorAction')
 
         global __cudensitymatOperatorActionConfigure
-        __cudensitymatOperatorActionConfigure = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorActionConfigure')
+        __cudensitymatOperatorActionConfigure = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorActionConfigure')
         if __cudensitymatOperatorActionConfigure == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorActionConfigure = dlsym(handle, 'cudensitymatOperatorActionConfigure')
+            __cudensitymatOperatorActionConfigure = _cyb_dlsym(handle, 'cudensitymatOperatorActionConfigure')
 
         global __cudensitymatOperatorActionPrepare
-        __cudensitymatOperatorActionPrepare = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorActionPrepare')
+        __cudensitymatOperatorActionPrepare = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorActionPrepare')
         if __cudensitymatOperatorActionPrepare == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorActionPrepare = dlsym(handle, 'cudensitymatOperatorActionPrepare')
+            __cudensitymatOperatorActionPrepare = _cyb_dlsym(handle, 'cudensitymatOperatorActionPrepare')
 
         global __cudensitymatOperatorActionCompute
-        __cudensitymatOperatorActionCompute = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorActionCompute')
+        __cudensitymatOperatorActionCompute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorActionCompute')
         if __cudensitymatOperatorActionCompute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorActionCompute = dlsym(handle, 'cudensitymatOperatorActionCompute')
+            __cudensitymatOperatorActionCompute = _cyb_dlsym(handle, 'cudensitymatOperatorActionCompute')
 
         global __cudensitymatCreateExpectation
-        __cudensitymatCreateExpectation = dlsym(RTLD_DEFAULT, 'cudensitymatCreateExpectation')
+        __cudensitymatCreateExpectation = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateExpectation')
         if __cudensitymatCreateExpectation == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateExpectation = dlsym(handle, 'cudensitymatCreateExpectation')
+            __cudensitymatCreateExpectation = _cyb_dlsym(handle, 'cudensitymatCreateExpectation')
 
         global __cudensitymatDestroyExpectation
-        __cudensitymatDestroyExpectation = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyExpectation')
+        __cudensitymatDestroyExpectation = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyExpectation')
         if __cudensitymatDestroyExpectation == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyExpectation = dlsym(handle, 'cudensitymatDestroyExpectation')
+            __cudensitymatDestroyExpectation = _cyb_dlsym(handle, 'cudensitymatDestroyExpectation')
 
         global __cudensitymatExpectationPrepare
-        __cudensitymatExpectationPrepare = dlsym(RTLD_DEFAULT, 'cudensitymatExpectationPrepare')
+        __cudensitymatExpectationPrepare = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatExpectationPrepare')
         if __cudensitymatExpectationPrepare == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatExpectationPrepare = dlsym(handle, 'cudensitymatExpectationPrepare')
+            __cudensitymatExpectationPrepare = _cyb_dlsym(handle, 'cudensitymatExpectationPrepare')
 
         global __cudensitymatExpectationCompute
-        __cudensitymatExpectationCompute = dlsym(RTLD_DEFAULT, 'cudensitymatExpectationCompute')
+        __cudensitymatExpectationCompute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatExpectationCompute')
         if __cudensitymatExpectationCompute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatExpectationCompute = dlsym(handle, 'cudensitymatExpectationCompute')
+            __cudensitymatExpectationCompute = _cyb_dlsym(handle, 'cudensitymatExpectationCompute')
 
         global __cudensitymatCreateOperatorSpectrum
-        __cudensitymatCreateOperatorSpectrum = dlsym(RTLD_DEFAULT, 'cudensitymatCreateOperatorSpectrum')
+        __cudensitymatCreateOperatorSpectrum = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateOperatorSpectrum')
         if __cudensitymatCreateOperatorSpectrum == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateOperatorSpectrum = dlsym(handle, 'cudensitymatCreateOperatorSpectrum')
+            __cudensitymatCreateOperatorSpectrum = _cyb_dlsym(handle, 'cudensitymatCreateOperatorSpectrum')
 
         global __cudensitymatDestroyOperatorSpectrum
-        __cudensitymatDestroyOperatorSpectrum = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyOperatorSpectrum')
+        __cudensitymatDestroyOperatorSpectrum = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyOperatorSpectrum')
         if __cudensitymatDestroyOperatorSpectrum == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyOperatorSpectrum = dlsym(handle, 'cudensitymatDestroyOperatorSpectrum')
+            __cudensitymatDestroyOperatorSpectrum = _cyb_dlsym(handle, 'cudensitymatDestroyOperatorSpectrum')
 
         global __cudensitymatOperatorSpectrumConfigure
-        __cudensitymatOperatorSpectrumConfigure = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorSpectrumConfigure')
+        __cudensitymatOperatorSpectrumConfigure = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorSpectrumConfigure')
         if __cudensitymatOperatorSpectrumConfigure == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorSpectrumConfigure = dlsym(handle, 'cudensitymatOperatorSpectrumConfigure')
+            __cudensitymatOperatorSpectrumConfigure = _cyb_dlsym(handle, 'cudensitymatOperatorSpectrumConfigure')
 
         global __cudensitymatOperatorSpectrumPrepare
-        __cudensitymatOperatorSpectrumPrepare = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorSpectrumPrepare')
+        __cudensitymatOperatorSpectrumPrepare = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorSpectrumPrepare')
         if __cudensitymatOperatorSpectrumPrepare == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorSpectrumPrepare = dlsym(handle, 'cudensitymatOperatorSpectrumPrepare')
+            __cudensitymatOperatorSpectrumPrepare = _cyb_dlsym(handle, 'cudensitymatOperatorSpectrumPrepare')
 
         global __cudensitymatOperatorSpectrumCompute
-        __cudensitymatOperatorSpectrumCompute = dlsym(RTLD_DEFAULT, 'cudensitymatOperatorSpectrumCompute')
+        __cudensitymatOperatorSpectrumCompute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatOperatorSpectrumCompute')
         if __cudensitymatOperatorSpectrumCompute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatOperatorSpectrumCompute = dlsym(handle, 'cudensitymatOperatorSpectrumCompute')
+            __cudensitymatOperatorSpectrumCompute = _cyb_dlsym(handle, 'cudensitymatOperatorSpectrumCompute')
 
         global __cudensitymatCreateTimePropagationScopeSplitTDVPConfig
-        __cudensitymatCreateTimePropagationScopeSplitTDVPConfig = dlsym(RTLD_DEFAULT, 'cudensitymatCreateTimePropagationScopeSplitTDVPConfig')
+        __cudensitymatCreateTimePropagationScopeSplitTDVPConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateTimePropagationScopeSplitTDVPConfig')
         if __cudensitymatCreateTimePropagationScopeSplitTDVPConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateTimePropagationScopeSplitTDVPConfig = dlsym(handle, 'cudensitymatCreateTimePropagationScopeSplitTDVPConfig')
+            __cudensitymatCreateTimePropagationScopeSplitTDVPConfig = _cyb_dlsym(handle, 'cudensitymatCreateTimePropagationScopeSplitTDVPConfig')
 
         global __cudensitymatDestroyTimePropagationScopeSplitTDVPConfig
-        __cudensitymatDestroyTimePropagationScopeSplitTDVPConfig = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyTimePropagationScopeSplitTDVPConfig')
+        __cudensitymatDestroyTimePropagationScopeSplitTDVPConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyTimePropagationScopeSplitTDVPConfig')
         if __cudensitymatDestroyTimePropagationScopeSplitTDVPConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyTimePropagationScopeSplitTDVPConfig = dlsym(handle, 'cudensitymatDestroyTimePropagationScopeSplitTDVPConfig')
+            __cudensitymatDestroyTimePropagationScopeSplitTDVPConfig = _cyb_dlsym(handle, 'cudensitymatDestroyTimePropagationScopeSplitTDVPConfig')
 
         global __cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute
-        __cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute')
+        __cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute')
         if __cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute = dlsym(handle, 'cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute')
+            __cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute = _cyb_dlsym(handle, 'cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute')
 
         global __cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute
-        __cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute')
+        __cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute')
         if __cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute = dlsym(handle, 'cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute')
+            __cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute = _cyb_dlsym(handle, 'cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute')
 
         global __cudensitymatCreateTimePropagationApproachKrylovConfig
-        __cudensitymatCreateTimePropagationApproachKrylovConfig = dlsym(RTLD_DEFAULT, 'cudensitymatCreateTimePropagationApproachKrylovConfig')
+        __cudensitymatCreateTimePropagationApproachKrylovConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateTimePropagationApproachKrylovConfig')
         if __cudensitymatCreateTimePropagationApproachKrylovConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateTimePropagationApproachKrylovConfig = dlsym(handle, 'cudensitymatCreateTimePropagationApproachKrylovConfig')
+            __cudensitymatCreateTimePropagationApproachKrylovConfig = _cyb_dlsym(handle, 'cudensitymatCreateTimePropagationApproachKrylovConfig')
 
         global __cudensitymatDestroyTimePropagationApproachKrylovConfig
-        __cudensitymatDestroyTimePropagationApproachKrylovConfig = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyTimePropagationApproachKrylovConfig')
+        __cudensitymatDestroyTimePropagationApproachKrylovConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyTimePropagationApproachKrylovConfig')
         if __cudensitymatDestroyTimePropagationApproachKrylovConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyTimePropagationApproachKrylovConfig = dlsym(handle, 'cudensitymatDestroyTimePropagationApproachKrylovConfig')
+            __cudensitymatDestroyTimePropagationApproachKrylovConfig = _cyb_dlsym(handle, 'cudensitymatDestroyTimePropagationApproachKrylovConfig')
 
         global __cudensitymatTimePropagationApproachKrylovConfigSetAttribute
-        __cudensitymatTimePropagationApproachKrylovConfigSetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatTimePropagationApproachKrylovConfigSetAttribute')
+        __cudensitymatTimePropagationApproachKrylovConfigSetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatTimePropagationApproachKrylovConfigSetAttribute')
         if __cudensitymatTimePropagationApproachKrylovConfigSetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatTimePropagationApproachKrylovConfigSetAttribute = dlsym(handle, 'cudensitymatTimePropagationApproachKrylovConfigSetAttribute')
+            __cudensitymatTimePropagationApproachKrylovConfigSetAttribute = _cyb_dlsym(handle, 'cudensitymatTimePropagationApproachKrylovConfigSetAttribute')
 
         global __cudensitymatTimePropagationApproachKrylovConfigGetAttribute
-        __cudensitymatTimePropagationApproachKrylovConfigGetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatTimePropagationApproachKrylovConfigGetAttribute')
+        __cudensitymatTimePropagationApproachKrylovConfigGetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatTimePropagationApproachKrylovConfigGetAttribute')
         if __cudensitymatTimePropagationApproachKrylovConfigGetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatTimePropagationApproachKrylovConfigGetAttribute = dlsym(handle, 'cudensitymatTimePropagationApproachKrylovConfigGetAttribute')
+            __cudensitymatTimePropagationApproachKrylovConfigGetAttribute = _cyb_dlsym(handle, 'cudensitymatTimePropagationApproachKrylovConfigGetAttribute')
 
         global __cudensitymatCreateTimePropagation
-        __cudensitymatCreateTimePropagation = dlsym(RTLD_DEFAULT, 'cudensitymatCreateTimePropagation')
+        __cudensitymatCreateTimePropagation = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateTimePropagation')
         if __cudensitymatCreateTimePropagation == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateTimePropagation = dlsym(handle, 'cudensitymatCreateTimePropagation')
+            __cudensitymatCreateTimePropagation = _cyb_dlsym(handle, 'cudensitymatCreateTimePropagation')
 
         global __cudensitymatDestroyTimePropagation
-        __cudensitymatDestroyTimePropagation = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyTimePropagation')
+        __cudensitymatDestroyTimePropagation = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyTimePropagation')
         if __cudensitymatDestroyTimePropagation == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyTimePropagation = dlsym(handle, 'cudensitymatDestroyTimePropagation')
+            __cudensitymatDestroyTimePropagation = _cyb_dlsym(handle, 'cudensitymatDestroyTimePropagation')
 
         global __cudensitymatTimePropagationConfigure
-        __cudensitymatTimePropagationConfigure = dlsym(RTLD_DEFAULT, 'cudensitymatTimePropagationConfigure')
+        __cudensitymatTimePropagationConfigure = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatTimePropagationConfigure')
         if __cudensitymatTimePropagationConfigure == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatTimePropagationConfigure = dlsym(handle, 'cudensitymatTimePropagationConfigure')
+            __cudensitymatTimePropagationConfigure = _cyb_dlsym(handle, 'cudensitymatTimePropagationConfigure')
 
         global __cudensitymatTimePropagationPrepare
-        __cudensitymatTimePropagationPrepare = dlsym(RTLD_DEFAULT, 'cudensitymatTimePropagationPrepare')
+        __cudensitymatTimePropagationPrepare = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatTimePropagationPrepare')
         if __cudensitymatTimePropagationPrepare == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatTimePropagationPrepare = dlsym(handle, 'cudensitymatTimePropagationPrepare')
+            __cudensitymatTimePropagationPrepare = _cyb_dlsym(handle, 'cudensitymatTimePropagationPrepare')
 
         global __cudensitymatTimePropagationCompute
-        __cudensitymatTimePropagationCompute = dlsym(RTLD_DEFAULT, 'cudensitymatTimePropagationCompute')
+        __cudensitymatTimePropagationCompute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatTimePropagationCompute')
         if __cudensitymatTimePropagationCompute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatTimePropagationCompute = dlsym(handle, 'cudensitymatTimePropagationCompute')
+            __cudensitymatTimePropagationCompute = _cyb_dlsym(handle, 'cudensitymatTimePropagationCompute')
 
         global __cudensitymatCreateSVDConfig
-        __cudensitymatCreateSVDConfig = dlsym(RTLD_DEFAULT, 'cudensitymatCreateSVDConfig')
+        __cudensitymatCreateSVDConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateSVDConfig')
         if __cudensitymatCreateSVDConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateSVDConfig = dlsym(handle, 'cudensitymatCreateSVDConfig')
+            __cudensitymatCreateSVDConfig = _cyb_dlsym(handle, 'cudensitymatCreateSVDConfig')
 
         global __cudensitymatDestroySVDConfig
-        __cudensitymatDestroySVDConfig = dlsym(RTLD_DEFAULT, 'cudensitymatDestroySVDConfig')
+        __cudensitymatDestroySVDConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroySVDConfig')
         if __cudensitymatDestroySVDConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroySVDConfig = dlsym(handle, 'cudensitymatDestroySVDConfig')
+            __cudensitymatDestroySVDConfig = _cyb_dlsym(handle, 'cudensitymatDestroySVDConfig')
 
         global __cudensitymatSVDConfigSetAttribute
-        __cudensitymatSVDConfigSetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatSVDConfigSetAttribute')
+        __cudensitymatSVDConfigSetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatSVDConfigSetAttribute')
         if __cudensitymatSVDConfigSetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatSVDConfigSetAttribute = dlsym(handle, 'cudensitymatSVDConfigSetAttribute')
+            __cudensitymatSVDConfigSetAttribute = _cyb_dlsym(handle, 'cudensitymatSVDConfigSetAttribute')
 
         global __cudensitymatSVDConfigGetAttribute
-        __cudensitymatSVDConfigGetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatSVDConfigGetAttribute')
+        __cudensitymatSVDConfigGetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatSVDConfigGetAttribute')
         if __cudensitymatSVDConfigGetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatSVDConfigGetAttribute = dlsym(handle, 'cudensitymatSVDConfigGetAttribute')
+            __cudensitymatSVDConfigGetAttribute = _cyb_dlsym(handle, 'cudensitymatSVDConfigGetAttribute')
 
         global __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig
-        __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig = dlsym(RTLD_DEFAULT, 'cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig')
+        __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig')
         if __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig = dlsym(handle, 'cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig')
+            __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig = _cyb_dlsym(handle, 'cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig')
 
         global __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig
-        __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig')
+        __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig')
         if __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig = dlsym(handle, 'cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig')
+            __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig = _cyb_dlsym(handle, 'cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig')
 
         global __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute
-        __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute')
+        __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute')
         if __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute = dlsym(handle, 'cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute')
+            __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute = _cyb_dlsym(handle, 'cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute')
 
         global __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute
-        __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute')
+        __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute')
         if __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute = dlsym(handle, 'cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute')
+            __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute = _cyb_dlsym(handle, 'cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute')
 
         global __cudensitymatCreateEigenDecompositionApproachKrylovConfig
-        __cudensitymatCreateEigenDecompositionApproachKrylovConfig = dlsym(RTLD_DEFAULT, 'cudensitymatCreateEigenDecompositionApproachKrylovConfig')
+        __cudensitymatCreateEigenDecompositionApproachKrylovConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateEigenDecompositionApproachKrylovConfig')
         if __cudensitymatCreateEigenDecompositionApproachKrylovConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateEigenDecompositionApproachKrylovConfig = dlsym(handle, 'cudensitymatCreateEigenDecompositionApproachKrylovConfig')
+            __cudensitymatCreateEigenDecompositionApproachKrylovConfig = _cyb_dlsym(handle, 'cudensitymatCreateEigenDecompositionApproachKrylovConfig')
 
         global __cudensitymatDestroyEigenDecompositionApproachKrylovConfig
-        __cudensitymatDestroyEigenDecompositionApproachKrylovConfig = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyEigenDecompositionApproachKrylovConfig')
+        __cudensitymatDestroyEigenDecompositionApproachKrylovConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyEigenDecompositionApproachKrylovConfig')
         if __cudensitymatDestroyEigenDecompositionApproachKrylovConfig == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyEigenDecompositionApproachKrylovConfig = dlsym(handle, 'cudensitymatDestroyEigenDecompositionApproachKrylovConfig')
+            __cudensitymatDestroyEigenDecompositionApproachKrylovConfig = _cyb_dlsym(handle, 'cudensitymatDestroyEigenDecompositionApproachKrylovConfig')
 
         global __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute
-        __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute')
+        __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute')
         if __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute = dlsym(handle, 'cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute')
+            __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute = _cyb_dlsym(handle, 'cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute')
 
         global __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute
-        __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute')
+        __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute')
         if __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute = dlsym(handle, 'cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute')
+            __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute = _cyb_dlsym(handle, 'cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute')
+
+        global __cudensitymatCreateEigenDecompositionApproachLinearConfig
+        __cudensitymatCreateEigenDecompositionApproachLinearConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateEigenDecompositionApproachLinearConfig')
+        if __cudensitymatCreateEigenDecompositionApproachLinearConfig == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatCreateEigenDecompositionApproachLinearConfig = _cyb_dlsym(handle, 'cudensitymatCreateEigenDecompositionApproachLinearConfig')
+
+        global __cudensitymatDestroyEigenDecompositionApproachLinearConfig
+        __cudensitymatDestroyEigenDecompositionApproachLinearConfig = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyEigenDecompositionApproachLinearConfig')
+        if __cudensitymatDestroyEigenDecompositionApproachLinearConfig == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatDestroyEigenDecompositionApproachLinearConfig = _cyb_dlsym(handle, 'cudensitymatDestroyEigenDecompositionApproachLinearConfig')
+
+        global __cudensitymatEigenDecompositionApproachLinearConfigSetAttribute
+        __cudensitymatEigenDecompositionApproachLinearConfigSetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatEigenDecompositionApproachLinearConfigSetAttribute')
+        if __cudensitymatEigenDecompositionApproachLinearConfigSetAttribute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatEigenDecompositionApproachLinearConfigSetAttribute = _cyb_dlsym(handle, 'cudensitymatEigenDecompositionApproachLinearConfigSetAttribute')
+
+        global __cudensitymatEigenDecompositionApproachLinearConfigGetAttribute
+        __cudensitymatEigenDecompositionApproachLinearConfigGetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatEigenDecompositionApproachLinearConfigGetAttribute')
+        if __cudensitymatEigenDecompositionApproachLinearConfigGetAttribute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __cudensitymatEigenDecompositionApproachLinearConfigGetAttribute = _cyb_dlsym(handle, 'cudensitymatEigenDecompositionApproachLinearConfigGetAttribute')
 
         global __cudensitymatCreateEigenDecomposition
-        __cudensitymatCreateEigenDecomposition = dlsym(RTLD_DEFAULT, 'cudensitymatCreateEigenDecomposition')
+        __cudensitymatCreateEigenDecomposition = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateEigenDecomposition')
         if __cudensitymatCreateEigenDecomposition == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateEigenDecomposition = dlsym(handle, 'cudensitymatCreateEigenDecomposition')
+            __cudensitymatCreateEigenDecomposition = _cyb_dlsym(handle, 'cudensitymatCreateEigenDecomposition')
 
         global __cudensitymatDestroyEigenDecomposition
-        __cudensitymatDestroyEigenDecomposition = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyEigenDecomposition')
+        __cudensitymatDestroyEigenDecomposition = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyEigenDecomposition')
         if __cudensitymatDestroyEigenDecomposition == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyEigenDecomposition = dlsym(handle, 'cudensitymatDestroyEigenDecomposition')
+            __cudensitymatDestroyEigenDecomposition = _cyb_dlsym(handle, 'cudensitymatDestroyEigenDecomposition')
 
         global __cudensitymatEigenDecompositionConfigure
-        __cudensitymatEigenDecompositionConfigure = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionConfigure')
+        __cudensitymatEigenDecompositionConfigure = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatEigenDecompositionConfigure')
         if __cudensitymatEigenDecompositionConfigure == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatEigenDecompositionConfigure = dlsym(handle, 'cudensitymatEigenDecompositionConfigure')
+            __cudensitymatEigenDecompositionConfigure = _cyb_dlsym(handle, 'cudensitymatEigenDecompositionConfigure')
 
         global __cudensitymatEigenDecompositionPrepare
-        __cudensitymatEigenDecompositionPrepare = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionPrepare')
+        __cudensitymatEigenDecompositionPrepare = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatEigenDecompositionPrepare')
         if __cudensitymatEigenDecompositionPrepare == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatEigenDecompositionPrepare = dlsym(handle, 'cudensitymatEigenDecompositionPrepare')
+            __cudensitymatEigenDecompositionPrepare = _cyb_dlsym(handle, 'cudensitymatEigenDecompositionPrepare')
 
         global __cudensitymatEigenDecompositionCompute
-        __cudensitymatEigenDecompositionCompute = dlsym(RTLD_DEFAULT, 'cudensitymatEigenDecompositionCompute')
+        __cudensitymatEigenDecompositionCompute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatEigenDecompositionCompute')
         if __cudensitymatEigenDecompositionCompute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatEigenDecompositionCompute = dlsym(handle, 'cudensitymatEigenDecompositionCompute')
+            __cudensitymatEigenDecompositionCompute = _cyb_dlsym(handle, 'cudensitymatEigenDecompositionCompute')
 
         global __cudensitymatCreateWorkspace
-        __cudensitymatCreateWorkspace = dlsym(RTLD_DEFAULT, 'cudensitymatCreateWorkspace')
+        __cudensitymatCreateWorkspace = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatCreateWorkspace')
         if __cudensitymatCreateWorkspace == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatCreateWorkspace = dlsym(handle, 'cudensitymatCreateWorkspace')
+            __cudensitymatCreateWorkspace = _cyb_dlsym(handle, 'cudensitymatCreateWorkspace')
 
         global __cudensitymatDestroyWorkspace
-        __cudensitymatDestroyWorkspace = dlsym(RTLD_DEFAULT, 'cudensitymatDestroyWorkspace')
+        __cudensitymatDestroyWorkspace = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatDestroyWorkspace')
         if __cudensitymatDestroyWorkspace == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatDestroyWorkspace = dlsym(handle, 'cudensitymatDestroyWorkspace')
+            __cudensitymatDestroyWorkspace = _cyb_dlsym(handle, 'cudensitymatDestroyWorkspace')
 
         global __cudensitymatWorkspaceGetMemorySize
-        __cudensitymatWorkspaceGetMemorySize = dlsym(RTLD_DEFAULT, 'cudensitymatWorkspaceGetMemorySize')
+        __cudensitymatWorkspaceGetMemorySize = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatWorkspaceGetMemorySize')
         if __cudensitymatWorkspaceGetMemorySize == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatWorkspaceGetMemorySize = dlsym(handle, 'cudensitymatWorkspaceGetMemorySize')
+            __cudensitymatWorkspaceGetMemorySize = _cyb_dlsym(handle, 'cudensitymatWorkspaceGetMemorySize')
 
         global __cudensitymatWorkspaceSetMemory
-        __cudensitymatWorkspaceSetMemory = dlsym(RTLD_DEFAULT, 'cudensitymatWorkspaceSetMemory')
+        __cudensitymatWorkspaceSetMemory = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatWorkspaceSetMemory')
         if __cudensitymatWorkspaceSetMemory == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatWorkspaceSetMemory = dlsym(handle, 'cudensitymatWorkspaceSetMemory')
+            __cudensitymatWorkspaceSetMemory = _cyb_dlsym(handle, 'cudensitymatWorkspaceSetMemory')
 
         global __cudensitymatWorkspaceGetMemory
-        __cudensitymatWorkspaceGetMemory = dlsym(RTLD_DEFAULT, 'cudensitymatWorkspaceGetMemory')
+        __cudensitymatWorkspaceGetMemory = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatWorkspaceGetMemory')
         if __cudensitymatWorkspaceGetMemory == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatWorkspaceGetMemory = dlsym(handle, 'cudensitymatWorkspaceGetMemory')
+            __cudensitymatWorkspaceGetMemory = _cyb_dlsym(handle, 'cudensitymatWorkspaceGetMemory')
 
         global __cudensitymatElementaryOperatorAttachBuffer
-        __cudensitymatElementaryOperatorAttachBuffer = dlsym(RTLD_DEFAULT, 'cudensitymatElementaryOperatorAttachBuffer')
+        __cudensitymatElementaryOperatorAttachBuffer = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatElementaryOperatorAttachBuffer')
         if __cudensitymatElementaryOperatorAttachBuffer == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatElementaryOperatorAttachBuffer = dlsym(handle, 'cudensitymatElementaryOperatorAttachBuffer')
+            __cudensitymatElementaryOperatorAttachBuffer = _cyb_dlsym(handle, 'cudensitymatElementaryOperatorAttachBuffer')
 
         global __cudensitymatMatrixOperatorDenseLocalAttachBuffer
-        __cudensitymatMatrixOperatorDenseLocalAttachBuffer = dlsym(RTLD_DEFAULT, 'cudensitymatMatrixOperatorDenseLocalAttachBuffer')
+        __cudensitymatMatrixOperatorDenseLocalAttachBuffer = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'cudensitymatMatrixOperatorDenseLocalAttachBuffer')
         if __cudensitymatMatrixOperatorDenseLocalAttachBuffer == NULL:
             if handle == NULL:
                 handle = load_library()
-            __cudensitymatMatrixOperatorDenseLocalAttachBuffer = dlsym(handle, 'cudensitymatMatrixOperatorDenseLocalAttachBuffer')
-        __py_cudensitymat_init = True
+            __cudensitymatMatrixOperatorDenseLocalAttachBuffer = _cyb_dlsym(handle, 'cudensitymatMatrixOperatorDenseLocalAttachBuffer')
+
+        _cyb_atomic_int_store(<int *>&_cyb___py_cudensitymat_init, 1)
         return 0
+
+cdef inline int _check_or_init_cudensitymat() except -1 nogil:
+    if _cyb_atomic_int_load(<int *>&_cyb___py_cudensitymat_init):
+        return 0
+
+    return _init_cudensitymat()
 
 
 cpdef dict _inspect_function_pointers():
+    global _cyb_func_ptrs
+    if _cyb_func_ptrs is not None:
+        return _cyb_func_ptrs
+
     _check_or_init_cudensitymat()
     cdef dict data = {}
-
     global __cudensitymatGetVersion
-    data["__cudensitymatGetVersion"] = <intptr_t>__cudensitymatGetVersion
+    data["__cudensitymatGetVersion"] = <_cyb_intptr_t>__cudensitymatGetVersion
 
     global __cudensitymatCreate
-    data["__cudensitymatCreate"] = <intptr_t>__cudensitymatCreate
+    data["__cudensitymatCreate"] = <_cyb_intptr_t>__cudensitymatCreate
 
     global __cudensitymatDestroy
-    data["__cudensitymatDestroy"] = <intptr_t>__cudensitymatDestroy
+    data["__cudensitymatDestroy"] = <_cyb_intptr_t>__cudensitymatDestroy
 
     global __cudensitymatResetDistributedConfiguration
-    data["__cudensitymatResetDistributedConfiguration"] = <intptr_t>__cudensitymatResetDistributedConfiguration
+    data["__cudensitymatResetDistributedConfiguration"] = <_cyb_intptr_t>__cudensitymatResetDistributedConfiguration
 
     global __cudensitymatGetNumRanks
-    data["__cudensitymatGetNumRanks"] = <intptr_t>__cudensitymatGetNumRanks
+    data["__cudensitymatGetNumRanks"] = <_cyb_intptr_t>__cudensitymatGetNumRanks
 
     global __cudensitymatGetProcRank
-    data["__cudensitymatGetProcRank"] = <intptr_t>__cudensitymatGetProcRank
+    data["__cudensitymatGetProcRank"] = <_cyb_intptr_t>__cudensitymatGetProcRank
 
     global __cudensitymatResetRandomSeed
-    data["__cudensitymatResetRandomSeed"] = <intptr_t>__cudensitymatResetRandomSeed
+    data["__cudensitymatResetRandomSeed"] = <_cyb_intptr_t>__cudensitymatResetRandomSeed
 
     global __cudensitymatCreateState
-    data["__cudensitymatCreateState"] = <intptr_t>__cudensitymatCreateState
+    data["__cudensitymatCreateState"] = <_cyb_intptr_t>__cudensitymatCreateState
 
     global __cudensitymatCreateStateMPS
-    data["__cudensitymatCreateStateMPS"] = <intptr_t>__cudensitymatCreateStateMPS
+    data["__cudensitymatCreateStateMPS"] = <_cyb_intptr_t>__cudensitymatCreateStateMPS
 
     global __cudensitymatStateMPSSetCurrentBondExtents
-    data["__cudensitymatStateMPSSetCurrentBondExtents"] = <intptr_t>__cudensitymatStateMPSSetCurrentBondExtents
+    data["__cudensitymatStateMPSSetCurrentBondExtents"] = <_cyb_intptr_t>__cudensitymatStateMPSSetCurrentBondExtents
 
     global __cudensitymatStateMPSGetCurrentBondExtents
-    data["__cudensitymatStateMPSGetCurrentBondExtents"] = <intptr_t>__cudensitymatStateMPSGetCurrentBondExtents
+    data["__cudensitymatStateMPSGetCurrentBondExtents"] = <_cyb_intptr_t>__cudensitymatStateMPSGetCurrentBondExtents
 
     global __cudensitymatDestroyState
-    data["__cudensitymatDestroyState"] = <intptr_t>__cudensitymatDestroyState
+    data["__cudensitymatDestroyState"] = <_cyb_intptr_t>__cudensitymatDestroyState
 
     global __cudensitymatStateGetNumComponents
-    data["__cudensitymatStateGetNumComponents"] = <intptr_t>__cudensitymatStateGetNumComponents
+    data["__cudensitymatStateGetNumComponents"] = <_cyb_intptr_t>__cudensitymatStateGetNumComponents
 
     global __cudensitymatStateGetComponentStorageSize
-    data["__cudensitymatStateGetComponentStorageSize"] = <intptr_t>__cudensitymatStateGetComponentStorageSize
+    data["__cudensitymatStateGetComponentStorageSize"] = <_cyb_intptr_t>__cudensitymatStateGetComponentStorageSize
 
     global __cudensitymatStateAttachComponentStorage
-    data["__cudensitymatStateAttachComponentStorage"] = <intptr_t>__cudensitymatStateAttachComponentStorage
+    data["__cudensitymatStateAttachComponentStorage"] = <_cyb_intptr_t>__cudensitymatStateAttachComponentStorage
 
     global __cudensitymatStateGetComponentNumModes
-    data["__cudensitymatStateGetComponentNumModes"] = <intptr_t>__cudensitymatStateGetComponentNumModes
+    data["__cudensitymatStateGetComponentNumModes"] = <_cyb_intptr_t>__cudensitymatStateGetComponentNumModes
 
     global __cudensitymatStateGetComponentInfo
-    data["__cudensitymatStateGetComponentInfo"] = <intptr_t>__cudensitymatStateGetComponentInfo
+    data["__cudensitymatStateGetComponentInfo"] = <_cyb_intptr_t>__cudensitymatStateGetComponentInfo
 
     global __cudensitymatStateInitializeZero
-    data["__cudensitymatStateInitializeZero"] = <intptr_t>__cudensitymatStateInitializeZero
+    data["__cudensitymatStateInitializeZero"] = <_cyb_intptr_t>__cudensitymatStateInitializeZero
 
     global __cudensitymatStateComputeScaling
-    data["__cudensitymatStateComputeScaling"] = <intptr_t>__cudensitymatStateComputeScaling
+    data["__cudensitymatStateComputeScaling"] = <_cyb_intptr_t>__cudensitymatStateComputeScaling
 
     global __cudensitymatStateComputeNorm
-    data["__cudensitymatStateComputeNorm"] = <intptr_t>__cudensitymatStateComputeNorm
+    data["__cudensitymatStateComputeNorm"] = <_cyb_intptr_t>__cudensitymatStateComputeNorm
 
     global __cudensitymatStateComputeTrace
-    data["__cudensitymatStateComputeTrace"] = <intptr_t>__cudensitymatStateComputeTrace
+    data["__cudensitymatStateComputeTrace"] = <_cyb_intptr_t>__cudensitymatStateComputeTrace
 
     global __cudensitymatStateComputeAccumulation
-    data["__cudensitymatStateComputeAccumulation"] = <intptr_t>__cudensitymatStateComputeAccumulation
+    data["__cudensitymatStateComputeAccumulation"] = <_cyb_intptr_t>__cudensitymatStateComputeAccumulation
 
     global __cudensitymatStateComputeInnerProduct
-    data["__cudensitymatStateComputeInnerProduct"] = <intptr_t>__cudensitymatStateComputeInnerProduct
+    data["__cudensitymatStateComputeInnerProduct"] = <_cyb_intptr_t>__cudensitymatStateComputeInnerProduct
 
     global __cudensitymatCreateElementaryOperator
-    data["__cudensitymatCreateElementaryOperator"] = <intptr_t>__cudensitymatCreateElementaryOperator
+    data["__cudensitymatCreateElementaryOperator"] = <_cyb_intptr_t>__cudensitymatCreateElementaryOperator
 
     global __cudensitymatCreateElementaryOperatorBatch
-    data["__cudensitymatCreateElementaryOperatorBatch"] = <intptr_t>__cudensitymatCreateElementaryOperatorBatch
+    data["__cudensitymatCreateElementaryOperatorBatch"] = <_cyb_intptr_t>__cudensitymatCreateElementaryOperatorBatch
 
     global __cudensitymatDestroyElementaryOperator
-    data["__cudensitymatDestroyElementaryOperator"] = <intptr_t>__cudensitymatDestroyElementaryOperator
+    data["__cudensitymatDestroyElementaryOperator"] = <_cyb_intptr_t>__cudensitymatDestroyElementaryOperator
 
     global __cudensitymatCreateMatrixOperatorDenseLocal
-    data["__cudensitymatCreateMatrixOperatorDenseLocal"] = <intptr_t>__cudensitymatCreateMatrixOperatorDenseLocal
+    data["__cudensitymatCreateMatrixOperatorDenseLocal"] = <_cyb_intptr_t>__cudensitymatCreateMatrixOperatorDenseLocal
 
     global __cudensitymatCreateMatrixOperatorDenseLocalBatch
-    data["__cudensitymatCreateMatrixOperatorDenseLocalBatch"] = <intptr_t>__cudensitymatCreateMatrixOperatorDenseLocalBatch
+    data["__cudensitymatCreateMatrixOperatorDenseLocalBatch"] = <_cyb_intptr_t>__cudensitymatCreateMatrixOperatorDenseLocalBatch
 
     global __cudensitymatDestroyMatrixOperator
-    data["__cudensitymatDestroyMatrixOperator"] = <intptr_t>__cudensitymatDestroyMatrixOperator
+    data["__cudensitymatDestroyMatrixOperator"] = <_cyb_intptr_t>__cudensitymatDestroyMatrixOperator
 
     global __cudensitymatCreateMatrixProductOperator
-    data["__cudensitymatCreateMatrixProductOperator"] = <intptr_t>__cudensitymatCreateMatrixProductOperator
+    data["__cudensitymatCreateMatrixProductOperator"] = <_cyb_intptr_t>__cudensitymatCreateMatrixProductOperator
 
     global __cudensitymatDestroyMatrixProductOperator
-    data["__cudensitymatDestroyMatrixProductOperator"] = <intptr_t>__cudensitymatDestroyMatrixProductOperator
+    data["__cudensitymatDestroyMatrixProductOperator"] = <_cyb_intptr_t>__cudensitymatDestroyMatrixProductOperator
 
     global __cudensitymatCreateOperatorTerm
-    data["__cudensitymatCreateOperatorTerm"] = <intptr_t>__cudensitymatCreateOperatorTerm
+    data["__cudensitymatCreateOperatorTerm"] = <_cyb_intptr_t>__cudensitymatCreateOperatorTerm
 
     global __cudensitymatDestroyOperatorTerm
-    data["__cudensitymatDestroyOperatorTerm"] = <intptr_t>__cudensitymatDestroyOperatorTerm
+    data["__cudensitymatDestroyOperatorTerm"] = <_cyb_intptr_t>__cudensitymatDestroyOperatorTerm
 
     global __cudensitymatOperatorTermAppendElementaryProduct
-    data["__cudensitymatOperatorTermAppendElementaryProduct"] = <intptr_t>__cudensitymatOperatorTermAppendElementaryProduct
+    data["__cudensitymatOperatorTermAppendElementaryProduct"] = <_cyb_intptr_t>__cudensitymatOperatorTermAppendElementaryProduct
 
     global __cudensitymatOperatorTermAppendElementaryProductBatch
-    data["__cudensitymatOperatorTermAppendElementaryProductBatch"] = <intptr_t>__cudensitymatOperatorTermAppendElementaryProductBatch
+    data["__cudensitymatOperatorTermAppendElementaryProductBatch"] = <_cyb_intptr_t>__cudensitymatOperatorTermAppendElementaryProductBatch
 
     global __cudensitymatOperatorTermAppendMatrixProduct
-    data["__cudensitymatOperatorTermAppendMatrixProduct"] = <intptr_t>__cudensitymatOperatorTermAppendMatrixProduct
+    data["__cudensitymatOperatorTermAppendMatrixProduct"] = <_cyb_intptr_t>__cudensitymatOperatorTermAppendMatrixProduct
 
     global __cudensitymatOperatorTermAppendMatrixProductBatch
-    data["__cudensitymatOperatorTermAppendMatrixProductBatch"] = <intptr_t>__cudensitymatOperatorTermAppendMatrixProductBatch
+    data["__cudensitymatOperatorTermAppendMatrixProductBatch"] = <_cyb_intptr_t>__cudensitymatOperatorTermAppendMatrixProductBatch
 
     global __cudensitymatOperatorTermAppendMPOProduct
-    data["__cudensitymatOperatorTermAppendMPOProduct"] = <intptr_t>__cudensitymatOperatorTermAppendMPOProduct
+    data["__cudensitymatOperatorTermAppendMPOProduct"] = <_cyb_intptr_t>__cudensitymatOperatorTermAppendMPOProduct
 
     global __cudensitymatCreateOperator
-    data["__cudensitymatCreateOperator"] = <intptr_t>__cudensitymatCreateOperator
+    data["__cudensitymatCreateOperator"] = <_cyb_intptr_t>__cudensitymatCreateOperator
 
     global __cudensitymatDestroyOperator
-    data["__cudensitymatDestroyOperator"] = <intptr_t>__cudensitymatDestroyOperator
+    data["__cudensitymatDestroyOperator"] = <_cyb_intptr_t>__cudensitymatDestroyOperator
 
     global __cudensitymatOperatorAppendTerm
-    data["__cudensitymatOperatorAppendTerm"] = <intptr_t>__cudensitymatOperatorAppendTerm
+    data["__cudensitymatOperatorAppendTerm"] = <_cyb_intptr_t>__cudensitymatOperatorAppendTerm
 
     global __cudensitymatOperatorAppendTermBatch
-    data["__cudensitymatOperatorAppendTermBatch"] = <intptr_t>__cudensitymatOperatorAppendTermBatch
+    data["__cudensitymatOperatorAppendTermBatch"] = <_cyb_intptr_t>__cudensitymatOperatorAppendTermBatch
 
     global __cudensitymatAttachBatchedCoefficients
-    data["__cudensitymatAttachBatchedCoefficients"] = <intptr_t>__cudensitymatAttachBatchedCoefficients
+    data["__cudensitymatAttachBatchedCoefficients"] = <_cyb_intptr_t>__cudensitymatAttachBatchedCoefficients
 
     global __cudensitymatCreateStateFittingScopeSplitALSConfig
-    data["__cudensitymatCreateStateFittingScopeSplitALSConfig"] = <intptr_t>__cudensitymatCreateStateFittingScopeSplitALSConfig
+    data["__cudensitymatCreateStateFittingScopeSplitALSConfig"] = <_cyb_intptr_t>__cudensitymatCreateStateFittingScopeSplitALSConfig
 
     global __cudensitymatDestroyStateFittingScopeSplitALSConfig
-    data["__cudensitymatDestroyStateFittingScopeSplitALSConfig"] = <intptr_t>__cudensitymatDestroyStateFittingScopeSplitALSConfig
+    data["__cudensitymatDestroyStateFittingScopeSplitALSConfig"] = <_cyb_intptr_t>__cudensitymatDestroyStateFittingScopeSplitALSConfig
 
     global __cudensitymatStateFittingScopeSplitALSConfigSetAttribute
-    data["__cudensitymatStateFittingScopeSplitALSConfigSetAttribute"] = <intptr_t>__cudensitymatStateFittingScopeSplitALSConfigSetAttribute
+    data["__cudensitymatStateFittingScopeSplitALSConfigSetAttribute"] = <_cyb_intptr_t>__cudensitymatStateFittingScopeSplitALSConfigSetAttribute
 
     global __cudensitymatStateFittingScopeSplitALSConfigGetAttribute
-    data["__cudensitymatStateFittingScopeSplitALSConfigGetAttribute"] = <intptr_t>__cudensitymatStateFittingScopeSplitALSConfigGetAttribute
+    data["__cudensitymatStateFittingScopeSplitALSConfigGetAttribute"] = <_cyb_intptr_t>__cudensitymatStateFittingScopeSplitALSConfigGetAttribute
 
     global __cudensitymatCreateStateFittingApproachLinSolveConfig
-    data["__cudensitymatCreateStateFittingApproachLinSolveConfig"] = <intptr_t>__cudensitymatCreateStateFittingApproachLinSolveConfig
+    data["__cudensitymatCreateStateFittingApproachLinSolveConfig"] = <_cyb_intptr_t>__cudensitymatCreateStateFittingApproachLinSolveConfig
 
     global __cudensitymatDestroyStateFittingApproachLinSolveConfig
-    data["__cudensitymatDestroyStateFittingApproachLinSolveConfig"] = <intptr_t>__cudensitymatDestroyStateFittingApproachLinSolveConfig
+    data["__cudensitymatDestroyStateFittingApproachLinSolveConfig"] = <_cyb_intptr_t>__cudensitymatDestroyStateFittingApproachLinSolveConfig
 
     global __cudensitymatStateFittingApproachLinSolveConfigSetAttribute
-    data["__cudensitymatStateFittingApproachLinSolveConfigSetAttribute"] = <intptr_t>__cudensitymatStateFittingApproachLinSolveConfigSetAttribute
+    data["__cudensitymatStateFittingApproachLinSolveConfigSetAttribute"] = <_cyb_intptr_t>__cudensitymatStateFittingApproachLinSolveConfigSetAttribute
 
     global __cudensitymatStateFittingApproachLinSolveConfigGetAttribute
-    data["__cudensitymatStateFittingApproachLinSolveConfigGetAttribute"] = <intptr_t>__cudensitymatStateFittingApproachLinSolveConfigGetAttribute
+    data["__cudensitymatStateFittingApproachLinSolveConfigGetAttribute"] = <_cyb_intptr_t>__cudensitymatStateFittingApproachLinSolveConfigGetAttribute
 
     global __cudensitymatOperatorPrepareAction
-    data["__cudensitymatOperatorPrepareAction"] = <intptr_t>__cudensitymatOperatorPrepareAction
+    data["__cudensitymatOperatorPrepareAction"] = <_cyb_intptr_t>__cudensitymatOperatorPrepareAction
 
     global __cudensitymatOperatorComputeAction
-    data["__cudensitymatOperatorComputeAction"] = <intptr_t>__cudensitymatOperatorComputeAction
+    data["__cudensitymatOperatorComputeAction"] = <_cyb_intptr_t>__cudensitymatOperatorComputeAction
 
     global __cudensitymatOperatorPrepareActionBackwardDiff
-    data["__cudensitymatOperatorPrepareActionBackwardDiff"] = <intptr_t>__cudensitymatOperatorPrepareActionBackwardDiff
+    data["__cudensitymatOperatorPrepareActionBackwardDiff"] = <_cyb_intptr_t>__cudensitymatOperatorPrepareActionBackwardDiff
 
     global __cudensitymatOperatorComputeActionBackwardDiff
-    data["__cudensitymatOperatorComputeActionBackwardDiff"] = <intptr_t>__cudensitymatOperatorComputeActionBackwardDiff
+    data["__cudensitymatOperatorComputeActionBackwardDiff"] = <_cyb_intptr_t>__cudensitymatOperatorComputeActionBackwardDiff
 
     global __cudensitymatCreateOperatorAction
-    data["__cudensitymatCreateOperatorAction"] = <intptr_t>__cudensitymatCreateOperatorAction
+    data["__cudensitymatCreateOperatorAction"] = <_cyb_intptr_t>__cudensitymatCreateOperatorAction
 
     global __cudensitymatDestroyOperatorAction
-    data["__cudensitymatDestroyOperatorAction"] = <intptr_t>__cudensitymatDestroyOperatorAction
+    data["__cudensitymatDestroyOperatorAction"] = <_cyb_intptr_t>__cudensitymatDestroyOperatorAction
 
     global __cudensitymatOperatorActionConfigure
-    data["__cudensitymatOperatorActionConfigure"] = <intptr_t>__cudensitymatOperatorActionConfigure
+    data["__cudensitymatOperatorActionConfigure"] = <_cyb_intptr_t>__cudensitymatOperatorActionConfigure
 
     global __cudensitymatOperatorActionPrepare
-    data["__cudensitymatOperatorActionPrepare"] = <intptr_t>__cudensitymatOperatorActionPrepare
+    data["__cudensitymatOperatorActionPrepare"] = <_cyb_intptr_t>__cudensitymatOperatorActionPrepare
 
     global __cudensitymatOperatorActionCompute
-    data["__cudensitymatOperatorActionCompute"] = <intptr_t>__cudensitymatOperatorActionCompute
+    data["__cudensitymatOperatorActionCompute"] = <_cyb_intptr_t>__cudensitymatOperatorActionCompute
 
     global __cudensitymatCreateExpectation
-    data["__cudensitymatCreateExpectation"] = <intptr_t>__cudensitymatCreateExpectation
+    data["__cudensitymatCreateExpectation"] = <_cyb_intptr_t>__cudensitymatCreateExpectation
 
     global __cudensitymatDestroyExpectation
-    data["__cudensitymatDestroyExpectation"] = <intptr_t>__cudensitymatDestroyExpectation
+    data["__cudensitymatDestroyExpectation"] = <_cyb_intptr_t>__cudensitymatDestroyExpectation
 
     global __cudensitymatExpectationPrepare
-    data["__cudensitymatExpectationPrepare"] = <intptr_t>__cudensitymatExpectationPrepare
+    data["__cudensitymatExpectationPrepare"] = <_cyb_intptr_t>__cudensitymatExpectationPrepare
 
     global __cudensitymatExpectationCompute
-    data["__cudensitymatExpectationCompute"] = <intptr_t>__cudensitymatExpectationCompute
+    data["__cudensitymatExpectationCompute"] = <_cyb_intptr_t>__cudensitymatExpectationCompute
 
     global __cudensitymatCreateOperatorSpectrum
-    data["__cudensitymatCreateOperatorSpectrum"] = <intptr_t>__cudensitymatCreateOperatorSpectrum
+    data["__cudensitymatCreateOperatorSpectrum"] = <_cyb_intptr_t>__cudensitymatCreateOperatorSpectrum
 
     global __cudensitymatDestroyOperatorSpectrum
-    data["__cudensitymatDestroyOperatorSpectrum"] = <intptr_t>__cudensitymatDestroyOperatorSpectrum
+    data["__cudensitymatDestroyOperatorSpectrum"] = <_cyb_intptr_t>__cudensitymatDestroyOperatorSpectrum
 
     global __cudensitymatOperatorSpectrumConfigure
-    data["__cudensitymatOperatorSpectrumConfigure"] = <intptr_t>__cudensitymatOperatorSpectrumConfigure
+    data["__cudensitymatOperatorSpectrumConfigure"] = <_cyb_intptr_t>__cudensitymatOperatorSpectrumConfigure
 
     global __cudensitymatOperatorSpectrumPrepare
-    data["__cudensitymatOperatorSpectrumPrepare"] = <intptr_t>__cudensitymatOperatorSpectrumPrepare
+    data["__cudensitymatOperatorSpectrumPrepare"] = <_cyb_intptr_t>__cudensitymatOperatorSpectrumPrepare
 
     global __cudensitymatOperatorSpectrumCompute
-    data["__cudensitymatOperatorSpectrumCompute"] = <intptr_t>__cudensitymatOperatorSpectrumCompute
+    data["__cudensitymatOperatorSpectrumCompute"] = <_cyb_intptr_t>__cudensitymatOperatorSpectrumCompute
 
     global __cudensitymatCreateTimePropagationScopeSplitTDVPConfig
-    data["__cudensitymatCreateTimePropagationScopeSplitTDVPConfig"] = <intptr_t>__cudensitymatCreateTimePropagationScopeSplitTDVPConfig
+    data["__cudensitymatCreateTimePropagationScopeSplitTDVPConfig"] = <_cyb_intptr_t>__cudensitymatCreateTimePropagationScopeSplitTDVPConfig
 
     global __cudensitymatDestroyTimePropagationScopeSplitTDVPConfig
-    data["__cudensitymatDestroyTimePropagationScopeSplitTDVPConfig"] = <intptr_t>__cudensitymatDestroyTimePropagationScopeSplitTDVPConfig
+    data["__cudensitymatDestroyTimePropagationScopeSplitTDVPConfig"] = <_cyb_intptr_t>__cudensitymatDestroyTimePropagationScopeSplitTDVPConfig
 
     global __cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute
-    data["__cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute"] = <intptr_t>__cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute
+    data["__cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute"] = <_cyb_intptr_t>__cudensitymatTimePropagationScopeSplitTDVPConfigSetAttribute
 
     global __cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute
-    data["__cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute"] = <intptr_t>__cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute
+    data["__cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute"] = <_cyb_intptr_t>__cudensitymatTimePropagationScopeSplitTDVPConfigGetAttribute
 
     global __cudensitymatCreateTimePropagationApproachKrylovConfig
-    data["__cudensitymatCreateTimePropagationApproachKrylovConfig"] = <intptr_t>__cudensitymatCreateTimePropagationApproachKrylovConfig
+    data["__cudensitymatCreateTimePropagationApproachKrylovConfig"] = <_cyb_intptr_t>__cudensitymatCreateTimePropagationApproachKrylovConfig
 
     global __cudensitymatDestroyTimePropagationApproachKrylovConfig
-    data["__cudensitymatDestroyTimePropagationApproachKrylovConfig"] = <intptr_t>__cudensitymatDestroyTimePropagationApproachKrylovConfig
+    data["__cudensitymatDestroyTimePropagationApproachKrylovConfig"] = <_cyb_intptr_t>__cudensitymatDestroyTimePropagationApproachKrylovConfig
 
     global __cudensitymatTimePropagationApproachKrylovConfigSetAttribute
-    data["__cudensitymatTimePropagationApproachKrylovConfigSetAttribute"] = <intptr_t>__cudensitymatTimePropagationApproachKrylovConfigSetAttribute
+    data["__cudensitymatTimePropagationApproachKrylovConfigSetAttribute"] = <_cyb_intptr_t>__cudensitymatTimePropagationApproachKrylovConfigSetAttribute
 
     global __cudensitymatTimePropagationApproachKrylovConfigGetAttribute
-    data["__cudensitymatTimePropagationApproachKrylovConfigGetAttribute"] = <intptr_t>__cudensitymatTimePropagationApproachKrylovConfigGetAttribute
+    data["__cudensitymatTimePropagationApproachKrylovConfigGetAttribute"] = <_cyb_intptr_t>__cudensitymatTimePropagationApproachKrylovConfigGetAttribute
 
     global __cudensitymatCreateTimePropagation
-    data["__cudensitymatCreateTimePropagation"] = <intptr_t>__cudensitymatCreateTimePropagation
+    data["__cudensitymatCreateTimePropagation"] = <_cyb_intptr_t>__cudensitymatCreateTimePropagation
 
     global __cudensitymatDestroyTimePropagation
-    data["__cudensitymatDestroyTimePropagation"] = <intptr_t>__cudensitymatDestroyTimePropagation
+    data["__cudensitymatDestroyTimePropagation"] = <_cyb_intptr_t>__cudensitymatDestroyTimePropagation
 
     global __cudensitymatTimePropagationConfigure
-    data["__cudensitymatTimePropagationConfigure"] = <intptr_t>__cudensitymatTimePropagationConfigure
+    data["__cudensitymatTimePropagationConfigure"] = <_cyb_intptr_t>__cudensitymatTimePropagationConfigure
 
     global __cudensitymatTimePropagationPrepare
-    data["__cudensitymatTimePropagationPrepare"] = <intptr_t>__cudensitymatTimePropagationPrepare
+    data["__cudensitymatTimePropagationPrepare"] = <_cyb_intptr_t>__cudensitymatTimePropagationPrepare
 
     global __cudensitymatTimePropagationCompute
-    data["__cudensitymatTimePropagationCompute"] = <intptr_t>__cudensitymatTimePropagationCompute
+    data["__cudensitymatTimePropagationCompute"] = <_cyb_intptr_t>__cudensitymatTimePropagationCompute
 
     global __cudensitymatCreateSVDConfig
-    data["__cudensitymatCreateSVDConfig"] = <intptr_t>__cudensitymatCreateSVDConfig
+    data["__cudensitymatCreateSVDConfig"] = <_cyb_intptr_t>__cudensitymatCreateSVDConfig
 
     global __cudensitymatDestroySVDConfig
-    data["__cudensitymatDestroySVDConfig"] = <intptr_t>__cudensitymatDestroySVDConfig
+    data["__cudensitymatDestroySVDConfig"] = <_cyb_intptr_t>__cudensitymatDestroySVDConfig
 
     global __cudensitymatSVDConfigSetAttribute
-    data["__cudensitymatSVDConfigSetAttribute"] = <intptr_t>__cudensitymatSVDConfigSetAttribute
+    data["__cudensitymatSVDConfigSetAttribute"] = <_cyb_intptr_t>__cudensitymatSVDConfigSetAttribute
 
     global __cudensitymatSVDConfigGetAttribute
-    data["__cudensitymatSVDConfigGetAttribute"] = <intptr_t>__cudensitymatSVDConfigGetAttribute
+    data["__cudensitymatSVDConfigGetAttribute"] = <_cyb_intptr_t>__cudensitymatSVDConfigGetAttribute
 
     global __cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig
-    data["__cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig"] = <intptr_t>__cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig
+    data["__cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig"] = <_cyb_intptr_t>__cudensitymatCreateEigenDecompositionScopeSplitDMRGConfig
 
     global __cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig
-    data["__cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig"] = <intptr_t>__cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig
+    data["__cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig"] = <_cyb_intptr_t>__cudensitymatDestroyEigenDecompositionScopeSplitDMRGConfig
 
     global __cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute
-    data["__cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute"] = <intptr_t>__cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute
+    data["__cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute"] = <_cyb_intptr_t>__cudensitymatEigenDecompositionScopeSplitDMRGConfigSetAttribute
 
     global __cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute
-    data["__cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute"] = <intptr_t>__cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute
+    data["__cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute"] = <_cyb_intptr_t>__cudensitymatEigenDecompositionScopeSplitDMRGConfigGetAttribute
 
     global __cudensitymatCreateEigenDecompositionApproachKrylovConfig
-    data["__cudensitymatCreateEigenDecompositionApproachKrylovConfig"] = <intptr_t>__cudensitymatCreateEigenDecompositionApproachKrylovConfig
+    data["__cudensitymatCreateEigenDecompositionApproachKrylovConfig"] = <_cyb_intptr_t>__cudensitymatCreateEigenDecompositionApproachKrylovConfig
 
     global __cudensitymatDestroyEigenDecompositionApproachKrylovConfig
-    data["__cudensitymatDestroyEigenDecompositionApproachKrylovConfig"] = <intptr_t>__cudensitymatDestroyEigenDecompositionApproachKrylovConfig
+    data["__cudensitymatDestroyEigenDecompositionApproachKrylovConfig"] = <_cyb_intptr_t>__cudensitymatDestroyEigenDecompositionApproachKrylovConfig
 
     global __cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute
-    data["__cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute"] = <intptr_t>__cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute
+    data["__cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute"] = <_cyb_intptr_t>__cudensitymatEigenDecompositionApproachKrylovConfigSetAttribute
 
     global __cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute
-    data["__cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute"] = <intptr_t>__cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute
+    data["__cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute"] = <_cyb_intptr_t>__cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute
+
+    global __cudensitymatCreateEigenDecompositionApproachLinearConfig
+    data["__cudensitymatCreateEigenDecompositionApproachLinearConfig"] = <_cyb_intptr_t>__cudensitymatCreateEigenDecompositionApproachLinearConfig
+
+    global __cudensitymatDestroyEigenDecompositionApproachLinearConfig
+    data["__cudensitymatDestroyEigenDecompositionApproachLinearConfig"] = <_cyb_intptr_t>__cudensitymatDestroyEigenDecompositionApproachLinearConfig
+
+    global __cudensitymatEigenDecompositionApproachLinearConfigSetAttribute
+    data["__cudensitymatEigenDecompositionApproachLinearConfigSetAttribute"] = <_cyb_intptr_t>__cudensitymatEigenDecompositionApproachLinearConfigSetAttribute
+
+    global __cudensitymatEigenDecompositionApproachLinearConfigGetAttribute
+    data["__cudensitymatEigenDecompositionApproachLinearConfigGetAttribute"] = <_cyb_intptr_t>__cudensitymatEigenDecompositionApproachLinearConfigGetAttribute
 
     global __cudensitymatCreateEigenDecomposition
-    data["__cudensitymatCreateEigenDecomposition"] = <intptr_t>__cudensitymatCreateEigenDecomposition
+    data["__cudensitymatCreateEigenDecomposition"] = <_cyb_intptr_t>__cudensitymatCreateEigenDecomposition
 
     global __cudensitymatDestroyEigenDecomposition
-    data["__cudensitymatDestroyEigenDecomposition"] = <intptr_t>__cudensitymatDestroyEigenDecomposition
+    data["__cudensitymatDestroyEigenDecomposition"] = <_cyb_intptr_t>__cudensitymatDestroyEigenDecomposition
 
     global __cudensitymatEigenDecompositionConfigure
-    data["__cudensitymatEigenDecompositionConfigure"] = <intptr_t>__cudensitymatEigenDecompositionConfigure
+    data["__cudensitymatEigenDecompositionConfigure"] = <_cyb_intptr_t>__cudensitymatEigenDecompositionConfigure
 
     global __cudensitymatEigenDecompositionPrepare
-    data["__cudensitymatEigenDecompositionPrepare"] = <intptr_t>__cudensitymatEigenDecompositionPrepare
+    data["__cudensitymatEigenDecompositionPrepare"] = <_cyb_intptr_t>__cudensitymatEigenDecompositionPrepare
 
     global __cudensitymatEigenDecompositionCompute
-    data["__cudensitymatEigenDecompositionCompute"] = <intptr_t>__cudensitymatEigenDecompositionCompute
+    data["__cudensitymatEigenDecompositionCompute"] = <_cyb_intptr_t>__cudensitymatEigenDecompositionCompute
 
     global __cudensitymatCreateWorkspace
-    data["__cudensitymatCreateWorkspace"] = <intptr_t>__cudensitymatCreateWorkspace
+    data["__cudensitymatCreateWorkspace"] = <_cyb_intptr_t>__cudensitymatCreateWorkspace
 
     global __cudensitymatDestroyWorkspace
-    data["__cudensitymatDestroyWorkspace"] = <intptr_t>__cudensitymatDestroyWorkspace
+    data["__cudensitymatDestroyWorkspace"] = <_cyb_intptr_t>__cudensitymatDestroyWorkspace
 
     global __cudensitymatWorkspaceGetMemorySize
-    data["__cudensitymatWorkspaceGetMemorySize"] = <intptr_t>__cudensitymatWorkspaceGetMemorySize
+    data["__cudensitymatWorkspaceGetMemorySize"] = <_cyb_intptr_t>__cudensitymatWorkspaceGetMemorySize
 
     global __cudensitymatWorkspaceSetMemory
-    data["__cudensitymatWorkspaceSetMemory"] = <intptr_t>__cudensitymatWorkspaceSetMemory
+    data["__cudensitymatWorkspaceSetMemory"] = <_cyb_intptr_t>__cudensitymatWorkspaceSetMemory
 
     global __cudensitymatWorkspaceGetMemory
-    data["__cudensitymatWorkspaceGetMemory"] = <intptr_t>__cudensitymatWorkspaceGetMemory
+    data["__cudensitymatWorkspaceGetMemory"] = <_cyb_intptr_t>__cudensitymatWorkspaceGetMemory
 
     global __cudensitymatElementaryOperatorAttachBuffer
-    data["__cudensitymatElementaryOperatorAttachBuffer"] = <intptr_t>__cudensitymatElementaryOperatorAttachBuffer
+    data["__cudensitymatElementaryOperatorAttachBuffer"] = <_cyb_intptr_t>__cudensitymatElementaryOperatorAttachBuffer
 
     global __cudensitymatMatrixOperatorDenseLocalAttachBuffer
-    data["__cudensitymatMatrixOperatorDenseLocalAttachBuffer"] = <intptr_t>__cudensitymatMatrixOperatorDenseLocalAttachBuffer
-
+    data["__cudensitymatMatrixOperatorDenseLocalAttachBuffer"] = <_cyb_intptr_t>__cudensitymatMatrixOperatorDenseLocalAttachBuffer
+    _cyb_func_ptrs = data
     return data
+
+
+cpdef _inspect_function_pointer(str name):
+    global _cyb_func_ptrs
+    if _cyb_func_ptrs is None:
+        _cyb_func_ptrs = _inspect_function_pointers()
+    return _cyb_func_ptrs[name]
+
+
+
+
+cdef void* load_library() except* with gil:
+    cdef uintptr_t handle = load_nvidia_dynamic_lib("cudensitymat")._handle_uint
+    return <void*>handle
 
 
 ###############################################################################
@@ -2179,6 +2257,46 @@ cdef cudensitymatStatus_t _cudensitymatEigenDecompositionApproachKrylovConfigGet
         with gil:
             raise FunctionNotFoundError("function cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute is not found")
     return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, const cudensitymatEigenDecompositionApproachKrylovConfig_t, cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t, void*, size_t) noexcept nogil>__cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute)(
+        handle, config, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t _cudensitymatCreateEigenDecompositionApproachLinearConfig(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionApproachLinearConfig_t* config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatCreateEigenDecompositionApproachLinearConfig
+    _check_or_init_cudensitymat()
+    if __cudensitymatCreateEigenDecompositionApproachLinearConfig == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatCreateEigenDecompositionApproachLinearConfig is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatEigenDecompositionApproachLinearConfig_t*) noexcept nogil>__cudensitymatCreateEigenDecompositionApproachLinearConfig)(
+        handle, config)
+
+
+cdef cudensitymatStatus_t _cudensitymatDestroyEigenDecompositionApproachLinearConfig(cudensitymatEigenDecompositionApproachLinearConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatDestroyEigenDecompositionApproachLinearConfig
+    _check_or_init_cudensitymat()
+    if __cudensitymatDestroyEigenDecompositionApproachLinearConfig == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatDestroyEigenDecompositionApproachLinearConfig is not found")
+    return (<cudensitymatStatus_t (*)(cudensitymatEigenDecompositionApproachLinearConfig_t) noexcept nogil>__cudensitymatDestroyEigenDecompositionApproachLinearConfig)(
+        config)
+
+
+cdef cudensitymatStatus_t _cudensitymatEigenDecompositionApproachLinearConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionApproachLinearConfig_t config, cudensitymatEigenDecompositionApproachLinearConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatEigenDecompositionApproachLinearConfigSetAttribute
+    _check_or_init_cudensitymat()
+    if __cudensitymatEigenDecompositionApproachLinearConfigSetAttribute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatEigenDecompositionApproachLinearConfigSetAttribute is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, cudensitymatEigenDecompositionApproachLinearConfig_t, cudensitymatEigenDecompositionApproachLinearConfigAttribute_t, const void*, size_t) noexcept nogil>__cudensitymatEigenDecompositionApproachLinearConfigSetAttribute)(
+        handle, config, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t _cudensitymatEigenDecompositionApproachLinearConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatEigenDecompositionApproachLinearConfig_t config, cudensitymatEigenDecompositionApproachLinearConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __cudensitymatEigenDecompositionApproachLinearConfigGetAttribute
+    _check_or_init_cudensitymat()
+    if __cudensitymatEigenDecompositionApproachLinearConfigGetAttribute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function cudensitymatEigenDecompositionApproachLinearConfigGetAttribute is not found")
+    return (<cudensitymatStatus_t (*)(const cudensitymatHandle_t, const cudensitymatEigenDecompositionApproachLinearConfig_t, cudensitymatEigenDecompositionApproachLinearConfigAttribute_t, void*, size_t) noexcept nogil>__cudensitymatEigenDecompositionApproachLinearConfigGetAttribute)(
         handle, config, attribute, attributeValue, attributeSize)
 
 

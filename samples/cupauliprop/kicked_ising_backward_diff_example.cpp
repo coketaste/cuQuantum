@@ -20,7 +20,6 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
-#include <cassert>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -194,6 +193,7 @@ int main() {
   HANDLE_CUDA_ERROR(cudaMemcpy(dInCoef, &observableCoef,
       sizeof(observableCoef), cudaMemcpyHostToDevice));
 
+  // Sphinx: #1
   cupaulipropPauliExpansion_t inExpansion{}, outExpansion{}, cot0Expansion{}, cot1Expansion{};
   const auto sortOrder = CUPAULIPROP_SORT_ORDER_NONE;
   HANDLE_CUPP_ERROR(cupaulipropCreatePauliExpansion(
@@ -209,6 +209,7 @@ int main() {
       handle, NUM_CIRCUIT_QUBITS, dCot1XZ, EXPANSION_PAULI_MEM, dCot1Coef, EXPANSION_COEF_MEM,
       CUDA_R_64F, 0, sortOrder, 0, &cot1Expansion));
 
+  // Sphinx: #2
   // ========================================================================
   // Workspace
   // ========================================================================
@@ -246,6 +247,7 @@ int main() {
   std::cout << "  Rzz angle:     " << zzAngle << " (i.e. -PI/2)" << std::endl;
   std::cout << std::endl;
 
+  // Sphinx: #3
   // ========================================================================
   // Forward pass: back-propagate observable through adjoint circuit
   // ========================================================================
@@ -262,9 +264,16 @@ int main() {
         handle, inView, circuit[i].op, sortOrder, 0, 2, truncStrats, WORKSPACE_MEM, &reqXZ, &reqCoef, workspace));
     HANDLE_CUPP_ERROR(cupaulipropWorkspaceGetMemorySize(
         handle, workspace, CUPAULIPROP_MEMSPACE_DEVICE, CUPAULIPROP_WORKSPACE_SCRATCH, &reqWs));
-    assert(reqXZ <= static_cast<int64_t>(EXPANSION_PAULI_MEM));
-    assert(reqCoef <= static_cast<int64_t>(EXPANSION_COEF_MEM));
-    assert(reqWs <= static_cast<int64_t>(WORKSPACE_MEM));
+    if (reqXZ   > static_cast<int64_t>(EXPANSION_PAULI_MEM) ||
+        reqCoef > static_cast<int64_t>(EXPANSION_COEF_MEM)  ||
+        reqWs   > static_cast<int64_t>(WORKSPACE_MEM))
+    {
+      std::cout
+          << "Insufficient outExpansion capacity and/or workspace buffer size "
+          << "to perform operator application. Exiting..."
+          << std::endl;
+      std::abort();
+    }
     reattachWorkspace(handle, workspace, dWorkspace);
     HANDLE_CUPP_ERROR(cupaulipropPauliExpansionViewComputeOperatorApplication(
         handle, inView, outExpansion, circuit[i].op, 1, sortOrder, 0, 2, truncStrats, workspace, stream));
@@ -272,10 +281,12 @@ int main() {
     std::swap(inExpansion, outExpansion);
   }
 
+  // Sphinx: #4
   auto fwdEndTime = std::chrono::high_resolution_clock::now();
   auto fwdDuration = std::chrono::duration_cast<std::chrono::microseconds>(fwdEndTime - startTime);
   double fwdSecs = fwdDuration.count() / 1e6;
 
+  // Sphinx: #5
   // ========================================================================
   // Trace evaluation (expectation value)
   // ========================================================================
@@ -289,6 +300,7 @@ int main() {
   double s = 0.0, p = 0.0;
   HANDLE_CUPP_ERROR(cupaulipropPauliExpansionViewComputeTraceWithZeroState(handle, finalView, &s, &p, workspace, stream));
   const double expec = s * std::exp2(p);
+  // Sphinx: #6
 
   std::cout << "Forward pass completed in " << fwdSecs << " seconds" << std::endl;
   std::cout << "  Final number of terms:   " << finalTerms << std::endl;
@@ -296,6 +308,7 @@ int main() {
   std::cout << "  Expectation value:       " << expec << std::endl;
   std::cout << std::endl;
 
+  // Sphinx: #7
   // ========================================================================
   // Backward: seed cotangent from trace
   // ========================================================================
@@ -304,8 +317,15 @@ int main() {
   int64_t reqCotXZ = 0, reqCotCoef = 0;
   HANDLE_CUPP_ERROR(cupaulipropPauliExpansionViewPrepareTraceWithZeroStateBackwardDiff(
       handle, finalView, WORKSPACE_MEM, &reqCotXZ, &reqCotCoef, workspace));
-  assert(reqCotXZ <= static_cast<int64_t>(EXPANSION_PAULI_MEM));
-  assert(reqCotCoef <= static_cast<int64_t>(EXPANSION_COEF_MEM));
+  if (reqCotXZ   > static_cast<int64_t>(EXPANSION_PAULI_MEM) ||
+      reqCotCoef > static_cast<int64_t>(EXPANSION_COEF_MEM))
+  {
+    std::cout
+        << "Insufficient cot0Expansion capacity to differentiate the trace. Exiting..."
+        << std::endl;
+    std::abort();
+  }
+  // Sphinx: #8
   reattachWorkspace(handle, workspace, dWorkspace);
   HANDLE_CUPP_ERROR(cupaulipropPauliExpansionViewComputeTraceWithZeroStateBackwardDiff(
       handle, finalView, &cotS, &cotP, cot0Expansion, workspace, stream));
@@ -322,6 +342,7 @@ int main() {
     cupaulipropPauliExpansionView_t inView{};
     HANDLE_CUPP_ERROR(cupaulipropPauliExpansionGetNumTerms(handle, inExpansion, &inTerms));
     HANDLE_CUPP_ERROR(cupaulipropPauliExpansionGetContiguousRange(handle, inExpansion, 0, inTerms, &inView));
+    // Sphinx: #9
     HANDLE_CUPP_ERROR(cupaulipropPauliExpansionViewPrepareOperatorApplication(
         handle, inView, circuit[i].op, sortOrder, 0, 2, truncStrats, WORKSPACE_MEM, &reqCotXZ, &reqCotCoef, workspace));
     reattachWorkspace(handle, workspace, dWorkspace);
@@ -330,6 +351,7 @@ int main() {
     HANDLE_CUPP_ERROR(cupaulipropDestroyPauliExpansionView(inView));
     std::swap(inExpansion, outExpansion);
 
+    // Sphinx: #10
     int64_t cotTerms = 0, reqXZ = 0, reqCoef = 0, reqWs = 0;
     cupaulipropPauliExpansionView_t viewIn{}, cotOutView{};
     HANDLE_CUPP_ERROR(cupaulipropPauliExpansionGetNumTerms(handle, inExpansion, &inTerms));
@@ -340,9 +362,16 @@ int main() {
         handle, viewIn, cotOutView, circuit[i].op, sortOrder, 0, 2, truncStrats, WORKSPACE_MEM, &reqXZ, &reqCoef, workspace));
     HANDLE_CUPP_ERROR(cupaulipropWorkspaceGetMemorySize(
         handle, workspace, CUPAULIPROP_MEMSPACE_DEVICE, CUPAULIPROP_WORKSPACE_SCRATCH, &reqWs));
-    assert(reqXZ <= static_cast<int64_t>(EXPANSION_PAULI_MEM));
-    assert(reqCoef <= static_cast<int64_t>(EXPANSION_COEF_MEM));
-    assert(reqWs <= static_cast<int64_t>(WORKSPACE_MEM));
+    if (reqXZ   > static_cast<int64_t>(EXPANSION_PAULI_MEM) ||
+        reqCoef > static_cast<int64_t>(EXPANSION_COEF_MEM)  ||
+        reqWs   > static_cast<int64_t>(WORKSPACE_MEM))
+    {
+      std::cout
+          << "Insufficient cot1Expansion capacity and/or workspace buffer size "
+          << "to differentiate operator application. Exiting..."
+          << std::endl;
+      std::abort();
+    }
     reattachWorkspace(handle, workspace, dWorkspace);
 
     double gateGrad = 0.0;
@@ -352,10 +381,12 @@ int main() {
         handle, viewIn, cotOutView, cot1Expansion, circuit[i].op, 1, sortOrder, 0, 2, truncStrats, workspace, stream));
     HANDLE_CUPP_ERROR(cupaulipropDestroyPauliExpansionView(viewIn));
     HANDLE_CUPP_ERROR(cupaulipropDestroyPauliExpansionView(cotOutView));
+    // Sphinx: #11
     if (circuit[i].isX) gradX += gateGrad; else gradZZ += gateGrad;
     std::swap(cot0Expansion, cot1Expansion);
   }
 
+  // Sphinx: #12
   auto endTime = std::chrono::high_resolution_clock::now();
   auto bwdDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - bwdStartTime);
   auto totalDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
@@ -375,6 +406,7 @@ int main() {
   std::cout << "Total runtime:           " << totalSecs << " seconds" << std::endl;
   std::cout << std::endl;
 
+  // Sphinx: #13
   // ========================================================================
   // Clean up
   // ========================================================================

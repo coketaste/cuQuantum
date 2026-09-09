@@ -556,8 +556,6 @@ class TestOperatorTerm:
         op_term2 = OperatorTerm(self.dims)
         op_term.append([base_op1, base_op2], modes=(0, 1))
         op_term2.append([base_op1,], modes=(0,))
-
-
         # Test that _create sets the pointer.
         op_term._create(handle)
         op_term2._create(handle)
@@ -598,7 +596,6 @@ class TestOperatorTerm:
 
         op_term.append([base_op1, base_op2])
         op_term2.append([base_op1, base_op2])
-
         # Test that _create sets the pointer.
         op_term._create(handle)
         op_term2._create(handle)

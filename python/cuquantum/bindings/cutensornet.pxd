@@ -2,9 +2,21 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1668+gb1eb0b259. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.09.0. Do not modify it directly.
 
-from libc.stdint cimport intptr_t
+
+
+# <<<< PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport (
+    int32_t,
+    int64_t,
+    intptr_t,
+    uint64_t,
+)
+
+
+# <<<< END OF PREAMBLE CONTENT >>>>
 
 from .cycutensornet cimport *
 
@@ -32,6 +44,7 @@ ctypedef cutensornetStateExpectation_t StateExpectation
 ctypedef cutensornetNetworkOperator_t NetworkOperator
 ctypedef cutensornetStateProjectionMPS_t StateProjectionMPS
 ctypedef cutensornetNetworkAutotunePreference_t NetworkAutotunePreference
+ctypedef cutensornetBinaryTensorContraction_t BinaryTensorContraction
 ctypedef cutensornetNodePair_t NodePair
 ctypedef cutensornetSliceInfoPair_t SliceInfoPair
 ctypedef cutensornetTensorQualifiers_t TensorQualifiers
@@ -90,6 +103,7 @@ ctypedef cutensornetStateProjectionMPSAttributes_t _StateProjectionMPSAttribute
 ctypedef cutensornetNetworkAutotunePreferenceAttributes_t _NetworkAutotunePreferenceAttribute
 ctypedef cutensornetMarginalKind_t _MarginalKind
 ctypedef cutensornetStateProjectionMPSMaxExtentPreparePolicy_t _StateProjectionMPSMaxExtentPreparePolicy
+ctypedef cutensornetTensorDescriptorAttributes_t _TensorDescriptorAttribute
 
 
 ###############################################################################
@@ -249,4 +263,12 @@ cpdef state_update_tensor_operator_gradient(intptr_t handle, intptr_t tensor_net
 cpdef expectation_compute_with_gradients_backward(intptr_t handle, intptr_t tensor_network_expectation, int32_t accumulate_gradients, intptr_t expectation_value_adjoint, intptr_t state_norm_adjoint, intptr_t work_desc, intptr_t expectation_value, intptr_t state_norm, intptr_t cuda_stream)
 cpdef state_projection_mps_update_coefficients(intptr_t handle, intptr_t tensor_network_projection, int32_t num_coeffs, intptr_t coeffs)
 cpdef state_projection_mps_update_dual_tensors(intptr_t handle, intptr_t tensor_network_projection, max_extents, valid_extents, strides, dual_tensors_data, intptr_t ortho_spec, intptr_t cuda_stream)
+cpdef str get_last_error()
 cpdef intptr_t create_marginal_diagonal(intptr_t handle, intptr_t tensor_network_state, int32_t num_marginal_modes, marginal_modes, int32_t num_projected_modes, projected_modes, marginal_diagonal_tensor_strides) except? 0
+cpdef intptr_t create_distributed_tensor_descriptor(intptr_t handle, int32_t num_modes, extents, element_strides, block_sizes, block_strides, nranks_per_mode, mode_labels, int data_type) except? 0
+cpdef intptr_t create_binary_tensor_contraction(intptr_t handle, intptr_t desc_a, intptr_t desc_b, intptr_t desc_c, intptr_t desc_d, int compute_type) except? 0
+cpdef binary_tensor_contraction_prepare(intptr_t handle, intptr_t contraction, intptr_t work_desc)
+cpdef binary_tensor_contraction_compute(intptr_t handle, intptr_t contraction, intptr_t alpha, intptr_t a, intptr_t b, intptr_t beta, intptr_t c, intptr_t d, intptr_t work_desc, intptr_t stream)
+cpdef destroy_binary_tensor_contraction(intptr_t contraction)
+cpdef get_tensor_descriptor_attribute_dtype(int attr)
+cpdef tensor_descriptor_get_attribute(intptr_t handle, intptr_t tensor_desc, int attr, intptr_t buffer, size_t size_in_bytes)
