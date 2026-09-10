@@ -134,8 +134,8 @@ def _gate_split(wrapped_operands, inputs, outputs, size_dict, max_mid_extent, al
                 if s.name != "cuda":
                     s.tensor = s.tensor[:reduced_extent]
                 else:
-                    s.tensor = s.module.wrap_external(
-                        s.tensor, s.data_ptr, s.dtype, (reduced_extent, ), (1, ), s.device_id, s.itemsize, strides_in_bytes=False)
+                    layout = s.module.StridedLayout((reduced_extent,), (1,), s.itemsize)
+                    s.tensor = s.tensor.as_strided(layout)
 
     finally:
         # when host workspace is allocated, synchronize stream before return

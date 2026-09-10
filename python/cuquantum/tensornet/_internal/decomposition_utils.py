@@ -64,6 +64,29 @@ def compute_combined_size(size_dict, modes):
     return size
 
 
+def check_decomposition_output_modes(inputs, outputs):
+    """
+    Check the mode labels specified for the output tensors of a decomposition. Modes are given
+    in "neutral format" (sequence of sequences) and must be free of ellipses.
+    """
+    all_input_modes = set()
+    for _input in inputs:
+        all_input_modes.update(_input)
+
+    # The only modes allowed to be absent from the inputs are the shared mid extent modes,
+    # whose extents are determined by the decomposition rather than by the operands.
+    shared_output_modes = set(outputs[0]) & set(outputs[1])
+    output_only_modes = (set(outputs[0]) | set(outputs[1])) - all_input_modes
+    if not output_only_modes <= shared_output_modes:
+        raise ValueError("The contracted outcome from the right hand side of the expression does not match the input")
+
+    # Each output is a single tensor, so its modes must be distinct. This is checked by
+    # multiplicity since the check above only compares mode labels as sets.
+    for _output in outputs:
+        if len(set(_output)) != len(_output):
+            raise ValueError("A mode label must not appear more than once in an output term of the decomposition expression")
+
+
 def parse_decomposition_subscripts(subscripts):
     """
     Parse decomposition expression in string format, retaining ellipses if present.
@@ -192,6 +215,9 @@ def parse_decomposition(subscripts, *operands):
     
     inputs = all_modes[:num_input]
     outputs = all_modes[num_input:]
+
+    # Check the modes specified for the outputs.
+    check_decomposition_output_modes(inputs, outputs)
 
     if num_input == 1:
         contracted_modes_output = set(einsum_parser.infer_output_mode_labels(outputs))
@@ -481,9 +507,8 @@ def update_tensor_extents_strides(tensor_holder, extents, strides):
             strides = [i * tensor_holder.itemsize for i in strides]
             tensor_holder.tensor = module.ndarray(extents, dtype=tensor_holder.dtype, buffer=tensor_holder.tensor, strides=strides)
         elif package == 'cuda':
-            tensor_holder.tensor = module.wrap_external(
-                tensor_holder.tensor, tensor_holder.data_ptr, tensor_holder.dtype, 
-                extents, strides, tensor_holder.device_id, tensor_holder.itemsize, strides_in_bytes=False)
+            layout = module.StridedLayout(extents, strides, tensor_holder.itemsize)
+            tensor_holder.tensor = tensor_holder.tensor.as_strided(layout)
         else:
             raise RuntimeError(f"Internal Error on unexpected package: {package}")
 

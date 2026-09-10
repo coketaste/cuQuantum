@@ -13,4 +13,5 @@ jsonschema == 4.17.3
 networkx
 mpi4py
 stim ~= 1.16
-nccl4py <0.3
+deltakit-stim
+nccl4py >=0.3.1, <0.4

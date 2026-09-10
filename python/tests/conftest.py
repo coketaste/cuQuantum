@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES
+# Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
@@ -6,12 +6,13 @@
 # various reasons, see pytest-dev/pytest#3730. In particular, this strategy
 # is borrowed from https://github.com/pytest-dev/pytest/issues/3730#issuecomment-567142496.
 
+import re
 from collections.abc import Iterable
 
 import pytest
 
 
-VALID_TEST_MARKERS = {"cudensitymat", "custatevec", "cutensornet", "utility", "custabilizer", "cupauliprop"}
+VALID_TEST_MARKERS = {"cudensitymat", "custatevec", "custatevecEx", "cutensornet", "utility", "custabilizer", "cupauliprop"}
 
 def pytest_configure(config):
     config.addinivalue_line(
@@ -21,9 +22,10 @@ def pytest_configure(config):
 def mark_test_items(items):
     for item in items:
         path = str(item.fspath)
-        for lib_name in ('cudensitymat', 'custatevec', 'cutensornet', 'custabilizer', 'cupauliprop'):
-            # bindings tests & sample tests
-            if lib_name in path:
+        for lib_name in ('cudensitymat', 'custatevecEx', 'custatevec', 'cutensornet', 'custabilizer', 'cupauliprop'):
+            # bindings tests & sample tests; guard custatevec so it does not also match custatevecEx
+            pattern = r'custatevec(?!Ex)' if lib_name == 'custatevec' else re.escape(lib_name)
+            if re.search(pattern, path):
                 item.add_marker(getattr(pytest.mark, lib_name))
         else:
             for module_name in ('densitymat', 'tensornet', 'stabilizer', 'pauliprop'):

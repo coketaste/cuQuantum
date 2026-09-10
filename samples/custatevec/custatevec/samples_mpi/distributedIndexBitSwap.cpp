@@ -1,7 +1,7 @@
 /*
  * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
@@ -28,14 +28,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <custatevec.h>            // custatevec
-#include <mpi.h>                   // MPI
-#include <vector>                  // std::vector<>
-#include <sys/types.h>             // struct timeval
-#include <sys/time.h>              // gettimeofday()
-#include <cstdio>                  // printf()
-#include <cmath>                   // std::pow()
-
+#include <custatevec.h> // custatevec
+#include <mpi.h>        // MPI
+#include <vector>       // std::vector<>
+#include <sys/types.h>  // struct timeval
+#include <sys/time.h>   // gettimeofday()
+#include <cstdio>       // printf()
+#include <cmath>        // std::pow()
 
 static char procname[256];
 
@@ -45,47 +44,49 @@ static char procname[256];
 
 bool hasFailed(bool res, const char** errmsg)
 {
-    if (res) return false;
+    if (res)
+        return false;
     *errmsg = "res == false";
     return true;
 }
 
 bool hasFailed(int res, const char** errmsg)
 {
-    if (res == 0) return false;
+    if (res == 0)
+        return false;
     *errmsg = "res != 0";
     return true;
 }
 
 bool hasFailed(cudaError_t cuerr, const char** errmsg)
 {
-    if (cuerr == cudaSuccess) return false;
+    if (cuerr == cudaSuccess)
+        return false;
     *errmsg = cudaGetErrorName(cuerr);
     return true;
 }
 
 bool hasFailed(custatevecStatus_t status, const char** errmsg)
 {
-    if (status == CUSTATEVEC_STATUS_SUCCESS) return false;
+    if (status == CUSTATEVEC_STATUS_SUCCESS)
+        return false;
     *errmsg = custatevecGetErrorName(status);
     return true;
 }
 
-template<class R>
+template <class R>
 void errChk(R res, const char* text, const char* file, unsigned long line)
 {
     const char* errmsg = nullptr;
     if (hasFailed(res, &errmsg))
     {
-        fprintf(stderr, "(%s) %s:%lu: %s %s\n", procname, file, line,
-                errmsg, text);
+        fprintf(stderr, "(%s) %s:%lu: %s %s\n", procname, file, line, errmsg, text);
         fflush(stderr);
         MPI_Abort(MPI_COMM_WORLD, 5);
     }
 }
 
 #define ERRCHK(s) errChk((s), #s, __FILE__, __LINE__)
-
 
 // time measurement
 
@@ -96,11 +97,10 @@ double getTime()
     return tv.tv_sec + tv.tv_usec * 1.e-6;
 }
 
-
-void runDistributedIndexBitSwaps(
-        int rank, int size, int nGlobalIndexBits, int nLocalIndexBits,
-        const std::vector<int2>& indexBitSwaps,
-        const std::vector<int>& maskBitString, const std::vector<int>& maskOrdering)
+void runDistributedIndexBitSwaps(int rank, int size, int nGlobalIndexBits, int nLocalIndexBits,
+                                 const std::vector<int2>& indexBitSwaps,
+                                 const std::vector<int>& maskBitString,
+                                 const std::vector<int>& maskOrdering)
 {
     if (rank == 0)
     {
@@ -119,8 +119,8 @@ void runDistributedIndexBitSwaps(
     // Data type of the state vector, acceptable values are CUDA_C_32F and CUDA_C_64F.
     cudaDataType_t svDataType = CUDA_C_64F;
     // the number of index bits corresponding to sub state vectors accessible via GPUDirect P2P,
-    // and it should be adjusted based on the number of GPUs/node, N, participating in the distributed
-    // state vector (N=2^nP2PDeviceBits) that supports P2P data transfer
+    // and it should be adjusted based on the number of GPUs/node, N, participating in the
+    // distributed state vector (N=2^nP2PDeviceBits) that supports P2P data transfer
     int nP2PDeviceBits = 0;
     int nSubSVsP2P = 1 << nP2PDeviceBits;
 
@@ -129,8 +129,8 @@ void runDistributedIndexBitSwaps(
     bool useCudaIpcEvent = true;
 
     // use rank and size to map sub state vectors
-    // this sample assigns one device to one rank and allocates one sub state vector on the assigned device
-    // use the rank as the index of the sub state vector locally allocated in this process
+    // this sample assigns one device to one rank and allocates one sub state vector on the assigned
+    // device use the rank as the index of the sub state vector locally allocated in this process
     int orgSubSVIndex = rank;
     // the number of sub state vectors is identical to the number of processes
     int nSubSVs = size;
@@ -183,20 +183,20 @@ void runDistributedIndexBitSwaps(
     //
     // Using builtin MPI communicator
     //
-    // cuStateVec provides builtin communicators for Open MPI and MPICH
-    // By enabling a macro of USE_OPENMPI_COMMUNICATOR or USE_MPICH_COMMUNICATOR,
-    // a bultin communicator is created.
+    // cuStateVec provides builtin communicators for Open MPI, MPICH, and the MPI
+    // standard ABI.  By enabling a macro of USE_OPENMPI_COMMUNICATOR,
+    // USE_MPICH_COMMUNICATOR, or USE_MPI_ABI_COMMUNICATOR, a builtin communicator
+    // is created.
     //
-    // Builtin communicators dynamically resolve required MPI functions by using dlopen().
-    // This sample directly links to libmpi.so, and all required MPI functions are loaded
-    // to the application at application startup.  By specifying nullptr to the soname
-    // argument to call custatevecSVSwapWorkerCreate(), all required functions
-    // will be resolved from the functions loaded at application startup
+    // Builtin communicators resolve the required MPI functions at run time with dlopen().
+    // This sample links MPI directly, so the library is already loaded at startup; passing
+    // nullptr as the soname to custatevecCommunicatorCreate() then resolves those functions
+    // from the already-loaded library.
     //
     // Please use one of the following macros to use builtin communicator
 #define USE_OPENMPI_COMMUNICATOR (1)
-// #define USE_MPICH_COMMUNICATOR (1)
-
+    // #define USE_MPICH_COMMUNICATOR (1)
+    // #define USE_MPI_ABI_COMMUNICATOR (1)
 
 #if defined(USE_OPENMPI_COMMUNICATOR)
     // use Open MPI communicator
@@ -206,6 +206,15 @@ void runDistributedIndexBitSwaps(
 #if defined(USE_MPICH_COMMUNICATOR)
     // use MPICH communicator
     custatevecCommunicatorType_t communicatorType = CUSTATEVEC_COMMUNICATOR_TYPE_MPICH;
+    const char* soname = nullptr;
+#endif
+#if defined(USE_MPI_ABI_COMMUNICATOR)
+    // use the MPI standard ABI communicator.
+    // The application must be linked against a standard-ABI MPI library
+    // (-lmpi_abi, soname libmpi_abi.so) instead of an implementation-specific one (libmpi.so), so
+    // that its functions are loaded at startup and resolved through the nullptr
+    // soname.
+    custatevecCommunicatorType_t communicatorType = CUSTATEVEC_COMMUNICATOR_TYPE_MPI_ABI;
     const char* soname = nullptr;
 #endif
 
@@ -218,7 +227,7 @@ void runDistributedIndexBitSwaps(
     // soname should be the name to the shared library.
     //
 
-// #define USE_EXTERNAL_COMMUNICATOR (1)
+    // #define USE_EXTERNAL_COMMUNICATOR (1)
 
 #if defined(USE_EXTERNAL_COMMUNICATOR)
     // External communicator
@@ -242,27 +251,26 @@ void runDistributedIndexBitSwaps(
     if (useCudaIpcEvent)
     {
         // event should be created with the cudaEventInterprocess flag
-        ERRCHK(cudaEventCreateWithFlags(&localEvent, cudaEventInterprocess | cudaEventDisableTiming));
+        ERRCHK(
+            cudaEventCreateWithFlags(&localEvent, cudaEventInterprocess | cudaEventDisableTiming));
         // create SVSwapWorker
-        ERRCHK(custatevecSVSwapWorkerCreate(
-                       handle, &svSegSwapWorker, communicator,
-                       d_orgSubSV, orgSubSVIndex, localEvent, svDataType,
-                       localStream, &extraWorkspaceSize, &minTransferWorkspaceSize));
+        ERRCHK(custatevecSVSwapWorkerCreate(handle, &svSegSwapWorker, communicator, d_orgSubSV,
+                                            orgSubSVIndex, localEvent, svDataType, localStream,
+                                            &extraWorkspaceSize, &minTransferWorkspaceSize));
     }
     else
     {
         ERRCHK(cudaMalloc(&d_localSemaphore, sizeof(int)));
         // create SVSwapWorker
         ERRCHK(custatevecSVSwapWorkerCreateWithSemaphore(
-                       handle, &svSegSwapWorker, communicator,
-                       d_orgSubSV, orgSubSVIndex, d_localSemaphore, svDataType,
-                       localStream, &extraWorkspaceSize, &minTransferWorkspaceSize));
+            handle, &svSegSwapWorker, communicator, d_orgSubSV, orgSubSVIndex, d_localSemaphore,
+            svDataType, localStream, &extraWorkspaceSize, &minTransferWorkspaceSize));
     }
     // set extra workspace
     void* d_extraWorkspace = nullptr;
     ERRCHK(cudaMalloc(&d_extraWorkspace, extraWorkspaceSize));
-    ERRCHK(custatevecSVSwapWorkerSetExtraWorkspace(
-                   handle, svSegSwapWorker, d_extraWorkspace, extraWorkspaceSize));
+    ERRCHK(custatevecSVSwapWorkerSetExtraWorkspace(handle, svSegSwapWorker, d_extraWorkspace,
+                                                   extraWorkspaceSize));
 
     // set transfer workspace
     // The size should be equal to or larger than minTransferWorkspaceSize
@@ -270,8 +278,8 @@ void runDistributedIndexBitSwaps(
     transferWorkspaceSize = std::max(minTransferWorkspaceSize, transferWorkspaceSize);
     void* d_transferWorkspace = nullptr;
     ERRCHK(cudaMalloc(&d_transferWorkspace, transferWorkspaceSize));
-    ERRCHK(custatevecSVSwapWorkerSetTransferWorkspace(
-                   handle, svSegSwapWorker, d_transferWorkspace, transferWorkspaceSize));
+    ERRCHK(custatevecSVSwapWorkerSetTransferWorkspace(handle, svSegSwapWorker, d_transferWorkspace,
+                                                      transferWorkspaceSize));
 
     //
     // set remote sub state vectors accessible via GPUDirect P2P
@@ -287,8 +295,8 @@ void runDistributedIndexBitSwaps(
         cudaIpcMemHandle_t ipcMemHandle;
         ERRCHK(cudaIpcGetMemHandle(&ipcMemHandle, d_orgSubSV));
         std::vector<cudaIpcMemHandle_t> ipcMemHandles(nSubSVs);
-        ERRCHK(MPI_Allgather(&ipcMemHandle, sizeof(ipcMemHandle), MPI_UINT8_T,
-                             ipcMemHandles.data(), sizeof(ipcMemHandle), MPI_UINT8_T, MPI_COMM_WORLD));
+        ERRCHK(MPI_Allgather(&ipcMemHandle, sizeof(ipcMemHandle), MPI_UINT8_T, ipcMemHandles.data(),
+                             sizeof(ipcMemHandle), MPI_UINT8_T, MPI_COMM_WORLD));
 
         // get remove device pointers and events
         // this calculation assumes that the global rank placement is done in a round-robin fashion
@@ -302,10 +310,11 @@ void runDistributedIndexBitSwaps(
         // rank/size, as CUDA IPC is only for intra-node, not inter-node, communication.
         int p2pSubSVIndexBegin = (orgSubSVIndex / nSubSVsP2P) * nSubSVsP2P;
         int p2pSubSVIndexEnd = p2pSubSVIndexBegin + nSubSVsP2P;
-        for (int p2pSubSVIndex = p2pSubSVIndexBegin; p2pSubSVIndex < p2pSubSVIndexEnd; ++p2pSubSVIndex)
+        for (int p2pSubSVIndex = p2pSubSVIndexBegin; p2pSubSVIndex < p2pSubSVIndexEnd;
+             ++p2pSubSVIndex)
         {
             if (orgSubSVIndex == p2pSubSVIndex)
-                continue;  // don't need local sub state vector pointer
+                continue; // don't need local sub state vector pointer
             void* d_subSVP2P = nullptr;
             const auto& dstMemHandle = ipcMemHandles[p2pSubSVIndex];
             ERRCHK(cudaIpcOpenMemHandle(&d_subSVP2P, dstMemHandle, cudaIpcMemLazyEnablePeerAccess));
@@ -320,21 +329,22 @@ void runDistributedIndexBitSwaps(
             ERRCHK(cudaIpcGetEventHandle(&eventHandle, localEvent));
             std::vector<cudaIpcEventHandle_t> ipcEventHandles(nSubSVs);
             ERRCHK(MPI_Allgather(&eventHandle, sizeof(eventHandle), MPI_UINT8_T,
-                                 ipcEventHandles.data(), sizeof(eventHandle), MPI_UINT8_T, MPI_COMM_WORLD));
+                                 ipcEventHandles.data(), sizeof(eventHandle), MPI_UINT8_T,
+                                 MPI_COMM_WORLD));
 
-            for (int p2pSubSVIndex = p2pSubSVIndexBegin; p2pSubSVIndex < p2pSubSVIndexEnd; ++p2pSubSVIndex)
+            for (int p2pSubSVIndex = p2pSubSVIndexBegin; p2pSubSVIndex < p2pSubSVIndexEnd;
+                 ++p2pSubSVIndex)
             {
                 if (orgSubSVIndex == p2pSubSVIndex)
-                    continue;  // don't need local sub state vector pointer
+                    continue; // don't need local sub state vector pointer
                 cudaEvent_t eventP2P = nullptr;
                 ERRCHK(cudaIpcOpenEventHandle(&eventP2P, ipcEventHandles[p2pSubSVIndex]));
                 remoteEvents.push_back(eventP2P);
             }
             // set p2p sub state vectors
-            ERRCHK(custatevecSVSwapWorkerSetSubSVsP2P(
-                           handle, svSegSwapWorker,
-                           d_subSVsP2P.data(), subSVIndicesP2P.data(), remoteEvents.data(),
-                           static_cast<int>(d_subSVsP2P.size())));
+            ERRCHK(custatevecSVSwapWorkerSetSubSVsP2P(handle, svSegSwapWorker, d_subSVsP2P.data(),
+                                                      subSVIndicesP2P.data(), remoteEvents.data(),
+                                                      static_cast<int>(d_subSVsP2P.size())));
         }
         else
         {
@@ -342,25 +352,25 @@ void runDistributedIndexBitSwaps(
             cudaIpcMemHandle_t ipcSemaphoreMemHandle;
             ERRCHK(cudaIpcGetMemHandle(&ipcSemaphoreMemHandle, d_localSemaphore));
             std::vector<cudaIpcMemHandle_t> ipcSemaphoreMemHandles(nSubSVs);
-            ERRCHK(MPI_Allgather(
-                           &ipcSemaphoreMemHandle, sizeof(ipcMemHandle), MPI_UINT8_T,
-                           ipcSemaphoreMemHandles.data(), sizeof(ipcSemaphoreMemHandle), MPI_UINT8_T,
-                           MPI_COMM_WORLD));
+            ERRCHK(MPI_Allgather(&ipcSemaphoreMemHandle, sizeof(ipcMemHandle), MPI_UINT8_T,
+                                 ipcSemaphoreMemHandles.data(), sizeof(ipcSemaphoreMemHandle),
+                                 MPI_UINT8_T, MPI_COMM_WORLD));
 
-            for (int p2pSubSVIndex = p2pSubSVIndexBegin; p2pSubSVIndex < p2pSubSVIndexEnd; ++p2pSubSVIndex)
+            for (int p2pSubSVIndex = p2pSubSVIndexBegin; p2pSubSVIndex < p2pSubSVIndexEnd;
+                 ++p2pSubSVIndex)
             {
                 if (orgSubSVIndex == p2pSubSVIndex)
-                    continue;  // don't need local sub state vector pointer
+                    continue; // don't need local sub state vector pointer
                 void* d_semaphoreP2P = nullptr;
                 const auto& dstSemaphoreMemHandle = ipcSemaphoreMemHandles[p2pSubSVIndex];
-                ERRCHK(cudaIpcOpenMemHandle(&d_semaphoreP2P, dstSemaphoreMemHandle, cudaIpcMemLazyEnablePeerAccess));
+                ERRCHK(cudaIpcOpenMemHandle(&d_semaphoreP2P, dstSemaphoreMemHandle,
+                                            cudaIpcMemLazyEnablePeerAccess));
                 remoteSemaphores.push_back(d_semaphoreP2P);
             }
             // set p2p sub state vectors
             ERRCHK(custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores(
-                           handle, svSegSwapWorker,
-                           d_subSVsP2P.data(), subSVIndicesP2P.data(), remoteSemaphores.data(),
-                           static_cast<int>(remoteSemaphores.size())));
+                handle, svSegSwapWorker, d_subSVsP2P.data(), subSVIndicesP2P.data(),
+                remoteSemaphores.data(), static_cast<int>(remoteSemaphores.size())));
         }
     }
 
@@ -368,16 +378,15 @@ void runDistributedIndexBitSwaps(
     // create distributed index bit swap scheduler
     //
     custatevecDistIndexBitSwapSchedulerDescriptor_t scheduler;
-    ERRCHK(custatevecDistIndexBitSwapSchedulerCreate(
-                   handle, &scheduler, nGlobalIndexBits, nLocalIndexBits));
+    ERRCHK(custatevecDistIndexBitSwapSchedulerCreate(handle, &scheduler, nGlobalIndexBits,
+                                                     nLocalIndexBits));
 
     // set the index bit swaps to the scheduler
     // nSwapBatches is obtained by the call.  This value specifies the number of loops
     unsigned nSwapBatches = 0;
     ERRCHK(custatevecDistIndexBitSwapSchedulerSetIndexBitSwaps(
-                   handle, scheduler,
-                   indexBitSwaps.data(), static_cast<unsigned>(indexBitSwaps.size()),
-                   maskBitString.data(), maskOrdering.data(), 0, &nSwapBatches));
+        handle, scheduler, indexBitSwaps.data(), static_cast<unsigned>(indexBitSwaps.size()),
+        maskBitString.data(), maskOrdering.data(), 0, &nSwapBatches));
 
     //
     // the main loop of index bit swaps
@@ -386,22 +395,22 @@ void runDistributedIndexBitSwaps(
     for (int loop = 0; loop < nLoops; ++loop)
     {
         double startTime = getTime();
-        for (int swapBatchIndex = 0; swapBatchIndex < static_cast<int>(nSwapBatches); ++swapBatchIndex)
+        for (int swapBatchIndex = 0; swapBatchIndex < static_cast<int>(nSwapBatches);
+             ++swapBatchIndex)
         {
             // get parameters
             custatevecSVSwapParameters_t parameters;
             ERRCHK(custatevecDistIndexBitSwapSchedulerGetParameters(
-                           handle, scheduler, swapBatchIndex, orgSubSVIndex, &parameters));
+                handle, scheduler, swapBatchIndex, orgSubSVIndex, &parameters));
 
             // the rank of the communication endpoint is parameters.dstSubSVIndex
             // as "rank == subSVIndex" is assumed in the present sample.
             int rank = parameters.dstSubSVIndex;
             // set parameters to the worker
-            ERRCHK(custatevecSVSwapWorkerSetParameters(
-                           handle, svSegSwapWorker, &parameters, rank));
+            ERRCHK(custatevecSVSwapWorkerSetParameters(handle, svSegSwapWorker, &parameters, rank));
             // execute swap
-            ERRCHK(custatevecSVSwapWorkerExecute(
-                           handle, svSegSwapWorker, 0, parameters.transferSize));
+            ERRCHK(
+                custatevecSVSwapWorkerExecute(handle, svSegSwapWorker, 0, parameters.transferSize));
             // all internal CUDA calls are serialized on localStream
         }
         // synchronize all operations on device
@@ -447,7 +456,6 @@ void runDistributedIndexBitSwaps(
     ERRCHK(cudaStreamDestroy(localStream));
 }
 
-
 int main(int argc, char* argv[])
 {
 
@@ -462,7 +470,7 @@ int main(int argc, char* argv[])
 
     snprintf(procname, sizeof(procname), "[%d]", rank);
 
-    // compute nGlobalIndexBits from the size 
+    // compute nGlobalIndexBits from the size
     // nGlobalIndexBits = log2(size)
     int nGlobalIndexBits = 0;
     while ((1 << nGlobalIndexBits) < size)
@@ -479,8 +487,8 @@ int main(int argc, char* argv[])
     // empty mask
     std::vector<int> maskBitString, maskOrdering;
 
-    runDistributedIndexBitSwaps(rank, size, nGlobalIndexBits, nLocalIndexBits,
-                                indexBitSwaps, maskBitString, maskOrdering);
+    runDistributedIndexBitSwaps(rank, size, nGlobalIndexBits, nLocalIndexBits, indexBitSwaps,
+                                maskBitString, maskOrdering);
 
     ERRCHK(MPI_Finalize());
 }

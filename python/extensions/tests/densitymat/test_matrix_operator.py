@@ -63,9 +63,10 @@ class TestMatrixOperator:
         """
         data_batched = jnp.broadcast_to(data, (batch_size, *data.shape))
         elem_op = MatrixOperator(data_batched)
+        elem_op._update_metadata()  # shape attrs (num_modes, mode_extents) are set in _update_metadata
 
-        assert elem_op.num_modes == len(data.shape) // 2
-        assert elem_op.mode_extents == data.shape[:len(data.shape) // 2]
+        assert elem_op._num_modes == len(data.shape) // 2
+        assert elem_op._mode_extents == data.shape[:len(data.shape) // 2]
         assert elem_op.data.shape == (batch_size, *data.shape)
 
     @pytest.mark.parametrize(
@@ -81,7 +82,7 @@ class TestMatrixOperator:
         Test initializing dense matrix operator with invalid data.
         """
         with pytest.raises(ValueError):
-            MatrixOperator(data)
+            MatrixOperator(data)._update_metadata()  # shape validation is deferred to _update_metadata
 
     @pytest.mark.parametrize(
         "data",

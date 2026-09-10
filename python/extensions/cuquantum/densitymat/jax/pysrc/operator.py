@@ -9,6 +9,7 @@ Operator class in cuDensityMat.
 import ctypes
 import logging
 from collections.abc import Sequence
+import math
 
 import cupy as cp
 import jax
@@ -17,15 +18,15 @@ import jax.numpy as jnp
 from cuquantum.bindings import cudensitymat as cudm
 
 from .operator_term import OperatorTerm
+from .simplifier_config import SimplifierConfig
 from ..utils import (
     get_batch_size,
-    get_original_shape,
+    is_vmap_traced,
     get_scalar_assignment_callback,
     get_empty_scalar_callback,
     get_scalar_gradient_attachment_callback,
     get_random_odd_pointer_and_object,
     detect_ad_traced_object,
-    is_vmap_traced,
 )
 
 
@@ -37,15 +38,37 @@ class Operator:
 
     logger = logging.getLogger("cudensitymat-jax.Operator")
 
-    def __init__(self, dims: Sequence[int]) -> None:
+    def __init__(self,
+                 dims: Sequence[int],
+                 simplify: bool | SimplifierConfig = False,
+                 ) -> None:
         """
         Initialize an Operator object.
 
         Args:
             dims: Hilbert space dimensions.
+            simplify: Controls operator-product simplification at compile time. ``True``
+                uses the default passes; ``False`` disables all passes; a
+                :class:`SimplifierConfig` object selects custom conditions. Opt-in for now:
+                the passes are newly added, their failure mode is a silently different
+                result rather than an error, and their benefit has not been quantified.
         """
-        # Attribute set from constructor.
+        # Attributes set from constructor.
         self.dims: tuple[int, ...] = tuple(dims)
+        if simplify is True:
+            self._simplifier_config = SimplifierConfig()
+        elif simplify is False:
+            self._simplifier_config = SimplifierConfig(kron_cond=(), sum_cond=())
+        elif isinstance(simplify, SimplifierConfig):
+            self._simplifier_config = simplify
+        else:
+            # The branches above test identity, so truthy stand-ins for the booleans (1, 0, and
+            # numpy's np.True_/np.False_, none of which are the bool singletons) would otherwise
+            # fall through and only surface as an AttributeError on kron_cond deep inside
+            # operator_action, far from the call that caused it.
+            raise TypeError(
+                f"simplify must be a bool or a SimplifierConfig, got {type(simplify)}."
+            )
 
         # Attributes for arguments in append.
         self.op_terms: list[OperatorTerm] = []
@@ -54,8 +77,7 @@ class Operator:
 
         # Attributes inferred from multiple append calls.
         self._op_term_batch_sizes: list[int] = []  # keep track of batch sizes of all operator terms
-        self._update_op_term_batch_sizes: list[bool] = []  # True for Case 3: vmap-traced size-1 coeffs
-        self.batch_size: int = 1
+        self._batch_size: int = 1
         self.dtype: jnp.dtype | None = None
 
         # Internal attributes from interfacing to cuDensityMat.
@@ -76,6 +98,10 @@ class Operator:
         self._total_coeffs_ptrs: list[int] = []
         self._total_coeffs_ptr_objs: list[ctypes.c_short | None] = []  # Keep ctypes objects alive
 
+        # Whether shape-derived metadata (num_modes, mode_extents, ...) reflects the current
+        # data view. False until _update_metadata runs.
+        self._is_metadata_updated: bool = False
+
     def tree_flatten(self):
         """
         Flatten the operator PyTree.
@@ -83,10 +109,10 @@ class Operator:
         children = (self.op_terms, self.coeffs)
         aux_data = (
             self.dims,
+            self._simplifier_config,
             self.duals,
-            self.batch_size,
+            self._batch_size,
             self._op_term_batch_sizes,
-            self._update_op_term_batch_sizes,
             self.dtype,
             self._ptr,
             self._coeff_ptrs,
@@ -99,6 +125,7 @@ class Operator:
             self._op_term_ids,
             self._total_coeffs_ptrs,
             self._total_coeffs_ptr_objs,
+            self._is_metadata_updated,
         )
         return children, aux_data
 
@@ -111,10 +138,10 @@ class Operator:
         inst.op_terms, inst.coeffs = children
         (
             inst.dims,
+            inst._simplifier_config,
             inst.duals,
-            inst.batch_size,
+            inst._batch_size,
             inst._op_term_batch_sizes,
-            inst._update_op_term_batch_sizes,
             inst.dtype,
             inst._ptr,
             inst._coeff_ptrs,
@@ -127,6 +154,7 @@ class Operator:
             inst._op_term_ids,
             inst._total_coeffs_ptrs,
             inst._total_coeffs_ptr_objs,
+            inst._is_metadata_updated,
         ) = aux_data
         return inst
 
@@ -136,16 +164,39 @@ class Operator:
         Return the in_axes PyTree spec for vmapping over the batch dimension.
         """
         in_axes_op_terms = [op_term.in_axes for op_term in self.op_terms]
-        in_axes_coeffs = []
-        for i in range(len(self.coeffs)):
-            if len(self.coeffs[i]) > 1:
-                in_axes_coeffs.append(0) # XXX
-            else:
-                in_axes_coeffs.append(None) # XXX
+        # Batched operator-level coefficients (size > 1) map their leading axis; scalar
+        # coefficients (shape (1,)) are shared across all vmap instances and are not mapped.
+        in_axes_coeffs = [0 if c.shape[0] > 1 else None for c in self.coeffs]
 
         _, aux_data = self.tree_flatten()
         return type(self).tree_unflatten(aux_data, (in_axes_op_terms, in_axes_coeffs))
     
+    def _update_metadata(self) -> None:
+        """
+        Recompute coeff batch sizes, propagate the batch size update to all leaf base operators,
+        and validate a uniform batch size across coefficients and operator terms.
+        """
+        # Under the uniform-batch contract, every coefficient and operator term shares a single
+        # batch size; collect them and require they are equal (size-1 coefficients broadcast).
+        coeff_batch_sizes = []
+        op_term_batch_sizes_tmp = []
+        for coeff, op_term in zip(self.coeffs, self.op_terms):
+            coeff_batch_sizes.append(
+                get_batch_size(coeff) if is_vmap_traced(coeff) else math.prod(coeff.shape)
+            )
+            op_term._update_metadata()
+            op_term_batch_sizes_tmp.append(op_term._batch_size)
+        all_batch_sizes = [b for b in coeff_batch_sizes + op_term_batch_sizes_tmp if b != 1]
+        if len(set(all_batch_sizes)) > 1:
+            raise ValueError("All coefficients and operator terms in an operator must have the same batch size.")
+        self._batch_size = all_batch_sizes[0] if all_batch_sizes else 1
+
+        for i, (coeff, op_term) in enumerate(zip(self.coeffs, self.op_terms)):
+            self._op_term_batch_sizes[i] = coeff_batch_sizes[i]
+            self._coeff_requires_grads[i] = detect_ad_traced_object(coeff)
+
+        self._is_metadata_updated = True
+
     def _copy(self) -> "Operator":
         """
         Internal method to copy the operator for VJP backward pass.
@@ -154,12 +205,11 @@ class Operator:
 
         op.op_terms = [op_term._copy() for op_term in self.op_terms]
         op.coeffs = [jnp.copy(c) for c in self.coeffs]
-
         op.dims = self.dims
+        op._simplifier_config = self._simplifier_config
         op.duals = self.duals.copy()
-        op.batch_size = self.batch_size
+        op._batch_size = self._batch_size
         op._op_term_batch_sizes = self._op_term_batch_sizes.copy()
-        op._update_op_term_batch_sizes = self._update_op_term_batch_sizes.copy()
         op.dtype = self.dtype
         op._ptr = self._ptr
         op._coeff_ptrs = self._coeff_ptrs.copy()
@@ -172,13 +222,18 @@ class Operator:
         op._op_term_ids = self._op_term_ids.copy()
         op._total_coeffs_ptrs = self._total_coeffs_ptrs.copy()
         op._total_coeffs_ptr_objs = self._total_coeffs_ptr_objs.copy()
+        op._is_metadata_updated = self._is_metadata_updated
         return op
 
     def _check_and_set_dtype(self, op_term: OperatorTerm) -> None:
         """
         Check if the operator term has the same data type as the operator.
         """
-        if op_term.dtype is not None:  # for empty operator term, skip the check.
+        # Skip the check for an operator term whose dtype was never inferred from appended base
+        # operators, i.e. one holding only empty operator products. Such a term carries no data
+        # and must not constrain the operator's dtype. Its `dtype` attribute defaults to
+        # complex128 rather than None, so `_dtype_overwritten` is what marks a real dtype.
+        if op_term._dtype_overwritten:
             if self.dtype is None:
                 # If the data type is not set, set it to the data type of the first operator term.
                 self.dtype = op_term.dtype
@@ -186,18 +241,6 @@ class Operator:
                 # If the data type is set, check if the operator term has the same data type as the operator.
                 if op_term.dtype != self.dtype:
                     raise ValueError("All operator terms must have the same data type.")
-
-    def _check_and_set_batch_size(self, op_term: OperatorTerm, coeff: jax.Array) -> None:
-        """
-        Check if the operator term and coefficient batch sizes are consistent.
-        """
-        # Possibly update the batch size of this operator and check consistency.
-        batch_size = max(op_term.batch_size, len(coeff))
-        if self.batch_size == 1:
-            self.batch_size = batch_size
-        else:
-            if batch_size not in (1, self.batch_size):
-                raise ValueError("Batch size in this operator term does not match batch size of this operator.")
 
     def append(self,
                op_term: OperatorTerm,
@@ -211,11 +254,7 @@ class Operator:
             op_term: Operator term to be appended.
             dual: Duality of the operator term.
             coeff: Non-batched coefficient or batched coefficients of the operator term.
-            coeff_requires_grad: Whether the coefficients require gradient.
         """
-        # TODO: Instead of an explicit coeff_requires_grad argument, this should be detected
-        # automatically from the trace stack.
-
         if self._ptr is not None:
             raise RuntimeError("Cannot modify operator after it has been used in an operator action.")
 
@@ -236,13 +275,7 @@ class Operator:
         self.duals.append(dual)
         self.coeffs.append(coeff)
 
-        # Set batch size and dtype.
-        self._op_term_batch_sizes.append(len(coeff))
-        if is_vmap_traced(coeff):
-            self._update_op_term_batch_sizes.append(True)
-        else:
-            self._update_op_term_batch_sizes.append(False)
-        self._check_and_set_batch_size(op_term, coeff)  # setting batch size of the operator
+        self._op_term_batch_sizes.append(1)  # updated by _update_metadata() inside operator_action
         self._check_and_set_dtype(op_term)
 
         # Internal attributes.
@@ -264,10 +297,78 @@ class Operator:
         """
         return self.op_terms[index]
 
+    def _simplify(self) -> None:
+        """
+        Apply the simplification passes to the operator terms.
+
+        The two passes are applied interleaved by layer, i.e. kron_cond[0], sum_cond[0],
+        kron_cond[1], sum_cond[1], ..., with the shorter tuple padded with None. Each
+        unique operator term is simplified once and the result written back to every
+        index sharing it, so that operator terms appended more than once stay shared.
+        """
+        config = self._simplifier_config
+        n_layers = max(len(config.kron_cond), len(config.sum_cond))
+
+        simplified = {}  # original op_term_id -> simplified operator term
+        for i, op_term_id in enumerate(self._op_term_ids):
+            if op_term_id not in simplified:
+                op_term = self.op_terms[i]
+                for layer in range(n_layers):
+                    kron_cond = config.kron_cond[layer] if layer < len(config.kron_cond) else None
+                    sum_cond = config.sum_cond[layer] if layer < len(config.sum_cond) else None
+                    if kron_cond is not None:
+                        op_term = op_term._kron_simplify(kron_cond)
+                    if sum_cond is not None:
+                        op_term = op_term._sum_simplify(sum_cond)
+                simplified[op_term_id] = op_term
+            self.op_terms[i] = simplified[op_term_id]
+
+    def _reset_handles(self) -> None:
+        """
+        Clear the cuDensityMat handle state (own and cascading to op terms) so _create rebuilds
+        it for a new batch size. The coefficient-pointer lists are reassigned to fresh placeholder
+        lists (not mutated in place): pytree copies share these list objects, so in-place mutation
+        by a later _create would corrupt another copy's handles.
+        """
+        self._ptr = None
+        n = len(self.coeffs)
+        self._coeff_ptrs = [0] * n
+        self._coeff_ptr_objs = [None] * n
+        self._coeff_grad_ptrs = [0] * n
+        self._coeff_grad_ptr_objs = [None] * n
+        self._coeff_requires_grads = [None] * n
+        self._coeff_callbacks = [None] * n
+        self._coeff_grad_callbacks = [None] * n
+        self._total_coeffs_ptrs = [0] * n
+        self._total_coeffs_ptr_objs = [None] * n
+        # _coeff_requires_grads above was just wiped to None; force _create's guard to
+        # recompute it via _update_metadata instead of skipping on a stale True.
+        self._is_metadata_updated = False
+        # Reset the unique op terms; duplicate op terms (same _op_term_id, e.g. one OperatorTerm
+        # appended with different duals) re-adopt the first occurrence's freshly-reset handle
+        # lists, mirroring the pytree list-sharing that _create's op-term dedup relies on.
+        id_to_first_index = {}
+        for i, op_term_id in enumerate(self._op_term_ids):
+            if op_term_id not in id_to_first_index:
+                self.op_terms[i]._reset_handles()
+                id_to_first_index[op_term_id] = i
+            else:
+                self.op_terms[i]._adopt_handles(self.op_terms[id_to_first_index[op_term_id]])
+
     def _create(self, handle, batch_size: int = 1):
         """
         Create opaque handle to the operator.
+
+        Simplification happens in operator_action (the only caller reachable via
+        maybe_create_operator_context), not here, so that the metadata computed there
+        reflects the simplified terms rather than the pre-simplify structure.
         """
+        # Ensure metadata (own batch sizes + cascaded op-term/base-op shape attributes) is
+        # populated for direct callers; operator_action refreshes it beforehand, so this is a
+        # no-op there. The cascade sets descendants' flags too, so their _create guards then skip.
+        if not self._is_metadata_updated:
+            self._update_metadata()
+
         # Create a dictionary to map from the original op_term_id to the first index of
         # the op_term in the operator. The original op_term_id need to be used since id(op_term)
         # changes when JAX flattens and unflattens the PyTrees.
@@ -284,33 +385,18 @@ class Operator:
         if self._ptr is None:
             self._ptr = cudm.create_operator(handle, len(self.dims), self.dims)
             self.logger.debug(f"Created operator at {hex(self._ptr)}")
-            # Keep batched coefficient buffers alive so C API pointers remain valid.
-            self._batch_coeff_arrs = []
 
             for i in range(len(self.op_terms)):
-                # Detect if the coefficient requires gradient and assign callback, gradient callback,
-                # temporary coefficient pointer and object.
-                self._coeff_requires_grads[i] = detect_ad_traced_object(self.coeffs[i])
-                coeff_shape = get_original_shape(self.coeffs[i])
-                coeff_dtype = self.coeffs[i].dtype
-
-                if self._update_op_term_batch_sizes[i]:
-                    self._op_term_batch_sizes[i] = batch_size
-
+                # _coeff_requires_grads is set by _update_metadata; assign callback, gradient
+                # callback, temporary coefficient pointer and object.
                 if self._op_term_batch_sizes[i] == 1:
                     # Traced scalars need to be passed through an intermediate memory slot.
-                    self._coeff_callbacks[i] = get_scalar_assignment_callback(coeff_dtype)
+                    self._coeff_callbacks[i] = get_scalar_assignment_callback(self.coeffs[i].dtype)
                     self._coeff_ptrs[i] = self._coeff_callbacks[i].callback.coeff.data.ptr
 
-                    # If gradient is computed on the coefficient, assign gradient callback and pointer.
-                    # The gradient buffer is sized to batch_size so cudensitymat can write one value
-                    # per batch element regardless of whether the coefficient itself is batched.
-                    if self._coeff_requires_grads[i]:
-                        self._coeff_grad_callbacks[i] = get_scalar_gradient_attachment_callback((batch_size,), coeff_dtype)
-                        self._coeff_grad_ptrs[i] = self._coeff_grad_callbacks[i].callback.scalar_grad.data.ptr
-
                 else:
-                    static_coeff_buf = cp.ones(coeff_shape, dtype=coeff_dtype)
+                    static_coeff_buf = cp.ones(
+                        (self._op_term_batch_sizes[i], *self.coeffs[i].shape), dtype=self.coeffs[i].dtype)
                     self._coeff_ptrs[i] = static_coeff_buf.data.ptr
                     self._coeff_ptr_objs[i] = static_coeff_buf
 
@@ -318,9 +404,13 @@ class Operator:
                     self._coeff_callbacks[i] = get_empty_scalar_callback()
                     self._total_coeffs_ptrs[i], self._total_coeffs_ptr_objs[i] = get_random_odd_pointer_and_object()
 
-                    if self._coeff_requires_grads[i]:
-                        self._coeff_grad_callbacks[i] = get_scalar_gradient_attachment_callback((batch_size,), coeff_dtype)
-                        self._coeff_grad_ptrs[i] = self._coeff_grad_callbacks[i].callback.scalar_grad.data.ptr
+                # If gradient is computed on the coefficient, assign gradient callback and pointer.
+                # The gradient buffer is sized to batch_size so cudensitymat can write one value
+                # per batch element regardless of whether the coefficient itself is batched.
+                if self._coeff_requires_grads[i]:
+                    self._coeff_grad_callbacks[i] = get_scalar_gradient_attachment_callback(
+                        (batch_size,), self.coeffs[i].dtype)
+                    self._coeff_grad_ptrs[i] = self._coeff_grad_callbacks[i].callback.scalar_grad.data.ptr
 
                 if self._op_term_batch_sizes[i] == 1:
                     cudm.operator_append_term(

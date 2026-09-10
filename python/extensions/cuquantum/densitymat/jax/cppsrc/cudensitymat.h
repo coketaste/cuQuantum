@@ -63,7 +63,7 @@
 // LIBRARY VERSION
 
 #define CUDENSITYMAT_MAJOR 0 //!< cuDensityMat major version.
-#define CUDENSITYMAT_MINOR 6 //!< cuDensityMat minor version.
+#define CUDENSITYMAT_MINOR 7 //!< cuDensityMat minor version.
 #define CUDENSITYMAT_PATCH 0 //!< cuDensityMat patch version.
 #define CUDENSITYMAT_VERSION (CUDENSITYMAT_MAJOR * 10000 + CUDENSITYMAT_MINOR * 100 + CUDENSITYMAT_PATCH)
 
@@ -282,7 +282,8 @@ typedef enum
  */
 typedef enum
 {
-  CUDENSITYMAT_EIGEN_SCOPE_SPLIT_DMRG = 0, ///< DMRG-based split decomposition (default)
+  CUDENSITYMAT_EIGEN_SCOPE_SPLIT_DMRG = 0,              ///< DMRG-based split decomposition (default)
+  CUDENSITYMAT_EIGEN_SCOPE_SPLIT_SHIFT_INVERT_DMRG = 1, ///< Shift-invert DMRG split decomposition (eigenpair nearest a target energy)
 } cudensitymatEigenDecompositionScopeSplitKind_t;
 
 /**
@@ -298,8 +299,9 @@ typedef enum
  */
 typedef enum
 {
-  CUDENSITYMAT_EIGEN_APPROACH_KRYLOV = 0, ///< Krylov subspace method
-//CUDENSITYMAT_EIGEN_APPROACH_DAVIDSON = 1, ///< Davidson method
+  CUDENSITYMAT_EIGEN_APPROACH_KRYLOV = 0, ///< Krylov subspace (block-Lanczos) eigensolver
+  CUDENSITYMAT_EIGEN_APPROACH_LINEAR = 1, ///< Iterative linear solver (currently MINRES)
+//CUDENSITYMAT_EIGEN_APPROACH_DAVIDSON = 2, ///< Davidson method
 } cudensitymatEigenDecompositionApproachKind_t;
 
 /**
@@ -322,8 +324,9 @@ typedef enum
   CUDENSITYMAT_EIGEN_SPLIT_SCOPE_KIND = 0,           ///< int32_t (cudensitymatEigenDecompositionScopeSplitKind_t): Split kind
 //CUDENSITYMAT_EIGEN_FULL_SCOPE_KIND = 1,            ///< int32_t (cudensitymatEigenDecompositionScopeFullKind_t): Full-scope kind
 //CUDENSITYMAT_EIGEN_FULL_SCOPE_EXACT_CONFIG = 2,    ///< cudensitymatEigenDecompositionScopeFullExactConfig_t: Full exact-scope configuration
-  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_CONFIG = 3,    ///< cudensitymatEigenDecompositionScopeSplitDMRGConfig_t: DMRG split configuration
+  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_CONFIG = 3,    ///< cudensitymatEigenDecompositionScopeSplitDMRGConfig_t: DMRG split configuration (shared by the DMRG and shift-invert DMRG split kinds)
   CUDENSITYMAT_EIGEN_APPROACH_KRYLOV_CONFIG = 10,    ///< cudensitymatEigenDecompositionApproachKrylovConfig_t: Krylov approach configuration
+  CUDENSITYMAT_EIGEN_APPROACH_LINEAR_CONFIG = 11,    ///< cudensitymatEigenDecompositionApproachLinearConfig_t: Linear-solver approach configuration
 } cudensitymatEigenDecompositionAttribute_t;
 
 // /**
@@ -378,11 +381,20 @@ typedef enum
  */
 typedef enum
 {
-  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_NUM_SITES = 0,                       ///< int32_t: Number of sites in the DMRG chain (default: 1)
-  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_SVD_CONFIG = 1,                      ///< cudensitymatSVDConfig_t: SVD truncation configuration
-  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_MAX_SWEEPS = 2,                      ///< int32_t: Maximum number of full L-R-L sweeps (default: 20)
-  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_ENERGY_TOLERANCE = 3,                ///< double: Convergence threshold on the change in variational energy between consecutive sweeps; the sweep loop terminates when |E_k - E_{k-1}| falls below this value (default: 1e-10)
+  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_NUM_SITES = 0,                       ///< int32_t: Number of neighboring MPS sites updated in each local solve (1 or 2; default: 1). SetAttribute returns CUDENSITYMAT_STATUS_INVALID_VALUE for values <= 0 and CUDENSITYMAT_STATUS_NOT_SUPPORTED for values > 2.
+  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_SVD_CONFIG = 1,                      ///< cudensitymatSVDConfig_t: SVD truncation configuration for 2-site updates
+  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_MAX_SWEEPS = 2,                      ///< int32_t: Maximum number of full L-R-L sweeps (default: 20); for shift-invert, the fitting-sweep cap for each inverse application
+  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_ENERGY_TOLERANCE = 3,                ///< double: Convergence threshold on the change in energy between consecutive sweeps for ground-state DMRG or outer power iterations for shift-invert DMRG (default: 1e-10)
+  CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_MAX_POWER_ITERATIONS = 4,            ///< int32_t: Maximum number of outer power iterations on (H - sigma)^{-1} for the shift-invert DMRG split kind; ignored by the ground-state DMRG split kind (default: 10)
 } cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t;
+
+/**
+ * \brief Configuration attributes for the iterative linear solver (currently MINRES).
+ */
+typedef enum
+{
+  CUDENSITYMAT_EIGEN_APPROACH_LINEAR_MAX_ITERATIONS = 0, ///< int32_t: Maximum number of iterations for the local linear solve (default: 200). The per-site solve convergence tolerance is supplied at Compute time via the in/out tolerances[] argument, not as a config attribute.
+} cudensitymatEigenDecompositionApproachLinearConfigAttribute_t;
 
 /**
  * \brief State-fitting scope (full vs split fitting).
@@ -500,7 +512,7 @@ typedef enum
 typedef enum
 {
   CUDENSITYMAT_EIGEN_SPECTRUM_LARGEST = 0,       ///< Compute the largest by magnitude eigen-values of the operator
-  CUDENSITYMAT_EIGEN_SPECTRUM_SMALLEST = 1,      ///< Compute the smallest by magnitude eigen-values of the operator
+  CUDENSITYMAT_EIGEN_SPECTRUM_SMALLEST = 1,      ///< Compute the smallest by magnitude eigenvalues; for shift-invert DMRG, select the smallest |E - sigma| using the Compute target
   CUDENSITYMAT_EIGEN_SPECTRUM_LARGEST_REAL = 2,  ///< Compute the largest by the real part eigen-values of the operator
   CUDENSITYMAT_EIGEN_SPECTRUM_SMALLEST_REAL = 3, ///< Compute the smallest by the real part eigen-values of the operator
 } cudensitymatEigenDecompositionSpectrumKind_t;
@@ -684,6 +696,14 @@ typedef void * cudensitymatTimePropagationScopeSplitTDVPConfig_t;
  * and its associated configuration.
  */
 typedef void * cudensitymatEigenDecompositionScopeSplitDMRGConfig_t;
+
+/**
+ * \brief Opaque data structure holding the iterative linear-solver configuration.
+ *
+ * \details This configuration object stores the iteration cap for the iterative
+ * linear solver; the solve tolerance is supplied to Compute.
+ */
+typedef void * cudensitymatEigenDecompositionApproachLinearConfig_t;
 
 /**
  * \brief Opaque data structure holding variational ALS configuration
@@ -1631,7 +1651,8 @@ cudensitymatStatus_t cudensitymatStateComputeInnerProduct(
  *     The full non-zero diagonals are stored in a concatenated form,
  *     following the order how they appear in the `diagonalOffsets` argument.
  *     The length of each stored diagonal is equal to the full matrix dimension,
- *     padded with trailing zeros for non-main diagonals.
+ *     padded with trailing zeros for non-main diagonals. Each non-zero diagonal
+ *     is stored exactly once, hence all diagonal offsets must be unique.
  *
  * \note Currently the multi-diagonal storage format is only supported
  * by 1-body elementary tensor operators (restriction subject to lifting in future).
@@ -1648,7 +1669,9 @@ cudensitymatStatus_t cudensitymatStateComputeInnerProduct(
  * \param[in] diagonalOffsets For multi-diagonal tensor operator matrices, these are
  * the offsets of the non-zero diagonals (for example, the main diagonal has offset 0,
  * the diagonal right above the main diagonal has offset +1, the diagonal right below
- * the main diagonal has offset -1, and so on).
+ * the main diagonal has offset -1, and so on). The diagonal offsets must be unique
+ * (each non-zero diagonal is specified and stored exactly once); repeated offsets
+ * are rejected.
  * \param[in] dataType Tensor operator data type.
  * \param[in] tensorData GPU-accessible pointer to the tensor operator elements storage.
  * \param[in] tensorCallback Optional user-defined tensor callback function
@@ -1703,7 +1726,8 @@ cudensitymatStatus_t cudensitymatCreateElementaryOperator(
  *     The full non-zero diagonals are stored in a concatenated form,
  *     following the order how they appear in the `diagonalOffsets` argument.
  *     The length of each stored diagonal is equal to the full matrix dimension,
- *     padded with trailing zeros for non-main diagonals.
+ *     padded with trailing zeros for non-main diagonals. Each non-zero diagonal
+ *     is stored exactly once, hence all diagonal offsets must be unique.
  *
  * \note Currently the multi-diagonal storage format is only supported
  * by 1-body elementary tensor operators (restriction subject to lifting in future).
@@ -1724,6 +1748,8 @@ cudensitymatStatus_t cudensitymatCreateElementaryOperator(
  * \param[in] diagonalOffsets Offsets of the non-zero diagonals (for example,
  * the main diagonal has offset 0, the diagonal right above the main diagonal
  * has offset +1, the diagonal right below the main diagonal has offset -1, and so on).
+ * The diagonal offsets must be unique (each non-zero diagonal is specified and
+ * stored exactly once); repeated offsets are rejected.
  * \param[in] dataType Tensor operator data type.
  * \param[in] tensorData GPU-accessible pointer to the tensor operator elements storage,
  * where all elementary tensor operators within the batch are stored contiguously in memory.
@@ -3011,9 +3037,13 @@ cudensitymatStatus_t cudensitymatOperatorSpectrumPrepare(
 * of shape [numEigenStates, batchSize]) in GPU-accessible RAM (same data type
 * as used by the quantum state and operator).
 * \param[inout] tolerances Pointer to an F-order array of shape [numEigenStates, batchSize]
-* in CPU-accessible RAM. The initial values represent the desirable convergence tolerances
-* for all eigen-states. The returned values represent the actually achieved residual norms
-* for all eigen-states.
+* in CPU-accessible RAM. On input, the desired solver convergence tolerances for all
+* eigen-states; on output, the actually achieved solver convergence residual norms (which
+* may differ from the requested values in either direction). These characterize solver
+* convergence, not the representation error of the returned state. For the full-state solver
+* they coincide with the eigenpair residual ||H x - E x||; for split (DMRG / shift-invert)
+* solvers the returned value is the local per-site solver residual, NOT the global
+* ||H|psi> - E|psi>||. The representation error is a separate quantity (dedicated query, when available).
 * \param[in] workspace Allocated workspace descriptor.
 * \param[in] stream CUDA stream.
 * \return cudensitymatStatus_t
@@ -3573,6 +3603,71 @@ cudensitymatStatus_t cudensitymatEigenDecompositionApproachKrylovConfigGetAttrib
                     size_t attributeSize);
 
 // ============================================================================
+// Linear-Solver Configuration API (eigensolver)
+// ============================================================================
+
+/**
+ * \brief Creates an eigen-decomposition iterative linear-solver approach
+ * configuration object with default settings.
+ *
+ * \param[in] handle Library handle.
+ * \param[out] config Linear-solver configuration object.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatCreateEigenDecompositionApproachLinearConfig(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatEigenDecompositionApproachLinearConfig_t * config);
+
+/**
+ * \brief Destroys an eigen-decomposition iterative linear-solver approach
+ * configuration object.
+ *
+ * \param[in] config Linear-solver configuration object.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatDestroyEigenDecompositionApproachLinearConfig(cudensitymatEigenDecompositionApproachLinearConfig_t config);
+
+/**
+ * \brief Sets an attribute of the eigen-decomposition iterative linear-solver
+ * approach configuration.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] config Linear-solver configuration object.
+ * \param[in] attribute Attribute to set.
+ * \param[in] attributeValue Pointer to the attribute value.
+ * \param[in] attributeSize Size of the attribute value in bytes.
+ * \return cudensitymatStatus_t
+ *
+ * \note The library captures the attribute by value at this call; the caller
+ * retains ownership of `attributeValue` and may destroy the source as soon as
+ * the call returns.
+ */
+cudensitymatStatus_t cudensitymatEigenDecompositionApproachLinearConfigSetAttribute(
+                    const cudensitymatHandle_t handle,
+                    cudensitymatEigenDecompositionApproachLinearConfig_t config,
+                    cudensitymatEigenDecompositionApproachLinearConfigAttribute_t attribute,
+                    const void * attributeValue,
+                    size_t attributeSize);
+
+/**
+ * \brief Gets an attribute of the eigen-decomposition iterative linear-solver
+ * approach configuration.
+ *
+ * \param[in] handle Library handle.
+ * \param[in] config Linear-solver configuration object.
+ * \param[in] attribute Attribute to get.
+ * \param[out] attributeValue Pointer to store the attribute value.
+ * \param[in] attributeSize Size of the buffer in bytes.
+ * \return cudensitymatStatus_t
+ */
+cudensitymatStatus_t cudensitymatEigenDecompositionApproachLinearConfigGetAttribute(
+                    const cudensitymatHandle_t handle,
+                    const cudensitymatEigenDecompositionApproachLinearConfig_t config,
+                    cudensitymatEigenDecompositionApproachLinearConfigAttribute_t attribute,
+                    void * attributeValue,
+                    size_t attributeSize);
+
+// ============================================================================
 // Eigen Decomposition API
 // ============================================================================
 
@@ -3584,7 +3679,8 @@ cudensitymatStatus_t cudensitymatEigenDecompositionApproachKrylovConfigGetAttrib
  * \param[in] isHermitian Specifies whether the operator is Hermitian (!=0) or not (0).
  * \param[in] spectrumKind Requested kind of the eigen-spectrum computation.
  * \param[in] scopeKind Requested decomposition scope (full vs split).
- * \param[in] approachKind Requested decomposition approach (e.g., Krylov).
+ * \param[in] approachKind Requested decomposition approach (e.g., Krylov or
+ * iterative linear solve).
  * \param[out] eigenDecomposition Eigen-decomposition computation object.
  * \return cudensitymatStatus_t
  *
@@ -3595,6 +3691,10 @@ cudensitymatStatus_t cudensitymatEigenDecompositionApproachKrylovConfigGetAttrib
  * `CUDENSITYMAT_STATUS_NOT_SUPPORTED`; only Hermitian operators are
  * supported in this release. The library trusts the caller's flag and does
  * not verify Hermiticity of the operator.
+ *
+ * \note In this release, an operator containing more than one MPO product,
+ * or an MPO product containing more than one MPO, is rejected at Create with
+ * `CUDENSITYMAT_STATUS_NOT_SUPPORTED`.
  */
 cudensitymatStatus_t cudensitymatCreateEigenDecomposition(
                     const cudensitymatHandle_t handle,
@@ -3655,17 +3755,30 @@ cudensitymatStatus_t cudensitymatEigenDecompositionConfigure(
  * \param[in] stream CUDA stream.
  * \return cudensitymatStatus_t
  *
+ * \note Prepare is transactional with respect to the cached eigen plan and
+ * workspace requirements. If Prepare fails without an intervening successful
+ * Configure, the last successfully prepared plan and workspace requirements
+ * remain valid provided the generator, state geometry, and Context distribution
+ * are unchanged. A successful Configure invalidates the prepared lifecycle, so
+ * a subsequent failed Prepare leaves the object unprepared.
+ *
  * \note In this release, Prepare returns `CUDENSITYMAT_STATUS_NOT_SUPPORTED`
  * when any of the following conditions is met:
  * (a) the `scopeKind` provided at Create is `CUDENSITYMAT_EIGEN_SCOPE_FULL`;
  * (b) the bound DMRG configuration has `CUDENSITYMAT_EIGEN_SPLIT_SCOPE_DMRG_NUM_SITES`
  * not in `{1, 2}` (only 1-site and 2-site DMRG are supported in this release);
  * (c) `maxEigenStates != 1` (only a single eigen-pair is supported in this release);
- * (d) the `spectrumKind` provided at Create is not
- * `CUDENSITYMAT_EIGEN_SPECTRUM_SMALLEST_REAL` (only the smallest-real
- * eigenvalue is supported by the DMRG engine in this release);
+ * (d) the selected split/approach/spectrum combination is neither
+ * `SPLIT_DMRG + KRYLOV + SMALLEST_REAL` nor
+ * `SPLIT_SHIFT_INVERT_DMRG + LINEAR + SMALLEST`;
  * (e) the representative `state` is a single-site (1-mode) MPS (an MPS
- * with at least two sites is required by the DMRG engine).
+ * with at least two sites is required by the DMRG engine);
+ * (f) the state data type is not `CUDA_R_64F` or `CUDA_C_64F`, or
+ * `computeType` is not `CUDENSITYMAT_COMPUTE_64F`; or
+ * (g) shift-invert DMRG is configured with `NUM_SITES == 2` for an MPS
+ * containing exactly two tensors. This last restriction is a two-site
+ * ProjectionMPS dependency limitation: `NUM_SITES == 1` remains supported
+ * for a two-tensor MPS.
  */
 cudensitymatStatus_t cudensitymatEigenDecompositionPrepare(
                     const cudensitymatHandle_t handle,
@@ -3697,13 +3810,25 @@ cudensitymatStatus_t cudensitymatEigenDecompositionPrepare(
  * \param[inout] eigenstates Quantum eigenstates.
  * The initial values of the provided quantum states will be used as the
  * initial guesses for the iterative solver.
- * \param[out] eigenvalues Pointer to the eigenvalues storage (F-order array
+ * \param[inout] eigenvalues Pointer to the eigenvalues storage (F-order array
  * of shape [numEigenStates, batchSize]) in GPU-accessible RAM (same data type
- * as used by the quantum state and operator).
+ * as used by the quantum state and operator). For the shift-invert DMRG split kind,
+ * the input value is the target energy sigma (the returned eigenpair is the one whose
+ * eigenvalue is nearest sigma); it is ignored on input by other split kinds/approaches.
+ * On output, holds the computed eigenvalue(s).
  * \param[inout] tolerances Pointer to an F-order array of shape [numEigenStates, batchSize]
- * in CPU-accessible RAM. The initial values represent the desirable convergence tolerances
- * for all eigen-states. The returned values represent the actually achieved residual norms
- * for all eigen-states.
+ * in CPU-accessible RAM. On input, the desired solver convergence tolerances for all
+ * eigen-states; on output, the actually achieved solver convergence residual norms (which
+ * may differ from the requested values in either direction). These characterize solver
+ * convergence, not the representation error of the returned state. For the full-state solver
+ * they coincide with the eigenpair residual ||H x - E x||; for split (DMRG / shift-invert)
+ * solvers the returned value is the local per-site solver residual, NOT the global
+ * ||H|psi> - E|psi>||. The representation error is a separate quantity (dedicated query, when available).
+ * For shift-invert DMRG specifically, the input value is the requested per-site
+ * relative normal-equation tolerance. On output it is the maximum achieved absolute
+ * post-insertion (and, for 2-site updates, post-truncation) local normal-equation
+ * residual over every region in the final complete fitting sweep of the final outer
+ * iteration. It is not the achieved outer energy-difference metric.
  * \param[in] workspace Allocated workspace descriptor.
  * \param[in] stream CUDA stream.
  * \return cudensitymatStatus_t
@@ -3714,9 +3839,24 @@ cudensitymatStatus_t cudensitymatEigenDecompositionPrepare(
  * \note `numEigenStates != 1` returns `CUDENSITYMAT_STATUS_NOT_SUPPORTED`
  * in this release; only a single eigen-pair is supported.
  *
+ * \note `batchSize < 1` returns `CUDENSITYMAT_STATUS_INVALID_VALUE`;
+ * `batchSize > 1` returns `CUDENSITYMAT_STATUS_NOT_SUPPORTED`.
+ *
+ * \note `handle` and its distributed configuration must match the last
+ * successful Prepare. After changing either, call Prepare again before Compute.
+ *
  * \note The eigenvalue data type matches the state's data type (i.e., the
  * complex type used for the input `eigenstates`). For Hermitian operators
  * the real eigenvalue is written into the complex slot with `imag = 0`.
+ *
+ * \note Shift-invert convergence requires finite real sigma, d1 > 0, and
+ * d1 < d2, where d1 and d2 are the nearest distinct-eigenvalue distances.
+ * A degenerate nearest eigenspace is allowed; exact and equidistant targets
+ * are not detected or detuned.
+ *
+ * \note Cap exhaustion returns `CUDENSITYMAT_STATUS_SUCCESS` with the final
+ * normalized approximation, Rayleigh quotient, and final-sweep local residual;
+ * these outputs do not certify outer or global convergence.
  *
  * \note The input `eigenstates` are used as initial guesses for the iterative
  * solver. The library does not canonicalize them; the caller is responsible

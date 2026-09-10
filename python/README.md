@@ -52,21 +52,23 @@ Runtime dependencies of the cuQuantum Python package include:
 * An NVIDIA GPU with compute capability 7.5+
 * Driver: Linux (525.60.13+ for CUDA 12, 580.65.06+ for CUDA 13)
 * CUDA Toolkit 12.x or 13.x
-* cuStateVec 1.14.0+
-* cuTensorNet 2.13.0+
-* cuDensityMat >=0.6.0, <0.7.0
-* cuPauliProp  >=0.4.0, <0.5.0
-* cuStabilizer >=0.4.0, <0.5.0
+* cuStateVec 1.15.0+
+* cuTensorNet 2.14.0+
+* cuDensityMat >=0.7.0, <0.8.0
+* cuPauliProp  >=0.5.0, <0.6.0
+* cuStabilizer >=0.5.0, <0.6.0
 * Python >=3.11, <3.15
 * NumPy v1.21+
-* nvmath-python >=0.7.0, <1.0.0
+* nvmath-python >=1.0.0, <2.0.0
+* cuda-pathfinder >=1.6.0, <2
 * cuda-bindings >=12.9.4, <13.0.0 for CUDA 12 or cuda-bindings >=13.0.3, <14.0.0
 * CuPy v13.0.0+ (see [installation guide](https://docs.cupy.dev/en/stable/install.html))
 * PyTorch v1.10+ (optional, see [installation guide](https://pytorch.org/get-started/locally/))
 * Qiskit v1.4.2+ (optional, see [installation guide](https://qiskit.org/documentation/getting_started.html))
 * Cirq v0.6.0+ (optional, see [installation guide](https://quantumai.google/cirq/install))
 * mpi4py v3.1.0+ (optional, see [installation guide](https://mpi4py.readthedocs.io/en/stable/install.html))
-* nccl4py (optional)
+* cuSolverMp >=0.9.1, <0.10.0 (optional, see [installation guide](https://docs.nvidia.com/cuda/cusolvermp/getting_started/index.html))
+* NCCL >=2.29, <3.0 (optional, see [installation guide](https://docs.nvidia.com/deeplearning/nccl/install-guide/index.html))
 
 If you install everything from conda-forge, all the required dependencies are taken care for you (except for the driver).
 

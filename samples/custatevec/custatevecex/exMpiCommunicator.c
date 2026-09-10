@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.
+ * Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -31,6 +31,9 @@
 typedef struct MPICommunicator
 {
     const custatevecExCommunicatorInterface_t* intf;
+    // The communicator this instance uses for collectives.  It starts as the world
+    // communicator and can be replaced through setNativeCommunicator().
+    MPI_Comm comm;
     MPI_Request requests[2];
     int nActiveRequests;
 } MPICommunicator;
@@ -67,7 +70,7 @@ static custatevecExCommunicatorStatus_t MPICommunicator_GetVersion(int32_t* majo
 {
     // custatevecExCommunicator interface version.
     *major = 0;
-    *minor = 0;
+    *minor = 1;
     return CUSTATEVEC_EX_COMMUNICATOR_STATUS_SUCCESS;
 }
 
@@ -115,72 +118,80 @@ MPICommunicator_GetSizeAndRank(void* /*moduleHandle*/, int32_t* size, int32_t* r
  */
 
 static custatevecExCommunicatorStatus_t
-MPICommunicator_Abort(custatevecExCommunicator_t* /*exCommunicator*/, int status)
+MPICommunicator_Abort(custatevecExCommunicator_t* exCommunicator, int status)
 {
-    return MPI_Abort(MPI_COMM_WORLD, status);
+    MPICommunicator* mpiComm = (MPICommunicator*)exCommunicator;
+    return MPI_Abort(mpiComm->comm, status);
 }
 
 static custatevecExCommunicatorStatus_t
-MPICommunicator_GetSize(custatevecExCommunicator_t* /*exCommunicator*/, int* size)
+MPICommunicator_GetSize(custatevecExCommunicator_t* exCommunicator, int* size)
 {
-    return MPI_Comm_size(MPI_COMM_WORLD, size);
+    MPICommunicator* mpiComm = (MPICommunicator*)exCommunicator;
+    return MPI_Comm_size(mpiComm->comm, size);
 }
 
 static custatevecExCommunicatorStatus_t
-MPICommunicator_GetRank(custatevecExCommunicator_t* /*exCommunicator*/, int* rank)
+MPICommunicator_GetRank(custatevecExCommunicator_t* exCommunicator, int* rank)
 {
-    return MPI_Comm_rank(MPI_COMM_WORLD, rank);
+    MPICommunicator* mpiComm = (MPICommunicator*)exCommunicator;
+    return MPI_Comm_rank(mpiComm->comm, rank);
 }
 
 static custatevecExCommunicatorStatus_t
-MPICommunicator_Barrier(custatevecExCommunicator_t* /*exCommunicator*/)
+MPICommunicator_Barrier(custatevecExCommunicator_t* exCommunicator)
 {
-    return MPI_Barrier(MPI_COMM_WORLD);
+    MPICommunicator* mpiComm = (MPICommunicator*)exCommunicator;
+    return MPI_Barrier(mpiComm->comm);
 }
 
 static custatevecExCommunicatorStatus_t
-MPICommunicator_Bcast(custatevecExCommunicator_t* /*exCommunicator*/, void* buffer, int count,
+MPICommunicator_Bcast(custatevecExCommunicator_t* exCommunicator, void* buffer, int count,
                       cudaDataType_t dataType, int root)
 {
+    MPICommunicator* mpiComm = (MPICommunicator*)exCommunicator;
     MPI_Datatype mpiDatatype = ConvertDataType(dataType);
     if (mpiDatatype == MPI_DATATYPE_NULL)
         return -1;
 
-    return MPI_Bcast(buffer, count, mpiDatatype, root, MPI_COMM_WORLD);
+    return MPI_Bcast(buffer, count, mpiDatatype, root, mpiComm->comm);
 }
 
 static custatevecExCommunicatorStatus_t
-MPICommunicator_Allreduce(custatevecExCommunicator_t* /*exCommunicator*/, const void* sendbuf,
+MPICommunicator_Allreduce(custatevecExCommunicator_t* exCommunicator, const void* sendbuf,
                           void* recvbuf, int count, cudaDataType_t dataType)
 {
+    MPICommunicator* mpiComm = (MPICommunicator*)exCommunicator;
     MPI_Datatype mpiDatatype = ConvertDataType(dataType);
     if (mpiDatatype == MPI_DATATYPE_NULL)
         return -1;
 
-    return MPI_Allreduce(sendbuf, recvbuf, count, mpiDatatype, MPI_SUM, MPI_COMM_WORLD);
+    return MPI_Allreduce(sendbuf, recvbuf, count, mpiDatatype, MPI_SUM, mpiComm->comm);
 }
 
 static custatevecExCommunicatorStatus_t
-MPICommunicator_Allgather(custatevecExCommunicator_t* /*exCommunicator*/, const void* sendbuf,
+MPICommunicator_Allgather(custatevecExCommunicator_t* exCommunicator, const void* sendbuf,
                           void* recvbuf, int count, cudaDataType_t dataType)
 {
+    MPICommunicator* mpiComm = (MPICommunicator*)exCommunicator;
     MPI_Datatype mpiDatatype = ConvertDataType(dataType);
     if (mpiDatatype == MPI_DATATYPE_NULL)
         return -1;
 
-    return MPI_Allgather(sendbuf, count, mpiDatatype, recvbuf, count, mpiDatatype, MPI_COMM_WORLD);
+    return MPI_Allgather(sendbuf, count, mpiDatatype, recvbuf, count, mpiDatatype, mpiComm->comm);
 }
 
 static custatevecExCommunicatorStatus_t MPICommunicator_Allgatherv(
-    custatevecExCommunicator_t* /*exCommunicator*/, const void* sendbuf, int sendcount,
-    void* recvbuf, const int* recvcounts, const int* displs, cudaDataType_t dataType)
+    custatevecExCommunicator_t* exCommunicator, const void* sendbuf, int sendcount, void* recvbuf,
+    const int* recvcounts, const int* displs, cudaDataType_t dataType)
 {
+    MPICommunicator* mpiComm = (MPICommunicator*)exCommunicator;
     MPI_Datatype mpiDatatype = ConvertDataType(dataType);
     if (mpiDatatype == MPI_DATATYPE_NULL)
         return -1;
 
     return MPI_Allgatherv(sendbuf, sendcount, mpiDatatype, recvbuf, recvcounts, displs, mpiDatatype,
-                          MPI_COMM_WORLD);
+                          mpiComm->comm);
 }
 
 static custatevecExCommunicatorStatus_t
@@ -196,12 +207,9 @@ MPICommunicator_SendAsync(custatevecExCommunicator_t* exCommunicator, const void
         return -1;
 
     MPI_Request* request = &mpiComm->requests[mpiComm->nActiveRequests];
-    int result = MPI_Isend(buf, count, mpiDatatype, peer, tag, MPI_COMM_WORLD, request);
+    int result = MPI_Isend(buf, count, mpiDatatype, peer, tag, mpiComm->comm, request);
     if (result != MPI_SUCCESS)
-    {
-        MPI_Cancel(request);
-        return result;
-    }
+        return result;  // the request was not posted, so there is nothing to cancel
     ++mpiComm->nActiveRequests;
     return CUSTATEVEC_EX_COMMUNICATOR_STATUS_SUCCESS;
 }
@@ -219,12 +227,9 @@ MPICommunicator_RecvAsync(custatevecExCommunicator_t* exCommunicator, void* buf,
         return -1;
 
     MPI_Request* request = &mpiComm->requests[mpiComm->nActiveRequests];
-    int result = MPI_Irecv(buf, count, mpiDatatype, peer, tag, MPI_COMM_WORLD, request);
+    int result = MPI_Irecv(buf, count, mpiDatatype, peer, tag, mpiComm->comm, request);
     if (result != MPI_SUCCESS)
-    {
-        MPI_Cancel(request);
-        return result;
-    }
+        return result;  // the request was not posted, so there is nothing to cancel
     ++mpiComm->nActiveRequests;
     return CUSTATEVEC_EX_COMMUNICATOR_STATUS_SUCCESS;
 }
@@ -243,14 +248,17 @@ static custatevecExCommunicatorStatus_t MPICommunicator_SendRecvAsync(
 
     MPI_Request* sendRequest = &mpiComm->requests[0];
     MPI_Request* recvRequest = &mpiComm->requests[1];
-    int resSend = MPI_Isend(sendbuf, count, mpiDatatype, peer, tag, MPI_COMM_WORLD, sendRequest);
-    int resRecv = MPI_Irecv(recvbuf, count, mpiDatatype, peer, tag, MPI_COMM_WORLD, recvRequest);
+    int resSend = MPI_Isend(sendbuf, count, mpiDatatype, peer, tag, mpiComm->comm, sendRequest);
+    if (resSend != MPI_SUCCESS)
+        return resSend;  // nothing was posted, so there is nothing to cancel
 
-    if ((resSend != MPI_SUCCESS) || (resRecv != MPI_SUCCESS))
+    int resRecv = MPI_Irecv(recvbuf, count, mpiDatatype, peer, tag, mpiComm->comm, recvRequest);
+    if (resRecv != MPI_SUCCESS)
     {
+        // Only the send was posted; cancel it and wait so no request is left active.
         MPI_Cancel(sendRequest);
-        MPI_Cancel(recvRequest);
-        return (custatevecExCommunicatorStatus_t)(resSend != MPI_SUCCESS ? resSend : resRecv);
+        MPI_Wait(sendRequest, MPI_STATUS_IGNORE);
+        return resRecv;
     }
     mpiComm->nActiveRequests = 2;
     return CUSTATEVEC_EX_COMMUNICATOR_STATUS_SUCCESS;
@@ -265,6 +273,20 @@ MPICommunicator_Synchronize(custatevecExCommunicator_t* exCommunicator)
     int result = MPI_Waitall(mpiComm->nActiveRequests, mpiComm->requests, statuses);
     mpiComm->nActiveRequests = 0;
     return result;
+}
+
+static custatevecExCommunicatorStatus_t
+MPICommunicator_SetNativeCommunicator(custatevecExCommunicator_t* exCommunicator, void* nativeComm)
+{
+    // This function replaces the communicator that this instance uses for collectives.
+    // The call should be made before state vector instantiation.  After a state vector
+    // instance is created, another communicator should not be set.
+    //
+    // nativeComm points to a native MPI_Comm handle (e.g., &MPI_COMM_WORLD).  A NULL
+    // nativeComm resets the instance to the world communicator.
+    MPICommunicator* mpiComm = (MPICommunicator*)exCommunicator;
+    mpiComm->comm = (nativeComm != NULL) ? *(MPI_Comm*)nativeComm : MPI_COMM_WORLD;
+    return CUSTATEVEC_EX_COMMUNICATOR_STATUS_SUCCESS;
 }
 
 /*
@@ -284,7 +306,8 @@ static const custatevecExCommunicatorInterface_t staticInterface = {
     .recvAsync = MPICommunicator_RecvAsync,
     .sendRecvAsync = MPICommunicator_SendRecvAsync,
     .synchronize = MPICommunicator_Synchronize,
-    .allreduce = MPICommunicator_Allreduce};
+    .allreduce = MPICommunicator_Allreduce,
+    .setNativeCommunicator = MPICommunicator_SetNativeCommunicator};
 
 static custatevecExCommunicator_t* MPICommunicator_CreateCommunicator(void* libraryHandle)
 {
@@ -296,6 +319,9 @@ static custatevecExCommunicator_t* MPICommunicator_CreateCommunicator(void* libr
 
     // Assign static interface table
     mpiComm->intf = &staticInterface;
+
+    // Start on the world communicator; setNativeCommunicator() can replace it.
+    mpiComm->comm = MPI_COMM_WORLD;
 
     return (custatevecExCommunicator_t*)mpiComm;
 }

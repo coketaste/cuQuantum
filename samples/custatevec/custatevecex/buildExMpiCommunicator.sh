@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.
+# Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
 
 # Example build script for MPI communicator plugin
-# Usage: ./build_mpi_communicator.sh [MPI_PREFIX]
-# Example: ./build_mpi_communicator.sh /usr/lib/x86_64-linux-gnu/openmpi
+# Usage: ./buildExMpiCommunicator.sh [MPI_PREFIX]
+# Example: ./buildExMpiCommunicator.sh /usr/lib/x86_64-linux-gnu/openmpi
 # Environment variables: CUSTATEVEC_ROOT, CUQUANTUM_ROOT, CUDA_TOOLKIT, CC
 
 set -e  # Exit on error
@@ -27,7 +27,7 @@ if [ -z "$CUSTATEVEC_ROOT" ]; then
     CUSTATEVEC_ROOT="$CUQUANTUM_ROOT"
 fi
 
-OUTPUT="libmpiCommunicator.so"
+OUTPUT="libexMpiCommunicator.so"
 
 # Compiler and flags
 CC="${CC:-gcc}"
@@ -49,5 +49,5 @@ echo "CUSTATEVEC_ROOT=$CUSTATEVEC_ROOT"
 echo "MPI_PREFIX=$MPI_PREFIX"
 echo ""
 echo "Building $OUTPUT..."
-$CC $CFLAGS $INCLUDES $LDFLAGS mpiCommunicator.c $LIBS -o $OUTPUT
+$CC $CFLAGS $INCLUDES $LDFLAGS exMpiCommunicator.c $LIBS -o $OUTPUT
 echo "✓ Success: $OUTPUT ($(ls -lh $OUTPUT | awk '{print $5}'))"

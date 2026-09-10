@@ -53,6 +53,16 @@ class _QuantumOperator(ABC):
         """Return a human-readable string representation of the operator."""
         ...
 
+    def _validate_against_num_qubits(self, num_qubits: int) -> None:
+        """Validate this operator's qubit indices against the target system size.
+
+        The C-API operator constructors are not given ``num_qubits`` and so cannot
+        reject out-of-range qubit indices.  Subclasses that act on specific qubit
+        indices override this to perform the check before the C-API call.  The
+        default implementation is a no-op.
+        """
+        pass
+
     # ------------------------------------------------------------------
     # Context managers for ephemeral C-API operator lifecycle
     # ------------------------------------------------------------------
@@ -96,6 +106,19 @@ class _QuantumOperator(ABC):
                 return
             grad_buf = param_grads_out if param_grads_out is not None else np.zeros(n, dtype=dtype)
             wrapped = wrap_operand(grad_buf)
+            if param_grads_out is not None:
+                # Validate a user-provided gradient buffer against the required contract
+                # before attaching it to the C API.
+                if np.dtype(wrapped.dtype) != np.dtype(dtype):
+                    raise ValueError(
+                        f"param_grads_out has dtype {np.dtype(wrapped.dtype)}, expected "
+                        f"{np.dtype(dtype)} (the expansion's coefficient dtype)."
+                    )
+                if wrapped.size != n:
+                    raise ValueError(
+                        f"param_grads_out must have {n} element(s) (num_differentiable_params), "
+                        f"got {wrapped.size}."
+                    )
             location = "DEVICE" if hasattr(grad_buf, '__cuda_array_interface__') else "HOST"
             cupp.quantum_operator_attach_cotangent_buffer(
                 int(library_handle), ptr, wrapped.data_ptr,
@@ -118,6 +141,23 @@ def _build_noise_paulis(num_qubits: int) -> tuple[str, ...]:
         else:  # num_qubits == 2
             paulis.append(f"{typemaps.PAULI_MAP_INV[i % 4]}{typemaps.PAULI_MAP_INV[i // 4]}")
     return tuple(paulis)
+
+
+def _normalize_qubit_indices(qubit_indices: Sequence[int]) -> list[int]:
+    """Normalize an array-like of qubit indices to a list of plain ints.
+
+    Rejects non-integer values (e.g. ``0.5``) rather than silently truncating them
+    with ``int()`` -- a fractional index would otherwise be floored to the wrong
+    qubit with no error.  ``bool`` is rejected as almost certainly a mistake.  numpy
+    integer types are accepted and converted to plain ints.  Normalizing to a list
+    also avoids ambiguous truth-value tests on array-like inputs downstream.
+    """
+    normalized: list[int] = []
+    for i in qubit_indices:
+        if isinstance(i, bool) or not isinstance(i, (int, np.integer)):
+            raise TypeError(f"qubit_indices must contain integers, got {i!r}.")
+        normalized.append(int(i))
+    return normalized
 
 
 # ---------------------------------------------------------------------------
@@ -147,8 +187,34 @@ class PauliNoiseChannel(_QuantumOperator):
         self._num_qubits: int = len(self.qubit_indices)
         if self._num_qubits not in (1, 2):
             raise ValueError(f"Number of qubits must be 1 or 2, got {self._num_qubits}")
-        # Convert input dict to tuple in reference Pauli order
+        # Normalize and validate the qubit indices up front (type / non-negativity /
+        # uniqueness).
+        self.qubit_indices = _normalize_qubit_indices(self.qubit_indices)
+        if any(i < 0 for i in self.qubit_indices):
+            raise ValueError(f"qubit_indices must be non-negative, got {list(self.qubit_indices)}.")
+        if len(set(self.qubit_indices)) != len(self.qubit_indices):
+            raise ValueError(f"qubit_indices must be unique, got {list(self.qubit_indices)}.")
         ref_paulis = self._SINGLE_QUBIT_PAULIS if self._num_qubits == 1 else self._TWO_QUBIT_PAULIS
+        # Validate up front: the user mapping is consumed only via ``.get()`` below.
+        #
+        # Negative probabilities are intentionally allowed: PauliNoiseChannel
+        # supports quasi-probabilities, so only non-finite (NaN / inf) values are
+        # rejected here.
+        valid_keys = set(ref_paulis)
+        unknown = [k for k in self.noise_probabilities if k not in valid_keys]
+        if unknown:
+            raise ValueError(
+                f"Unknown Pauli key(s) {sorted(unknown)} for a {self._num_qubits}-qubit "
+                f"PauliNoiseChannel; valid keys are {sorted(valid_keys)}."
+            )
+        for pauli, prob in self.noise_probabilities.items():
+            if isinstance(prob, bool) or not isinstance(prob, (int, float, np.integer, np.floating)):
+                raise TypeError(f"noise_probabilities[{pauli!r}] must be a real number, got {prob!r}.")
+            if not np.isfinite(prob):
+                raise ValueError(
+                    f"noise_probabilities[{pauli!r}]={prob} must be finite (NaN and inf are not allowed)."
+                )
+        # Convert input dict to tuple in reference Pauli order.
         self.noise_probabilities = tuple(
             self.noise_probabilities.get(pauli, 0.0) for pauli in ref_paulis
         )
@@ -164,6 +230,14 @@ class PauliNoiseChannel(_QuantumOperator):
     @property
     def num_differentiable_params(self) -> int:
         return 4 ** self._num_qubits
+
+    def _validate_against_num_qubits(self, num_qubits: int) -> None:
+        for i in self.qubit_indices:
+            if i >= num_qubits:
+                raise ValueError(
+                    f"PauliNoiseChannel qubit index {i} is out of range for a "
+                    f"{num_qubits}-qubit system (valid range [0, {num_qubits}))."
+                )
 
     def __str__(self) -> str:
         nonzero = {p: prob for p, prob in zip(self.noise_paulis, self.noise_probabilities) if prob != 0.0}
@@ -188,9 +262,24 @@ class PauliRotationGate(_QuantumOperator):
     qubit_indices: Sequence[int] | None = None
 
     def __post_init__(self):
-        if isinstance(self.pauli_string, str):
-            self.pauli_string = list(self.pauli_string)
+        self.pauli_string = list(self.pauli_string)
+        if len(self.pauli_string) == 0:
+            raise ValueError("pauli_string must be non-empty")
         self._pauli_string_enums: list[int] = [typemaps.PAULI_MAP[p] for p in self.pauli_string]
+        # qubit_indices is None -> use the C-API default [0, 1, ..., num_qubits-1].
+        # Otherwise normalize to a list of plain ints (avoids ambiguous truth-tests
+        # on array-like inputs) and validate length/range/uniqueness up front.
+        if self.qubit_indices is not None:
+            self.qubit_indices = _normalize_qubit_indices(self.qubit_indices)
+            if len(self.qubit_indices) != self.num_qubits:
+                raise ValueError(
+                    f"len(qubit_indices)={len(self.qubit_indices)} != num_qubits={self.num_qubits} "
+                    f"(num_qubits is derived from len(pauli_string))."
+                )
+            if any(i < 0 for i in self.qubit_indices):
+                raise ValueError(f"qubit_indices must be non-negative, got {self.qubit_indices}.")
+            if len(set(self.qubit_indices)) != len(self.qubit_indices):
+                raise ValueError(f"qubit_indices must be unique, got {self.qubit_indices}.")
 
     @property
     def num_qubits(self) -> int:
@@ -201,11 +290,21 @@ class PauliRotationGate(_QuantumOperator):
     def num_differentiable_params(self) -> int:
         return 1
 
+    def _validate_against_num_qubits(self, num_qubits: int) -> None:
+        if self.qubit_indices is None:
+            return
+        for i in self.qubit_indices:
+            if i >= num_qubits:
+                raise ValueError(
+                    f"PauliRotationGate qubit index {i} is out of range for a "
+                    f"{num_qubits}-qubit system (valid range [0, {num_qubits}))."
+                )
+
     def _get_create_args(self) -> tuple[Callable[..., int], tuple[Any, ...]]:
         return cupp.create_pauli_rotation_gate_operator, (
             self.angle,
             self.num_qubits,
-            self.qubit_indices if self.qubit_indices else 0,
+            self.qubit_indices if self.qubit_indices is not None else 0,
             self._pauli_string_enums,
         )
 
@@ -231,17 +330,41 @@ class CliffordGate(_QuantumOperator):
     qubit_indices: Sequence[int]
 
     SUPPORTED_GATES: ClassVar[frozenset[str]] = frozenset(typemaps.CLIFFORD_MAP.keys())
+    # Clifford gates that act on two qubits (upper-case names); all others act on one.
+    _TWO_QUBIT_GATES: ClassVar[frozenset[str]] = frozenset({"CX", "CY", "CZ", "SWAP", "ISWAP"})
 
     def __post_init__(self):
-        if self.name.upper() not in self.SUPPORTED_GATES:
+        name_upper = self.name.upper()
+        if name_upper not in self.SUPPORTED_GATES:
             raise ValueError(
                 f"Unsupported Clifford gate '{self.name}'. "
                 f"Supported gates: {sorted(self.SUPPORTED_GATES)}"
             )
+        # Normalize to a list of plain ints (also avoids ambiguous truth-tests on
+        # array-like inputs) and validate arity/range/uniqueness up front.
+        arity = 2 if name_upper in self._TWO_QUBIT_GATES else 1
+        self.qubit_indices = _normalize_qubit_indices(self.qubit_indices)
+        if len(self.qubit_indices) != arity:
+            raise ValueError(
+                f"Clifford gate '{self.name}' acts on {arity} qubit(s), but got "
+                f"{len(self.qubit_indices)} qubit index/indices: {list(self.qubit_indices)}."
+            )
+        if any(i < 0 for i in self.qubit_indices):
+            raise ValueError(f"qubit_indices must be non-negative, got {list(self.qubit_indices)}.")
+        if len(set(self.qubit_indices)) != len(self.qubit_indices):
+            raise ValueError(f"qubit_indices must be unique, got {list(self.qubit_indices)}.")
 
     @property
     def num_differentiable_params(self) -> int:
         return 0
+
+    def _validate_against_num_qubits(self, num_qubits: int) -> None:
+        for i in self.qubit_indices:
+            if i >= num_qubits:
+                raise ValueError(
+                    f"Clifford gate '{self.name}' qubit index {i} is out of range for a "
+                    f"{num_qubits}-qubit system (valid range [0, {num_qubits}))."
+                )
 
     def _get_create_args(self) -> tuple[Callable[..., int], tuple[Any, ...]]:
         return cupp.create_clifford_gate_operator, (typemaps.CLIFFORD_MAP[self.name], self.qubit_indices)

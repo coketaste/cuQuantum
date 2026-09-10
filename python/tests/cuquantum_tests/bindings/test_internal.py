@@ -22,8 +22,8 @@ from nvmath import CudaDataType as nvmath_cuda_data_type
 def test_compute_type(lib):
     binding_module = getattr(bindings, lib)
     module_compute_type = getattr(binding_module, "ComputeType", None)
-    if lib == "custabilizer":
-        # custabilizer currently does not have a ComputeType enum
+    if lib in ("custabilizer", "cupauliprop"):
+        # custabilizer and cupauliprop do not have a ComputeType enum in their C APIs
         assert module_compute_type is None
     else:
         assert module_compute_type is not None

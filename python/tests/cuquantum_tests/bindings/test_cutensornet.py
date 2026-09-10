@@ -873,10 +873,19 @@ class TestContraction(TestTensorNetworkBase):
     'state_purity': (cutn.StatePurity.PURE,),
     'num_qubits': (4,),
     'mps': (False, 2),
-    'stream': (cp.cuda.Stream.null, get_stream_for_backend(cp)),
+    # Parametrize a token, not a live Stream: a Stream's repr embeds its
+    # per-process pointer, so live objects make the generated test ids differ
+    # between pytest processes (an xdist collection-mismatch hard error) and
+    # create a CUDA stream at collection time.
+    'stream_kind': ('null', 'new'),
 }))
 class TestStateBase:
-    pass
+
+    @functools.cached_property
+    def stream(self):
+        if self.stream_kind == 'null':
+            return cp.cuda.Stream.null
+        return get_stream_for_backend(cp)
         
         
 class TestStateAPIs(TestStateBase):

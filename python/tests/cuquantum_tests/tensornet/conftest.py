@@ -27,3 +27,12 @@ def cleanup_between_files():
         cp.get_default_memory_pool().free_all_blocks()
     if torch is not None:
         torch.cuda.empty_cache()
+
+
+def pytest_collection_modifyitems(items):
+    # gradient-parametrized tests must run in the serial (exclusive-GPU) mode.
+    import pytest as _pytest
+    for item in items:
+        callspec = getattr(item, "callspec", None)
+        if callspec is not None and callspec.params.get("gradient") in ("all", "random"):
+            item.add_marker(_pytest.mark.exclusive_gpu)

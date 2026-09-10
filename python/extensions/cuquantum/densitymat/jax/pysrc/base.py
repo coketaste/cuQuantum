@@ -9,13 +9,9 @@ JAX base primitive.
 from abc import ABCMeta, abstractmethod
 from functools import partial
 
-import jax
 from jax.extend import core
 from jax.interpreters import xla, mlir, batching
 from jax._src import dispatch
-
-from cuquantum.lib import cudensitymat_jax
-
 
 class BasePrimitive(metaclass=ABCMeta):
     """
@@ -92,7 +88,3 @@ def register_primitive(cls):
     )
     batching.primitive_batchers[outer_p] = cls.batcher
     cls.outer_primitive = outer_p
-
-
-for _name, _value in cudensitymat_jax.registrations().items():
-    jax.ffi.register_ffi_target(_name, _value, platform="CUDA")

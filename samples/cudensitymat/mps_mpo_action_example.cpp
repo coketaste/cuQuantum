@@ -33,8 +33,7 @@
 // Zero-initialising stateOut with cudensitymatStateInitializeZero before the
 // Compute call therefore makes the result a plain assignment
 // stateOut = alpha * H * stateIn (up to FP64 fitting accuracy). The example
-// reports the allocated output MPS component shapes; a schedule-agnostic norm
-// check should use the public MPS norm API once it is available.
+// reports the allocated output MPS component shapes.
 
 #include <cudensitymat.h>
 #include "helpers.h"

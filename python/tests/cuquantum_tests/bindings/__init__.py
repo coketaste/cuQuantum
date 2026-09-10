@@ -6,6 +6,7 @@ import atexit
 import glob
 import importlib.util
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -27,6 +28,19 @@ if cffi:
     sys.path.append(os.getcwd())
 
 
+# Per-process cffi build dir: compiling into the shared cwd races under
+# pytest-xdist (one worker imports the .so while another rewrites it ->
+# "invalid ELF header"). Each process compiles its own copy instead.
+_cffi_build_dir = None
+
+def _get_cffi_build_dir():
+    global _cffi_build_dir
+    if _cffi_build_dir is None:
+        _cffi_build_dir = tempfile.mkdtemp(prefix="cuquantum_test_cffi_")
+        sys.path.append(_cffi_build_dir)
+    return _cffi_build_dir
+
+
 def clean_up_cffi_files():
     files = glob.glob(os.path.join(os.getcwd(), "cuquantum_test_cffi*"))
     for f in files:
@@ -34,6 +48,8 @@ def clean_up_cffi_files():
             os.remove(f)
         except FileNotFoundError:
             pass
+    if _cffi_build_dir is not None:
+        shutil.rmtree(_cffi_build_dir, ignore_errors=True)
 
 
 dtype_to_data_type = {
@@ -128,7 +144,7 @@ class MemoryResourceFactory:
                 int my_alloc(void* ctx, void** ptr, size_t size, void* stream);
                 int my_free(void* ctx, void* ptr, size_t size, void* stream);
             """)
-            ffi.compile(verbose=True)
+            ffi.compile(verbose=True, tmpdir=_get_cffi_build_dir())
             self.ffi = ffi
             time.sleep(1)  # add extra time to allow filesystem to recognize changes
             importlib.invalidate_caches()  # Ensure Python sees new module
@@ -190,7 +206,7 @@ class MemoryResourceFactory:
 
                 myHandler* init_myHandler(myHandler* h, const char* name);
             """)
-            ffi.compile(verbose=True)
+            ffi.compile(verbose=True, tmpdir=_get_cffi_build_dir())
             self.ffi = ffi
             time.sleep(1)  # add extra time to allow filesystem to recognize changes
             importlib.invalidate_caches()  # Ensure Python sees new module

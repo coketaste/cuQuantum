@@ -4,6 +4,9 @@
 
 
 from logging import Logger, getLogger
+from typing import TYPE_CHECKING
+
+import numpy as np
 
 try:
     from cuda.core import Device
@@ -11,8 +14,20 @@ except ImportError:
     from cuda.core.experimental import Device
 import nvmath.internal.utils as nvmath_utils
 
+from cuquantum._internal.utils import get_mpi_comm_pointer
 import cuquantum.bindings.cupauliprop as cupp
+from ._internal.distributed import (
+    ProviderName,
+    is_nccl_comm,
+    is_nvmath_distributed_context,
+    is_ptr_and_size,
+    resolve_provider,
+)
 from ._internal.utils import register_finalizer
+
+if TYPE_CHECKING:
+    import mpi4py.MPI
+    from nccl.core import Communicator as NcclCommunicator
 
 __all__ = ["LibraryHandle"]
 
@@ -26,14 +41,15 @@ class LibraryHandle:
         self._ptr: None | int = None
         with nvmath_utils.device_ctx(self._device_id):
             self._ptr = cupp.create()
-        self._has_been_freed: bool = False
+        self._comm = None
+        self._nccl_comm_holder = None
         self._logger.debug(f"C API cupaulipropCreate returned handle ptr={self._ptr}")
         self._logger.info(f"cuPauliProp library handle created on device {self._device_id}.")
         # Register cleanup finalizer for safe resource release
         self._finalizer = register_finalizer(self, cupp.destroy, self._ptr, self._logger, "LibraryHandle")
 
     def _check_valid_state(self, *args, **kwargs):
-        if self._has_been_freed:
+        if not self._finalizer.alive:
             raise RuntimeError("Trying to use library handle after it has been freed is not supported.")
 
     @property
@@ -52,3 +68,114 @@ class LibraryHandle:
 
     def __int__(self):
         return self._validated_ptr
+
+    def set_communicator(
+        self,
+        comm: "mpi4py.MPI.Comm | NcclCommunicator | DistributedContext | tuple[int, int] | int | None" = None,
+        provider: ProviderName | cupp.DistributedProvider | None = None,
+    ) -> None:
+        """Register a communicator with this library handle.
+
+        ``provider`` is inferred from ``mpi4py.MPI.Comm``,
+        ``nccl.core.Communicator``, and ``nvmath.distributed.DistributedContext``
+        (which supplies its NCCL communicator and therefore requires
+        initialization with the ``"nccl"`` backend). Raw ``int`` /
+        ``(ptr, size)`` inputs require an explicit provider. Before replacing
+        or clearing a communicator, destroy all objects created from this
+        handle.
+
+        Args:
+            comm: Communicator object, ``nvmath.distributed`` context, raw
+                pointer, ``(ptr, size)`` pair, or ``None``.
+            provider: ``"MPI"`` or ``"NCCL"`` (uppercase), or a
+                :class:`~cuquantum.bindings.cupauliprop.DistributedProvider`.
+                Optional when inferable. Pass no arguments, or pass ``comm=None``,
+                to restore single-process execution.
+        """
+        resolved = resolve_provider(comm, provider)
+
+        if resolved == cupp.DistributedProvider.NCCL:
+            self._set_nccl_communicator(comm)
+        elif resolved == cupp.DistributedProvider.MPI:
+            self._set_mpi_communicator(comm)
+        else:
+            if comm is not None:
+                raise ValueError("Single-process configuration requires comm=None.")
+            cupp.reset_distributed_configuration(
+                self._validated_ptr, cupp.DistributedProvider.NONE, 0, 0
+            )
+            self._comm = None
+            self._nccl_comm_holder = None
+
+    def _set_mpi_communicator(self, comm) -> None:
+        if comm is None:
+            raise ValueError(
+                "MPI provider requires an explicit communicator. "
+                "Pass an mpi4py.MPI.Comm, an integer pointer, or a (pointer, size) tuple."
+            )
+        if is_ptr_and_size(comm):
+            comm_ptr, comm_size = comm
+        elif isinstance(comm, int):
+            comm_ptr = comm
+            comm_size = np.dtype(np.intp).itemsize
+        else:
+            comm_ptr, comm_size = get_mpi_comm_pointer(comm)
+        cupp.reset_distributed_configuration(
+            self._validated_ptr, cupp.DistributedProvider.MPI, comm_ptr, comm_size
+        )
+        self._comm = comm
+        self._nccl_comm_holder = None
+
+    def _set_nccl_communicator(self, comm) -> None:
+        if comm is None:
+            raise ValueError(
+                "NCCL provider requires an explicit communicator. "
+                "Pass an nccl.core.Communicator, an integer pointer, or a (pointer, size) tuple."
+            )
+        if is_nvmath_distributed_context(comm):
+            nccl_comm = comm.nccl_comm
+            if nccl_comm is None:
+                raise ValueError(
+                    "The nvmath.distributed context has no NCCL communicator. "
+                    "Initialize nvmath.distributed with the 'nccl' backend."
+                )
+            nccl_comm_ptr = nccl_comm if isinstance(nccl_comm, int) else int(nccl_comm.ptr)
+        elif is_nccl_comm(comm):
+            nccl_comm_ptr = int(comm.ptr)
+        elif is_ptr_and_size(comm):
+            nccl_comm_ptr = comm[0]
+        elif isinstance(comm, int):
+            nccl_comm_ptr = comm
+        else:
+            raise ValueError(
+                "NCCL provider requires an nccl.core.Communicator, an "
+                "nvmath.distributed context, an ncclComm_t pointer, or a "
+                "(pointer, size) tuple."
+            )
+
+        self._logger.info(
+            f"Using ncclComm_t pointer (comm_ptr={nccl_comm_ptr}) on device {self.device_id}."
+        )
+        nccl_comm_holder = np.array([nccl_comm_ptr], dtype=np.intp)
+        cupp.reset_distributed_configuration(
+            self._validated_ptr,
+            cupp.DistributedProvider.NCCL,
+            nccl_comm_holder.ctypes.data,
+            nccl_comm_holder.itemsize,
+        )
+        self._comm = comm
+        self._nccl_comm_holder = nccl_comm_holder
+
+    def get_communicator(self):
+        """Return the communicator previously passed to :meth:`set_communicator`."""
+        return self._comm
+
+    @nvmath_utils.precondition(_check_valid_state)
+    def get_num_ranks(self) -> int:
+        """Return the number of distributed processes for this handle."""
+        return cupp.get_num_ranks(self._validated_ptr)
+
+    @nvmath_utils.precondition(_check_valid_state)
+    def get_proc_rank(self) -> int:
+        """Return this process's rank in the distributed configuration."""
+        return cupp.get_proc_rank(self._validated_ptr)

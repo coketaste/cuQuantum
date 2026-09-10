@@ -2,9 +2,20 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 25.11.0 to 26.06.0, generator version 0.3.1.dev1734+g2cfbd9662.d20260611. Do not modify it directly.
+# This code was automatically generated with version 26.09.0. Do not modify it directly.
 
-from libc.stdint cimport intptr_t
+
+
+# <<<< PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport (
+    int32_t,
+    int64_t,
+    intptr_t,
+)
+
+
+# <<<< END OF PREAMBLE CONTENT >>>>
 
 from .cycupauliprop cimport *
 
@@ -18,6 +29,8 @@ ctypedef cupaulipropWorkspaceDescriptor_t WorkspaceDescriptor
 ctypedef cupaulipropPauliExpansion_t PauliExpansion
 ctypedef cupaulipropPauliExpansionView_t PauliExpansionView
 ctypedef cupaulipropQuantumOperator_t QuantumOperator
+ctypedef cupaulipropDistributedRequest_t DistributedRequest
+ctypedef cupaulipropDistributedInterface_t DistributedInterface
 
 ctypedef cudaStream_t Stream
 ctypedef cudaDataType DataType
@@ -29,14 +42,13 @@ ctypedef libraryPropertyType_t LibraryPropertyType
 ###############################################################################
 
 ctypedef cupaulipropStatus_t _Status
-ctypedef cupaulipropComputeType_t _ComputeType
+ctypedef cupaulipropDistributedProvider_t _DistributedProvider
 ctypedef cupaulipropMemspace_t _Memspace
 ctypedef cupaulipropWorkspaceKind_t _WorkspaceKind
 ctypedef cupaulipropTruncationStrategyKind_t _TruncationStrategyKind
+ctypedef cupaulipropSortOrder_t _SortOrder
 ctypedef cupaulipropPauliKind_t _PauliKind
 ctypedef cupaulipropCliffordGateKind_t _CliffordGateKind
-ctypedef cupaulipropQuantumOperatorKind_t _QuantumOperatorKind
-ctypedef cupaulipropSortOrder_t _SortOrder
 
 
 ###############################################################################
@@ -48,17 +60,21 @@ cpdef str get_error_string(int error)
 cpdef int32_t get_num_packed_integers(int32_t num_qubits) except? -1
 cpdef intptr_t create() except? 0
 cpdef destroy(intptr_t handle)
+cpdef reset_distributed_configuration(intptr_t handle, int provider, intptr_t comm_ptr, size_t comm_size)
+cpdef int32_t get_num_ranks(intptr_t handle) except? -1
+cpdef int32_t get_proc_rank(intptr_t handle) except? -1
 cpdef intptr_t create_workspace_descriptor(intptr_t handle) except? 0
 cpdef destroy_workspace_descriptor(intptr_t workspace_desc)
 cpdef int64_t workspace_get_memory_size(intptr_t handle, intptr_t workspace_desc, int mem_space, int workspace_kind) except? -1
 cpdef workspace_set_memory(intptr_t handle, intptr_t workspace_desc, int mem_space, int workspace_kind, intptr_t memory_buffer, int64_t memory_buffer_size)
 cpdef tuple workspace_get_memory(intptr_t handle, intptr_t workspace_descr, int mem_space, int workspace_kind)
-cpdef intptr_t create_pauli_expansion(intptr_t handle, int32_t num_qubits, intptr_t xz_bits_buffer, int64_t xz_bits_buffer_size, intptr_t coef_buffer, int64_t coef_buffer_size, int data_type, int64_t num_terms, int sort_order, int32_t has_duplicates) except? 0
+cpdef intptr_t create_pauli_expansion(intptr_t handle, int32_t num_qubits, intptr_t xz_bits_buffer, int64_t xz_bits_buffer_size, intptr_t coef_buffer, int64_t coef_buffer_size, int data_type, int64_t num_local_terms, int sort_order, int32_t has_duplicates) except? 0
 cpdef destroy_pauli_expansion(intptr_t pauli_expansion)
 cpdef tuple pauli_expansion_get_storage_buffer(intptr_t handle, intptr_t pauli_expansion)
 cpdef int32_t pauli_expansion_get_num_qubits(intptr_t handle, intptr_t pauli_expansion) except? -1
 cpdef int64_t pauli_expansion_get_num_terms(intptr_t handle, intptr_t pauli_expansion) except? -1
 cpdef int pauli_expansion_get_data_type(intptr_t handle, intptr_t pauli_expansion) except? -1
+cpdef int pauli_expansion_get_sort_order(intptr_t handle, intptr_t pauli_expansion) except? -1
 cpdef int32_t pauli_expansion_is_deduplicated(intptr_t handle, intptr_t pauli_expansion) except? -1
 cpdef intptr_t pauli_expansion_get_contiguous_range(intptr_t handle, intptr_t pauli_expansion, int64_t start_index, int64_t end_index) except? 0
 cpdef destroy_pauli_expansion_view(intptr_t view)
@@ -66,22 +82,21 @@ cpdef int64_t pauli_expansion_view_get_num_terms(intptr_t handle, intptr_t view)
 cpdef int pauli_expansion_view_get_location(intptr_t view) except? -1
 cpdef pauli_expansion_view_prepare_deduplication(intptr_t handle, intptr_t view_in, int sort_order, int64_t max_workspace_device_size, intptr_t workspace)
 cpdef pauli_expansion_view_execute_deduplication(intptr_t handle, intptr_t view_in, intptr_t expansion_out, int sort_order, intptr_t workspace, intptr_t stream)
+cpdef pauli_expansion_view_prepare_sort(intptr_t handle, intptr_t view_in, int sort_order, int64_t max_workspace_device_size, intptr_t workspace)
+cpdef pauli_expansion_view_execute_sort(intptr_t handle, intptr_t view_in, intptr_t expansion_out, int sort_order, intptr_t workspace, intptr_t stream)
 cpdef pauli_expansion_populate_from_view(intptr_t handle, intptr_t view_in, intptr_t expansion_out, intptr_t stream)
 cpdef pauli_expansion_view_prepare_trace_with_expansion_view(intptr_t handle, intptr_t view1, intptr_t view2, int64_t max_workspace_device_size, intptr_t workspace)
 cpdef pauli_expansion_view_compute_trace_with_expansion_view(intptr_t handle, intptr_t view1, intptr_t view2, int32_t take_adjoint1, intptr_t trace_significand, intptr_t trace_exponent, intptr_t workspace, intptr_t stream)
+cpdef tuple pauli_expansion_view_prepare_trace_with_expansion_view_backward_diff(intptr_t handle, intptr_t view1, intptr_t view2, int64_t max_workspace_device_size, intptr_t workspace)
+cpdef pauli_expansion_view_compute_trace_with_expansion_view_backward_diff(intptr_t handle, intptr_t view1, intptr_t view2, int32_t take_adjoint1, intptr_t cotangent_trace_significand, intptr_t cotangent_trace_exponent, intptr_t cotangent_expansion1, intptr_t cotangent_expansion2, intptr_t workspace, intptr_t stream)
 cpdef pauli_expansion_view_prepare_trace_with_zero_state(intptr_t handle, intptr_t view, int64_t max_workspace_device_size, intptr_t workspace)
 cpdef pauli_expansion_view_compute_trace_with_zero_state(intptr_t handle, intptr_t view, intptr_t trace_significand, intptr_t trace_exponent, intptr_t workspace, intptr_t stream)
+cpdef tuple pauli_expansion_view_prepare_trace_with_zero_state_backward_diff(intptr_t handle, intptr_t view, int64_t max_workspace_device_size, intptr_t workspace)
+cpdef pauli_expansion_view_compute_trace_with_zero_state_backward_diff(intptr_t handle, intptr_t view, intptr_t cotangent_trace_significand, intptr_t cotangent_trace_exponent, intptr_t cotangent_expansion, intptr_t workspace, intptr_t stream)
 cpdef intptr_t create_clifford_gate_operator(intptr_t handle, int clifford_gate_kind, qubit_indices) except? 0
 cpdef intptr_t create_pauli_rotation_gate_operator(intptr_t handle, double angle, int32_t num_qubits, qubit_indices, paulis) except? 0
 cpdef intptr_t create_pauli_noise_channel_operator(intptr_t handle, int32_t num_qubits, qubit_indices, probabilities) except? 0
-cpdef destroy_operator(intptr_t oper)
-cpdef int pauli_expansion_get_sort_order(intptr_t handle, intptr_t pauli_expansion) except? -1
-cpdef pauli_expansion_view_prepare_sort(intptr_t handle, intptr_t view_in, int sort_order, int64_t max_workspace_device_size, intptr_t workspace)
-cpdef pauli_expansion_view_execute_sort(intptr_t handle, intptr_t view_in, intptr_t expansion_out, int sort_order, intptr_t workspace, intptr_t stream)
 cpdef intptr_t create_amplitude_damping_channel_operator(intptr_t handle, int32_t qubit_index, double damping_prob, double excite_prob) except? 0
-cpdef tuple pauli_expansion_view_prepare_trace_with_expansion_view_backward_diff(intptr_t handle, intptr_t view1, intptr_t view2, int64_t max_workspace_device_size, intptr_t workspace)
-cpdef pauli_expansion_view_compute_trace_with_expansion_view_backward_diff(intptr_t handle, intptr_t view1, intptr_t view2, int32_t take_adjoint1, intptr_t cotangent_trace_significand, intptr_t cotangent_trace_exponent, intptr_t cotangent_expansion1, intptr_t cotangent_expansion2, intptr_t workspace, intptr_t stream)
-cpdef tuple pauli_expansion_view_prepare_trace_with_zero_state_backward_diff(intptr_t handle, intptr_t view, int64_t max_workspace_device_size, intptr_t workspace)
-cpdef pauli_expansion_view_compute_trace_with_zero_state_backward_diff(intptr_t handle, intptr_t view, intptr_t cotangent_trace_significand, intptr_t cotangent_trace_exponent, intptr_t cotangent_expansion, intptr_t workspace, intptr_t stream)
 cpdef quantum_operator_attach_cotangent_buffer(intptr_t handle, intptr_t oper, intptr_t cotangent_buffer, int64_t cotangent_buffer_size, int data_type, int location)
 cpdef tuple quantum_operator_get_cotangent_buffer(intptr_t handle, intptr_t oper)
+cpdef destroy_operator(intptr_t oper)

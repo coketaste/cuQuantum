@@ -2,7 +2,18 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1733+g9725189ff.d20260608. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.09.0. Do not modify it directly.
+
+
+# <<<< PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport (
+    int32_t,
+    uint32_t,
+)
+
+
+# <<<< END OF PREAMBLE CONTENT >>>>
 
 from ._internal cimport custatevec as _custatevec
 
@@ -51,8 +62,16 @@ cdef custatevecStatus_t custatevecGetStream(custatevecHandle_t handle, cudaStrea
     return _custatevec._custatevecGetStream(handle, streamId)
 
 
+cdef custatevecStatus_t custatevecLoggerSetCallback(custatevecLoggerCallback_t callback) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _custatevec._custatevecLoggerSetCallback(callback)
+
+
 cdef custatevecStatus_t custatevecLoggerSetCallbackData(custatevecLoggerCallbackData_t callback, void* userData) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     return _custatevec._custatevecLoggerSetCallbackData(callback, userData)
+
+
+cdef custatevecStatus_t custatevecLoggerSetFile(FILE* file) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _custatevec._custatevecLoggerSetFile(file)
 
 
 cdef custatevecStatus_t custatevecLoggerOpenFile(const char* logFile) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
@@ -309,3 +328,11 @@ cdef custatevecStatus_t custatevecSetMathMode(custatevecHandle_t handle, custate
 
 cdef custatevecStatus_t custatevecGetMathMode(custatevecHandle_t handle, custatevecMathMode_t* mode) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     return _custatevec._custatevecGetMathMode(handle, mode)
+
+
+cdef custatevecStatus_t custatevecSVSwapWorkerCreateWithSemaphore(custatevecHandle_t handle, custatevecSVSwapWorkerDescriptor_t* svSwapWorker, custatevecCommunicatorDescriptor_t communicator, void* orgSubSV, int32_t orgSubSVIndex, void* orgSemaphore, cudaDataType_t svDataType, cudaStream_t stream, size_t* extraWorkspaceSizeInBytes, size_t* minTransferWorkspaceSizeInBytes) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _custatevec._custatevecSVSwapWorkerCreateWithSemaphore(handle, svSwapWorker, communicator, orgSubSV, orgSubSVIndex, orgSemaphore, svDataType, stream, extraWorkspaceSizeInBytes, minTransferWorkspaceSizeInBytes)
+
+
+cdef custatevecStatus_t custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores(custatevecHandle_t handle, custatevecSVSwapWorkerDescriptor_t svSwapWorker, void** dstSubSVsP2P, const int32_t* dstSubSVIndicesP2P, void** dstSemaphores, const uint32_t nDstSubSVsP2P) except?_CUSTATEVECSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _custatevec._custatevecSVSwapWorkerSetSubSVsP2PWithSemaphores(handle, svSwapWorker, dstSubSVsP2P, dstSubSVIndicesP2P, dstSemaphores, nDstSubSVsP2P)

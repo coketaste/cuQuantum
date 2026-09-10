@@ -372,5 +372,4 @@ def main():
     cupp.destroy(handle)
 
 
-if __name__ == "__main__":
-    main()
+main()

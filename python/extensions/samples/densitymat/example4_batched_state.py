@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 """
-Operator action example with batched operator and state.
+Operator action example with batched state.
 """
 
 import jax
@@ -12,7 +12,6 @@ import jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_default_matmul_precision", "highest")
 
-from cuquantum.bindings import cudensitymat as cudm
 from cuquantum.densitymat.jax import (
     ElementaryOperator,
     OperatorTerm,
@@ -76,10 +75,17 @@ def main():
     state_in = jnp.asarray(jax.random.uniform(key, (batch_size, *space_mode_extents, *space_mode_extents)), dtype=dtype)
     jax.debug.print("Defined input state data buffer.", ordered=True)
 
-    # Original data arrays.
-    n_data = jnp.asarray(jnp.diag(jnp.arange(space_mode_extents[0])), dtype=dtype)
-    a_data = jnp.asarray(jnp.diag(jnp.sqrt(jnp.arange(1, space_mode_extents[1])), k=1), dtype=dtype)
-    ad_data = jnp.asarray(jnp.diag(jnp.sqrt(jnp.arange(1, space_mode_extents[1])), k=-1), dtype=dtype)
+    # Original data arrays, broadcast to a leading batch dimension so every operator leaf
+    # (data and coefficients) shares the same batch size and maps at axis 0 under vmap.
+    n_data = jnp.broadcast_to(
+        jnp.asarray(jnp.diag(jnp.arange(space_mode_extents[0])), dtype=dtype),
+        (batch_size, space_mode_extents[0], space_mode_extents[0]))
+    a_data = jnp.broadcast_to(
+        jnp.asarray(jnp.diag(jnp.sqrt(jnp.arange(1, space_mode_extents[1])), k=1), dtype=dtype),
+        (batch_size, space_mode_extents[1], space_mode_extents[1]))
+    ad_data = jnp.broadcast_to(
+        jnp.asarray(jnp.diag(jnp.sqrt(jnp.arange(1, space_mode_extents[1])), k=-1), dtype=dtype),
+        (batch_size, space_mode_extents[1], space_mode_extents[1]))
     jax.debug.print("Defined elementary operator data buffers.", ordered=True)
 
     n_elem_op = ElementaryOperator(n_data)
@@ -90,25 +96,20 @@ def main():
     # Create the Hamiltonian and dissipators.
     H = OperatorTerm(space_mode_extents)
     Ls = OperatorTerm(space_mode_extents)
-    jax.debug.print("Constructed operator terms from elementary operators.", ordered=True)
 
-    H.append([n_elem_op], modes=[0], duals=[False], coeff=1.0)
-    Ls.append([ad_elem_op, a_elem_op], modes=[1, 1], duals=[False, True], coeff=1.0)
-    Ls.append([a_elem_op, ad_elem_op], modes=[1, 1], duals=[False, False], coeff=-0.5)
-    Ls.append([ad_elem_op, a_elem_op], modes=[1, 1], duals=[True, True], coeff=-0.5)
+    H.append([n_elem_op], modes=[0], duals=[False], coeff=jnp.full(batch_size, 1.0, dtype=dtype))
+    Ls.append([ad_elem_op, a_elem_op], modes=[1, 1], duals=[False, True], coeff=jnp.full(batch_size, 1.0, dtype=dtype))
+    Ls.append([a_elem_op, ad_elem_op], modes=[1, 1], duals=[False, False], coeff=jnp.full(batch_size, -0.5, dtype=dtype))
+    Ls.append([ad_elem_op, a_elem_op], modes=[1, 1], duals=[True, True], coeff=jnp.full(batch_size, -0.5, dtype=dtype))
     jax.debug.print("Constructed operator terms from elementary operators.", ordered=True)
-
-    # Batched coefficients for the Hamiltonian and dissipators.
-    coeffs = jnp.array([-1.0j, -1.0j], dtype=dtype)
-    coeffs1 = jnp.array([1.0j, 1.0j], dtype=dtype)
-    coeffs2 = jnp.array([1.0, 1.0], dtype=dtype)
 
     liouvillian = Operator(space_mode_extents)
-    liouvillian.append(H, dual=False, coeff=coeffs)
-    liouvillian.append(H, dual=True, coeff=coeffs1)
-    liouvillian.append(Ls, dual=False, coeff=coeffs2)
+    liouvillian.append(H, dual=False, coeff=jnp.full(batch_size, -1.0j, dtype=dtype))
+    liouvillian.append(H, dual=True, coeff=jnp.full(batch_size, 1.0j, dtype=dtype))
+    liouvillian.append(Ls, dual=False, coeff=jnp.full(batch_size, 1.0, dtype=dtype))
     jax.debug.print("Constructed operator from operator terms.", ordered=True)
 
+    # Every operator leaf carries a leading batch dimension, so op.in_axes maps each at axis 0.
     state_out = jax.vmap(operator_action, in_axes=(liouvillian.in_axes, 0))(liouvillian, state_in)
     jax.debug.print("Performed operator action on the input state.", ordered=True)
 

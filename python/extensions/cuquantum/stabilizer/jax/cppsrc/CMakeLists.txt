@@ -41,7 +41,6 @@ endif()
 set(pybind11_DIR ${pybind11_INCLUDE_DIR}/../share/cmake/pybind11)
 find_package(pybind11 REQUIRED)
 
-# custabilizer.h is staged into cppsrc/ by copy_header.sh before sdist build.
 # libcustabilizer.so symbols are resolved at runtime via the global symbol
 # table (populated by cuquantum.bindings.custabilizer's dlopen), so the .so
 # is not linked here.

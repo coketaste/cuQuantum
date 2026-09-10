@@ -62,7 +62,8 @@ class _ManagedOptions:
     device_id: int
     package: str
 
-    _buffers: set[Union[memory.MemoryPointer, memory._UnmanagedMemoryPointer]]
+    # Quoted: private nvmath attribute, changes across versions.
+    _buffers: set[Union[memory.MemoryPointer, "memory._UnmanagedMemoryPointer"]]
 
     _own_handle: bool = False
 
@@ -157,9 +158,6 @@ class _ManagedOptions:
         if self._own_handle:
             custab.destroy(self.handle)
         for ptr in self._buffers:
-            if isinstance(ptr, memory._UnmanagedMemoryPointer):
-                self.logger.debug(
-                    f"Freeing unmanaged memory pointer {ptr.device_ptr:x}"
-                )
-                ptr.free()
+            self.logger.debug(f"Freeing memory pointer {ptr.device_ptr:x}")
+            ptr.free()
         self._buffers.clear()

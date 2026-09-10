@@ -2,9 +2,21 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1733+g9725189ff.d20260608. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.09.0. Do not modify it directly.
 
-from libc.stdint cimport intptr_t
+
+
+# <<<< PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport (
+    int32_t,
+    int64_t,
+    intptr_t,
+    uint32_t,
+)
+
+
+# <<<< END OF PREAMBLE CONTENT >>>>
 
 from .cycustatevec cimport *
 
@@ -120,3 +132,5 @@ cpdef size_t compute_expectation_batched_get_workspace_size(intptr_t handle, int
 cpdef compute_expectation_batched(intptr_t handle, intptr_t batched_sv, int sv_data_type, uint32_t n_index_bits, uint32_t n_svs, int64_t sv_stride, intptr_t expectation_values, intptr_t matrices, int matrix_data_type, int layout, uint32_t n_matrices, basis_bits, uint32_t n_basis_bits, int compute_type, intptr_t extra_workspace, size_t extra_workspace_size_in_bytes)
 cpdef set_math_mode(intptr_t handle, int mode)
 cpdef int get_math_mode(intptr_t handle) except? -1
+cpdef tuple sv_swap_worker_create_with_semaphore(intptr_t handle, intptr_t communicator, intptr_t org_sub_sv, int32_t org_sub_sv_index, intptr_t org_semaphore, int sv_data_type, intptr_t stream)
+cpdef sv_swap_worker_set_sub_svs_p2p_with_semaphores(intptr_t handle, intptr_t sv_swap_worker, dst_sub_svs_p2p, dst_sub_sv_indices_p2p, dst_semaphores, uint32_t n_dst_sub_svs_p2p)

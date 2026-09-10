@@ -30,13 +30,19 @@ class Workspace:
     ):
         self._device_id = library_handle.device_id
         self._ptr = cupp.create_workspace_descriptor(int(library_handle))
-        self._library_handle = library_handle
-        self._logger = library_handle._logger
-        self._logger.debug(f"C API cupaulipropCreateWorkspaceDescriptor returned ptr={self._ptr}")
-        self._memory_limit = nvmath_utils.get_memory_limit_from_device_id(memory_limit, self.device_id)
-        self._allocator = allocator
-        # Register cleanup finalizer for safe resource release
-        self._finalizer = register_finalizer(self, cupp.destroy_workspace_descriptor, self._ptr, self._logger, "Workspace")
+
+        try:
+            self._library_handle = library_handle
+            self._logger = library_handle._logger
+            self._logger.debug(f"C API cupaulipropCreateWorkspaceDescriptor returned ptr={self._ptr}")
+            self._memory_limit = nvmath_utils.get_memory_limit_from_device_id(memory_limit, self.device_id)
+            self._allocator = allocator
+            # Register cleanup finalizer for safe resource release
+            self._finalizer = register_finalizer(self, cupp.destroy_workspace_descriptor, self._ptr, self._logger, "Workspace")
+        except Exception:
+            cupp.destroy_workspace_descriptor(self._ptr)
+            self._ptr = None
+            raise
 
     @property
     def device_id(self) -> int:
@@ -165,18 +171,19 @@ class Workspace:
         old_ptr = self._ptr
 
         # Use a fresh descriptor for this context.
-        self._ptr = cupp.create_workspace_descriptor(int(self._library_handle))
+        new_ptr = cupp.create_workspace_descriptor(int(self._library_handle))
+        self._ptr = new_ptr
 
-        if isinstance(stream, StreamHolder):
-            stream_holder = stream
-        else:
-            stream_holder = nvmath_utils.get_or_create_stream(self.device_id, stream, self._library_handle._package_str)
-        buf_device, buf_host = self._allocate(device_size, host_size, stream_holder)
         try:
+            if isinstance(stream, StreamHolder):
+                stream_holder = stream
+            else:
+                stream_holder = nvmath_utils.get_or_create_stream(self.device_id, stream, self._library_handle._package_str)
+            buf_device, buf_host = self._allocate(device_size, host_size, stream_holder)
             yield self, buf_device, buf_host
         finally:
             # Release and destroy the temporary workspace descriptor.
-            cupp.destroy_workspace_descriptor(self._ptr)
+            cupp.destroy_workspace_descriptor(new_ptr)
 
             # Restore previous descriptor and buffers
             self._ptr = old_ptr

@@ -5,5 +5,5 @@ __pycache__
 *.so
 *.pyc
 
-!*_jax.cpp
-!pybind.cpp
+# C++ sources for JAX extensions must be tracked despite the *.cpp rule above.
+!extensions/cuquantum/*/jax/cppsrc/*.cpp

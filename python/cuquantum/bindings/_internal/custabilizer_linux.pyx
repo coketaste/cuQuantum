@@ -2,40 +2,73 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 25.11.0 to 26.03.1, generator version 0.3.1.dev1520+g79061d461. Do not modify it directly.
+# This code was automatically generated across versions from 25.11.0 to 26.09.0. Do not modify it directly.
 
-from libc.stdint cimport intptr_t
 
-import threading
+
+# <<<< PREAMBLE CONTENT >>>>
+
+cdef extern from * nogil:
+    """
+    #if defined(_MSC_VER) && !defined(__clang__)
+        #include <intrin.h>
+        static __forceinline int atomic_int_load(int *p) {
+            int v = *(int volatile *)p; _ReadBarrier(); return v;
+        }
+        static __forceinline void atomic_int_store(int *p, int v) {
+            _WriteBarrier(); *(int volatile *)p = v;
+        }
+    #elif defined(__cplusplus)
+        /* GCC/Clang __atomic builtins work in any C++ standard without headers */
+        static inline int atomic_int_load(int *p) {
+            return __atomic_load_n(p, __ATOMIC_ACQUIRE);
+        }
+        static inline void atomic_int_store(int *p, int v) {
+            __atomic_store_n(p, v, __ATOMIC_RELEASE);
+        }
+    #else
+        #include <stdatomic.h>
+        static inline int atomic_int_load(int *p) {
+            return (int)atomic_load_explicit((atomic_int *)p, memory_order_acquire);
+        }
+        static inline void atomic_int_store(int *p, int v) {
+            atomic_store_explicit((atomic_int *)p, v, memory_order_release);
+        }
+    #endif
+
+    """
+    cdef int _cyb_atomic_int_load "atomic_int_load"(int *p) nogil
+    cdef void _cyb_atomic_int_store "atomic_int_store"(int *p, int v) nogil
+
+cdef extern from "<dlfcn.h>":
+    void* _cyb_dlsym "dlsym"(void*, const char*) nogil
+    const void * _cyb_RTLD_DEFAULT "RTLD_DEFAULT"
+
+from libc.stdint cimport (
+    int32_t,
+    int64_t,
+    intptr_t,
+    uint64_t,
+)
+
+import threading as _cyb_threading
+
+cdef int _cyb___py_custabilizer_init = 0
+cdef dict _cyb_func_ptrs = None
+cdef object _cyb_symbol_lock = _cyb_threading.Lock()
+
+# <<<< END OF PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport uintptr_t
 
 from .._utils import FunctionNotFoundError, NotSupportedError
-
-
-###############################################################################
-# Extern
-###############################################################################
-
-cdef extern from "<dlfcn.h>" nogil:
-    void* dlopen(const char*, int)
-    char* dlerror()
-    void* dlsym(void*, const char*)
-    int dlclose(void*)
-
-    enum:
-        RTLD_LAZY
-        RTLD_NOW
-        RTLD_GLOBAL
-        RTLD_LOCAL
-
-    const void* RTLD_DEFAULT 'RTLD_DEFAULT'
+from cuda.pathfinder import load_nvidia_dynamic_lib
 
 
 ###############################################################################
 # Wrapper init
 ###############################################################################
 
-cdef object __symbol_lock = threading.Lock()
-cdef bint __py_custabilizer_init = False
 
 cdef void* __custabilizerGetVersion = NULL
 cdef void* __custabilizerGetErrorString = NULL
@@ -52,139 +85,167 @@ cdef void* __custabilizerSampleProbArraySparsePrepare = NULL
 cdef void* __custabilizerSampleProbArraySparseCompute = NULL
 cdef void* __custabilizerGF2SparseDenseMatrixMultiply = NULL
 cdef void* __custabilizerGF2SparseSparseMatrixMultiply = NULL
+cdef void* __custabilizerCircuitGetAttribute = NULL
+cdef void* __custabilizerCreateLeakageFrameSimulator = NULL
+cdef void* __custabilizerDestroyLeakageFrameSimulator = NULL
+cdef void* __custabilizerLeakageFrameSimulatorApplyCircuit = NULL
 
-
-cdef void* load_library() except* nogil:
-    cdef void* handle
-    handle = dlopen("libcustabilizer.so.0", RTLD_NOW | RTLD_GLOBAL)
-    if handle == NULL:
-        with gil:
-            err_msg = dlerror()
-            raise RuntimeError(f'Failed to dlopen libcustabilizer ({err_msg.decode()})')
-    return handle
-
-
-cdef int _check_or_init_custabilizer() except -1 nogil:
-    global __py_custabilizer_init
-    if __py_custabilizer_init:
-        return 0
-
+cdef int _init_custabilizer() except -1 nogil:
+    global _cyb___py_custabilizer_init
     cdef void* handle = NULL
+    with gil, _cyb_symbol_lock:
+        if _cyb___py_custabilizer_init: return 0
 
-    with gil, __symbol_lock:
-        # Load function
         global __custabilizerGetVersion
-        __custabilizerGetVersion = dlsym(RTLD_DEFAULT, 'custabilizerGetVersion')
+        __custabilizerGetVersion = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerGetVersion')
         if __custabilizerGetVersion == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerGetVersion = dlsym(handle, 'custabilizerGetVersion')
+            __custabilizerGetVersion = _cyb_dlsym(handle, 'custabilizerGetVersion')
 
         global __custabilizerGetErrorString
-        __custabilizerGetErrorString = dlsym(RTLD_DEFAULT, 'custabilizerGetErrorString')
+        __custabilizerGetErrorString = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerGetErrorString')
         if __custabilizerGetErrorString == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerGetErrorString = dlsym(handle, 'custabilizerGetErrorString')
+            __custabilizerGetErrorString = _cyb_dlsym(handle, 'custabilizerGetErrorString')
 
         global __custabilizerCreate
-        __custabilizerCreate = dlsym(RTLD_DEFAULT, 'custabilizerCreate')
+        __custabilizerCreate = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerCreate')
         if __custabilizerCreate == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerCreate = dlsym(handle, 'custabilizerCreate')
+            __custabilizerCreate = _cyb_dlsym(handle, 'custabilizerCreate')
 
         global __custabilizerDestroy
-        __custabilizerDestroy = dlsym(RTLD_DEFAULT, 'custabilizerDestroy')
+        __custabilizerDestroy = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerDestroy')
         if __custabilizerDestroy == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerDestroy = dlsym(handle, 'custabilizerDestroy')
+            __custabilizerDestroy = _cyb_dlsym(handle, 'custabilizerDestroy')
 
         global __custabilizerCircuitSizeFromString
-        __custabilizerCircuitSizeFromString = dlsym(RTLD_DEFAULT, 'custabilizerCircuitSizeFromString')
+        __custabilizerCircuitSizeFromString = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerCircuitSizeFromString')
         if __custabilizerCircuitSizeFromString == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerCircuitSizeFromString = dlsym(handle, 'custabilizerCircuitSizeFromString')
+            __custabilizerCircuitSizeFromString = _cyb_dlsym(handle, 'custabilizerCircuitSizeFromString')
 
         global __custabilizerCreateCircuitFromString
-        __custabilizerCreateCircuitFromString = dlsym(RTLD_DEFAULT, 'custabilizerCreateCircuitFromString')
+        __custabilizerCreateCircuitFromString = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerCreateCircuitFromString')
         if __custabilizerCreateCircuitFromString == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerCreateCircuitFromString = dlsym(handle, 'custabilizerCreateCircuitFromString')
+            __custabilizerCreateCircuitFromString = _cyb_dlsym(handle, 'custabilizerCreateCircuitFromString')
 
         global __custabilizerDestroyCircuit
-        __custabilizerDestroyCircuit = dlsym(RTLD_DEFAULT, 'custabilizerDestroyCircuit')
+        __custabilizerDestroyCircuit = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerDestroyCircuit')
         if __custabilizerDestroyCircuit == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerDestroyCircuit = dlsym(handle, 'custabilizerDestroyCircuit')
+            __custabilizerDestroyCircuit = _cyb_dlsym(handle, 'custabilizerDestroyCircuit')
 
         global __custabilizerCreateFrameSimulator
-        __custabilizerCreateFrameSimulator = dlsym(RTLD_DEFAULT, 'custabilizerCreateFrameSimulator')
+        __custabilizerCreateFrameSimulator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerCreateFrameSimulator')
         if __custabilizerCreateFrameSimulator == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerCreateFrameSimulator = dlsym(handle, 'custabilizerCreateFrameSimulator')
+            __custabilizerCreateFrameSimulator = _cyb_dlsym(handle, 'custabilizerCreateFrameSimulator')
 
         global __custabilizerDestroyFrameSimulator
-        __custabilizerDestroyFrameSimulator = dlsym(RTLD_DEFAULT, 'custabilizerDestroyFrameSimulator')
+        __custabilizerDestroyFrameSimulator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerDestroyFrameSimulator')
         if __custabilizerDestroyFrameSimulator == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerDestroyFrameSimulator = dlsym(handle, 'custabilizerDestroyFrameSimulator')
+            __custabilizerDestroyFrameSimulator = _cyb_dlsym(handle, 'custabilizerDestroyFrameSimulator')
 
         global __custabilizerFrameSimulatorApplyCircuit
-        __custabilizerFrameSimulatorApplyCircuit = dlsym(RTLD_DEFAULT, 'custabilizerFrameSimulatorApplyCircuit')
+        __custabilizerFrameSimulatorApplyCircuit = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerFrameSimulatorApplyCircuit')
         if __custabilizerFrameSimulatorApplyCircuit == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerFrameSimulatorApplyCircuit = dlsym(handle, 'custabilizerFrameSimulatorApplyCircuit')
+            __custabilizerFrameSimulatorApplyCircuit = _cyb_dlsym(handle, 'custabilizerFrameSimulatorApplyCircuit')
 
         global __custabilizerSampleProbArray
-        __custabilizerSampleProbArray = dlsym(RTLD_DEFAULT, 'custabilizerSampleProbArray')
+        __custabilizerSampleProbArray = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerSampleProbArray')
         if __custabilizerSampleProbArray == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerSampleProbArray = dlsym(handle, 'custabilizerSampleProbArray')
+            __custabilizerSampleProbArray = _cyb_dlsym(handle, 'custabilizerSampleProbArray')
 
         global __custabilizerSampleProbArraySparsePrepare
-        __custabilizerSampleProbArraySparsePrepare = dlsym(RTLD_DEFAULT, 'custabilizerSampleProbArraySparsePrepare')
+        __custabilizerSampleProbArraySparsePrepare = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerSampleProbArraySparsePrepare')
         if __custabilizerSampleProbArraySparsePrepare == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerSampleProbArraySparsePrepare = dlsym(handle, 'custabilizerSampleProbArraySparsePrepare')
+            __custabilizerSampleProbArraySparsePrepare = _cyb_dlsym(handle, 'custabilizerSampleProbArraySparsePrepare')
 
         global __custabilizerSampleProbArraySparseCompute
-        __custabilizerSampleProbArraySparseCompute = dlsym(RTLD_DEFAULT, 'custabilizerSampleProbArraySparseCompute')
+        __custabilizerSampleProbArraySparseCompute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerSampleProbArraySparseCompute')
         if __custabilizerSampleProbArraySparseCompute == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerSampleProbArraySparseCompute = dlsym(handle, 'custabilizerSampleProbArraySparseCompute')
+            __custabilizerSampleProbArraySparseCompute = _cyb_dlsym(handle, 'custabilizerSampleProbArraySparseCompute')
 
         global __custabilizerGF2SparseDenseMatrixMultiply
-        __custabilizerGF2SparseDenseMatrixMultiply = dlsym(RTLD_DEFAULT, 'custabilizerGF2SparseDenseMatrixMultiply')
+        __custabilizerGF2SparseDenseMatrixMultiply = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerGF2SparseDenseMatrixMultiply')
         if __custabilizerGF2SparseDenseMatrixMultiply == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerGF2SparseDenseMatrixMultiply = dlsym(handle, 'custabilizerGF2SparseDenseMatrixMultiply')
+            __custabilizerGF2SparseDenseMatrixMultiply = _cyb_dlsym(handle, 'custabilizerGF2SparseDenseMatrixMultiply')
 
         global __custabilizerGF2SparseSparseMatrixMultiply
-        __custabilizerGF2SparseSparseMatrixMultiply = dlsym(RTLD_DEFAULT, 'custabilizerGF2SparseSparseMatrixMultiply')
+        __custabilizerGF2SparseSparseMatrixMultiply = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerGF2SparseSparseMatrixMultiply')
         if __custabilizerGF2SparseSparseMatrixMultiply == NULL:
             if handle == NULL:
                 handle = load_library()
-            __custabilizerGF2SparseSparseMatrixMultiply = dlsym(handle, 'custabilizerGF2SparseSparseMatrixMultiply')
-        __py_custabilizer_init = True
+            __custabilizerGF2SparseSparseMatrixMultiply = _cyb_dlsym(handle, 'custabilizerGF2SparseSparseMatrixMultiply')
+
+        global __custabilizerCircuitGetAttribute
+        __custabilizerCircuitGetAttribute = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerCircuitGetAttribute')
+        if __custabilizerCircuitGetAttribute == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __custabilizerCircuitGetAttribute = _cyb_dlsym(handle, 'custabilizerCircuitGetAttribute')
+
+        global __custabilizerCreateLeakageFrameSimulator
+        __custabilizerCreateLeakageFrameSimulator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerCreateLeakageFrameSimulator')
+        if __custabilizerCreateLeakageFrameSimulator == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __custabilizerCreateLeakageFrameSimulator = _cyb_dlsym(handle, 'custabilizerCreateLeakageFrameSimulator')
+
+        global __custabilizerDestroyLeakageFrameSimulator
+        __custabilizerDestroyLeakageFrameSimulator = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerDestroyLeakageFrameSimulator')
+        if __custabilizerDestroyLeakageFrameSimulator == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __custabilizerDestroyLeakageFrameSimulator = _cyb_dlsym(handle, 'custabilizerDestroyLeakageFrameSimulator')
+
+        global __custabilizerLeakageFrameSimulatorApplyCircuit
+        __custabilizerLeakageFrameSimulatorApplyCircuit = _cyb_dlsym(_cyb_RTLD_DEFAULT, 'custabilizerLeakageFrameSimulatorApplyCircuit')
+        if __custabilizerLeakageFrameSimulatorApplyCircuit == NULL:
+            if handle == NULL:
+                handle = load_library()
+            __custabilizerLeakageFrameSimulatorApplyCircuit = _cyb_dlsym(handle, 'custabilizerLeakageFrameSimulatorApplyCircuit')
+
+        _cyb_atomic_int_store(<int *>&_cyb___py_custabilizer_init, 1)
         return 0
+
+cdef inline int _check_or_init_custabilizer() except -1 nogil:
+    if _cyb_atomic_int_load(<int *>&_cyb___py_custabilizer_init):
+        return 0
+
+    return _init_custabilizer()
 
 
 cpdef dict _inspect_function_pointers():
+    global _cyb_func_ptrs
+    if _cyb_func_ptrs is not None:
+        return _cyb_func_ptrs
+
     _check_or_init_custabilizer()
     cdef dict data = {}
-
     global __custabilizerGetVersion
     data["__custabilizerGetVersion"] = <intptr_t>__custabilizerGetVersion
 
@@ -230,7 +291,33 @@ cpdef dict _inspect_function_pointers():
     global __custabilizerGF2SparseSparseMatrixMultiply
     data["__custabilizerGF2SparseSparseMatrixMultiply"] = <intptr_t>__custabilizerGF2SparseSparseMatrixMultiply
 
+    global __custabilizerCircuitGetAttribute
+    data["__custabilizerCircuitGetAttribute"] = <intptr_t>__custabilizerCircuitGetAttribute
+
+    global __custabilizerCreateLeakageFrameSimulator
+    data["__custabilizerCreateLeakageFrameSimulator"] = <intptr_t>__custabilizerCreateLeakageFrameSimulator
+
+    global __custabilizerDestroyLeakageFrameSimulator
+    data["__custabilizerDestroyLeakageFrameSimulator"] = <intptr_t>__custabilizerDestroyLeakageFrameSimulator
+
+    global __custabilizerLeakageFrameSimulatorApplyCircuit
+    data["__custabilizerLeakageFrameSimulatorApplyCircuit"] = <intptr_t>__custabilizerLeakageFrameSimulatorApplyCircuit
+    _cyb_func_ptrs = data
     return data
+
+
+cpdef _inspect_function_pointer(str name):
+    global _cyb_func_ptrs
+    if _cyb_func_ptrs is None:
+        _cyb_func_ptrs = _inspect_function_pointers()
+    return _cyb_func_ptrs[name]
+
+
+
+
+cdef void* load_library() except* with gil:
+    cdef uintptr_t handle = load_nvidia_dynamic_lib("custabilizer")._handle_uint
+    return <void*>handle
 
 
 ###############################################################################
@@ -385,3 +472,43 @@ cdef custabilizerStatus_t _custabilizerGF2SparseSparseMatrixMultiply(custabilize
             raise FunctionNotFoundError("function custabilizerGF2SparseSparseMatrixMultiply is not found")
     return (<custabilizerStatus_t (*)(custabilizerHandle_t, uint64_t, uint64_t, uint64_t, const uint64_t*, const uint64_t*, uint64_t, const uint64_t*, const uint64_t*, int32_t, custabilizerBitInt_t*, cudaStream_t) noexcept nogil>__custabilizerGF2SparseSparseMatrixMultiply)(
         handle, m, n, k, aColumnIndices, aRowOffsets, bNNZ, bColumnIndices, bRowOffsets, beta, C, stream)
+
+
+cdef custabilizerStatus_t _custabilizerCircuitGetAttribute(const custabilizerHandle_t handle, const custabilizerCircuit_t circuit, custabilizerCircuitAttributes_t attribute, void* buffer, size_t sizeInBytes) except?_CUSTABILIZERSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __custabilizerCircuitGetAttribute
+    _check_or_init_custabilizer()
+    if __custabilizerCircuitGetAttribute == NULL:
+        with gil:
+            raise FunctionNotFoundError("function custabilizerCircuitGetAttribute is not found")
+    return (<custabilizerStatus_t (*)(const custabilizerHandle_t, const custabilizerCircuit_t, custabilizerCircuitAttributes_t, void*, size_t) noexcept nogil>__custabilizerCircuitGetAttribute)(
+        handle, circuit, attribute, buffer, sizeInBytes)
+
+
+cdef custabilizerStatus_t _custabilizerCreateLeakageFrameSimulator(const custabilizerHandle_t handle, int64_t numQubits, int64_t numShots, int64_t numMeasurements, int64_t tableStrideMajor, custabilizerLeakageFrameSimulator_t* leakageFrameSimulator) except?_CUSTABILIZERSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __custabilizerCreateLeakageFrameSimulator
+    _check_or_init_custabilizer()
+    if __custabilizerCreateLeakageFrameSimulator == NULL:
+        with gil:
+            raise FunctionNotFoundError("function custabilizerCreateLeakageFrameSimulator is not found")
+    return (<custabilizerStatus_t (*)(const custabilizerHandle_t, int64_t, int64_t, int64_t, int64_t, custabilizerLeakageFrameSimulator_t*) noexcept nogil>__custabilizerCreateLeakageFrameSimulator)(
+        handle, numQubits, numShots, numMeasurements, tableStrideMajor, leakageFrameSimulator)
+
+
+cdef custabilizerStatus_t _custabilizerDestroyLeakageFrameSimulator(custabilizerLeakageFrameSimulator_t leakageFrameSimulator) except?_CUSTABILIZERSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __custabilizerDestroyLeakageFrameSimulator
+    _check_or_init_custabilizer()
+    if __custabilizerDestroyLeakageFrameSimulator == NULL:
+        with gil:
+            raise FunctionNotFoundError("function custabilizerDestroyLeakageFrameSimulator is not found")
+    return (<custabilizerStatus_t (*)(custabilizerLeakageFrameSimulator_t) noexcept nogil>__custabilizerDestroyLeakageFrameSimulator)(
+        leakageFrameSimulator)
+
+
+cdef custabilizerStatus_t _custabilizerLeakageFrameSimulatorApplyCircuit(const custabilizerHandle_t handle, custabilizerLeakageFrameSimulator_t leakageFrameSimulator, const custabilizerCircuit_t circuit, int randomizeFrameAfterMeasurement, uint64_t seed, custabilizerBitInt_t* xTableDevice, custabilizerBitInt_t* zTableDevice, custabilizerBitInt_t* lTableDevice, custabilizerBitInt_t* mTableDevice, cudaStream_t stream) except?_CUSTABILIZERSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    global __custabilizerLeakageFrameSimulatorApplyCircuit
+    _check_or_init_custabilizer()
+    if __custabilizerLeakageFrameSimulatorApplyCircuit == NULL:
+        with gil:
+            raise FunctionNotFoundError("function custabilizerLeakageFrameSimulatorApplyCircuit is not found")
+    return (<custabilizerStatus_t (*)(const custabilizerHandle_t, custabilizerLeakageFrameSimulator_t, const custabilizerCircuit_t, int, uint64_t, custabilizerBitInt_t*, custabilizerBitInt_t*, custabilizerBitInt_t*, custabilizerBitInt_t*, cudaStream_t) noexcept nogil>__custabilizerLeakageFrameSimulatorApplyCircuit)(
+        handle, leakageFrameSimulator, circuit, randomizeFrameAfterMeasurement, seed, xTableDevice, zTableDevice, lTableDevice, mTableDevice, stream)

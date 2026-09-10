@@ -8,8 +8,6 @@ from collections.abc import Sequence
 
 import jax
 
-from cuquantum.lib.cudensitymat_jax import InputType
-
 from .pysrc.context import CudensitymatContext
 from .pysrc.operator import Operator
 from .pysrc.operator_action_prim import (
@@ -24,12 +22,31 @@ from .utils import (
     check_and_return_final_batch_size,
     check_and_return_device,
     get_original_shape,
-    get_vmap_depth,
-    is_grad_inside_vmap,
+    is_vmap_traced,
 )
 
 
 logger = logging.getLogger("cudensitymat-jax.operator_action")
+
+
+_ffi_registered = False
+_InputType = None
+
+
+def _register_ffi_targets():
+    global _ffi_registered, _InputType
+    if _ffi_registered:
+        return
+
+    from cuquantum.bindings._internal import cudensitymat as _cudm
+    _cudm._inspect_function_pointers()  # for loading libcudensitymat.so
+
+    from cuquantum.lib import cudensitymat_jax
+    _InputType = cudensitymat_jax.InputType
+
+    for _name, _value in cudensitymat_jax.registrations().items():
+        jax.ffi.register_ffi_target(_name, _value, platform="CUDA")
+    _ffi_registered = True
 
 
 def operator_action(op: Operator,
@@ -49,19 +66,16 @@ def operator_action(op: Operator,
     """
     logger.info("Calling operator_action")
 
+    _register_ffi_targets()
+
+    if not jax.config.jax_enable_x64:
+        raise RuntimeError("jax_enable_x64 must be set to True to use cuQuantum Python JAX")
+
     # Process input arguments.
     if isinstance(state_in_bufs, jax.Array):
         state_in_bufs = (state_in_bufs,)
     else:
         state_in_bufs = tuple(state_in_bufs)
-
-    # Guard against nested vmap transformations, which are not supported.
-    if get_vmap_depth(state_in_bufs[0]) > 1:
-        raise NotImplementedError("operator_action does not support nested vmap transformations.")
-
-    # Guard against grad applied inside vmap, which is not supported.
-    if is_grad_inside_vmap(state_in_bufs[0]):
-        raise NotImplementedError("operator_action does not support grad transformations inside vmap.")
 
     # Check and set device from op and state.
     device = check_and_return_device(op, state_in_bufs)
@@ -74,12 +88,23 @@ def operator_action(op: Operator,
         device = devices[0]
         logger.info("No device specified, using the first GPU device.")
 
-    # Check state shape and maybe expand to a leading batch dimension.
-    state_batch_size, purity = get_state_batch_size_and_purity(state_in_bufs, len(op.dims))
-    batch_size = check_and_return_final_batch_size(state_in_bufs, state_batch_size, op.batch_size)
+    if op._ptr is None:
+        op._simplify()
+    op._update_metadata()  # update batch sizes
 
-    state_in_bufs, did_expand = maybe_expand_dim(state_in_bufs, len(op.dims))
-    state_shape = get_original_shape(state_in_bufs[0])
+    # Check state shape and maybe expand to a leading batch dimension.
+    state_batch_size, purity, has_explicit_batch = get_state_batch_size_and_purity(
+        state_in_bufs, op.dims)
+    batch_size = check_and_return_final_batch_size(state_batch_size, op._batch_size)
+
+    state_in_bufs, did_expand = maybe_expand_dim(state_in_bufs, has_explicit_batch)
+    # For nested vmap, get_original_shape would return a multi-dim batch prefix
+    # (outer_B, inner_B, *physical), which breaks maybe_create_state_context's
+    # single-leading-batch assumption. Fuse all batch levels into one leading dim.
+    if is_vmap_traced(state_in_bufs[0]):
+        state_shape = (batch_size, *state_in_bufs[0].shape)
+    else:
+        state_shape = tuple(state_in_bufs[0].shape)  # already has batch from maybe_expand_dim
 
     # Prepare library context for forward operator action.
     # NOTE: Assuming a single state component.
@@ -117,19 +142,19 @@ def operator_action(op: Operator,
         is_op_term_coeff_batched = op._op_term_batch_sizes[i] != 1
         if is_op_term_coeff_batched:
             dynamic_ptr = op_term_total_coeffs_ptr
-            dynamic_type = InputType.OPERATOR_TERM_BATCHED_COEFFS.value
+            dynamic_type = _InputType.OPERATOR_TERM_BATCHED_COEFFS.value
             if dynamic_ptr == 0:
                 raise RuntimeError("Missing total coefficient pointer for batched operator term coefficient.")
         else:
             dynamic_ptr = op_term_coeff_ptr
-            dynamic_type = InputType.NON_BATCHED_COEFFS.value
+            dynamic_type = _InputType.NON_BATCHED_COEFFS.value
 
         if dynamic_ptr not in op_term_coeff_metadata.ptrs:
             op_term_coeff_metadata.indices.append(i)
             op_term_coeff_metadata.types.append(dynamic_type)
             op_term_coeff_metadata.ptrs.append(dynamic_ptr)
 
-        if op_term_coeff_grad_ptr != 0:
+        if op_term_coeff_grad_ptr != 0 and op_term_coeff_grad_ptr not in op_term_coeff_grad_metadata.ptrs:
             op_term_coeff_grad_metadata.indices.append(i)
             op_term_coeff_grad_metadata.ptrs.append(op_term_coeff_grad_ptr)
             # The gradient buffer is always sized (batch_size,) regardless of whether the
@@ -155,19 +180,19 @@ def operator_action(op: Operator,
             is_op_prod_coeff_batched = op_term._op_prod_batch_sizes[j] != 1
             if is_op_prod_coeff_batched:
                 dynamic_ptr = op_prod_total_coeffs_ptr
-                dynamic_type = InputType.OPERATOR_PRODUCT_BATCHED_COEFFS.value
+                dynamic_type = _InputType.OPERATOR_PRODUCT_BATCHED_COEFFS.value
                 if dynamic_ptr == 0:
                     raise RuntimeError("Missing total coefficient pointer for batched operator product coefficient.")
             else:
                 dynamic_ptr = op_prod_coeff_ptr
-                dynamic_type = InputType.NON_BATCHED_COEFFS.value
+                dynamic_type = _InputType.NON_BATCHED_COEFFS.value
 
             if dynamic_ptr not in op_prod_coeff_metadata.ptrs:
                 op_prod_coeff_metadata.indices.append((i, j))
                 op_prod_coeff_metadata.types.append(dynamic_type)
                 op_prod_coeff_metadata.ptrs.append(dynamic_ptr)
 
-            if op_prod_coeff_grad_ptr != 0:
+            if op_prod_coeff_grad_ptr != 0 and op_prod_coeff_grad_ptr not in op_prod_coeff_grad_metadata.ptrs:
                 op_prod_coeff_grad_metadata.indices.append((i, j))
                 op_prod_coeff_grad_metadata.ptrs.append(op_prod_coeff_grad_ptr)
                 # The gradient buffer is always sized (batch_size,) regardless of whether the
@@ -182,8 +207,8 @@ def operator_action(op: Operator,
                 if base_op._ptr is not None and base_op._ptr not in base_op_metadata.ptrs:
                     base_op_metadata.indices.append((i, j, k))
                     base_op_metadata.types.append(
-                        InputType.ELEMENTARY_OPERATOR.value if base_op._is_elementary
-                        else InputType.MATRIX_OPERATOR.value
+                        _InputType.ELEMENTARY_OPERATOR.value if base_op._is_elementary
+                        else _InputType.MATRIX_OPERATOR.value
                     )
                     base_op_metadata.ptrs.append(base_op._ptr)
 
@@ -191,12 +216,18 @@ def operator_action(op: Operator,
                     base_op_grad_metadata.indices.append((i, j, k))
                     base_op_grad_metadata.ptrs.append(base_op._grad_ptr)
                     data_shape = get_original_shape(base_op.data)
-                    if base_op.batch_size == 1:
-                        # Non-batched base op: cudensitymat writes batch_size gradient tensors
+                    if is_vmap_traced(base_op.data) or base_op._batch_size > 1:
+                        # data_shape already includes the batch dim: either fused in by
+                        # get_original_shape for a vmap trace (at any extent, including a
+                        # size-1 vmap axis), or baked into the concrete array's own shape
+                        # for materialized (non-vmap) batching, where _batch_size > 1 is a
+                        # rank-verified presence signal (elementary_operator.py's
+                        # `ndim % 2 == 1` check), not an extent guess.
+                        grad_shape = data_shape
+                    else:
+                        # Genuinely unbatched: cudensitymat writes batch_size gradient tensors
                         # with batch as the last dimension, so buffer has (batch_size, *data_shape).
                         grad_shape = (batch_size, *data_shape)
-                    else:
-                        grad_shape = data_shape  # already includes batch dim
                     shape_dtype = jax.ShapeDtypeStruct(grad_shape, base_op.data.dtype)
                     base_op_grad_metadata.shape_dtypes.append(shape_dtype)
 
@@ -228,7 +259,7 @@ def operator_action(op: Operator,
     )
 
     # Undo the leading batch dim when it was added by maybe_expand_dim (single-state, non-vmap).
-    state_out_bufs = maybe_squeeze_dim(state_out_bufs, len(op.dims), did_expand)
+    state_out_bufs = maybe_squeeze_dim(state_out_bufs, did_expand)
 
     # Process output argument.
     if len(state_out_bufs) == 1:

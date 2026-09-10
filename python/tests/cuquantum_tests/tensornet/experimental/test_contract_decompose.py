@@ -193,6 +193,36 @@ def test_memory_limit():
     operands = factory.generate_operands(factory.input_shapes, "numpy", "float64", "C")
     with pytest.raises(MemoryLimitExceeded):
         contract_decompose(decompose_expr, *operands, options={'memory_limit': 1})
+
+
+def test_output_only_mode_raises_value_error():
+    """A mode appearing only in the outputs must be the shared mid extent mode.
+
+    Otherwise no extent can be inferred for it, which used to surface as a KeyError
+    while computing the mid extent.
+    """
+    decompose_expr = 'ab,bc->axd,xc'
+    operands = [np.zeros((2, 3)), np.zeros((3, 4))]
+    with pytest.raises(ValueError, match="contracted outcome"):
+        parse_decomposition(decompose_expr, *operands)
+    with pytest.raises(ValueError, match="contracted outcome"):
+        contract_decompose(decompose_expr, *operands)
+
+
+@pytest.mark.parametrize(
+    "decompose_expr", ['ab,bc->aax,xc', 'ab,bc->axx,xc']
+)
+def test_repeated_output_mode_raises_value_error(decompose_expr):
+    """The modes of each output tensor must be distinct.
+
+    The contracted outcome of the outputs is compared against the inputs as sets, so
+    repeated output modes have to be checked separately.
+    """
+    operands = [np.zeros((2, 3)), np.zeros((3, 4))]
+    with pytest.raises(ValueError):
+        parse_decomposition(decompose_expr, *operands)
+    with pytest.raises(ValueError):
+        contract_decompose(decompose_expr, *operands)
     
 
 class TestContractDecomposeAlgorithm(_OptionsBase):

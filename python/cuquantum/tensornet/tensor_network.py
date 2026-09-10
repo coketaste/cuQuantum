@@ -594,7 +594,6 @@ class Network:
                 raise TypeError(message) from e
         self.workspace_stream = stream_holder.obj
         # Allocate host workspace.
-        # TODO: ideally we should use a memory manager, as we did for device memory, but...
         host_size = getattr(self, f"workspace_h_{kind}_size")
         setattr(self, f"workspace_h_{kind}_ptr", np.empty(host_size, dtype=np.int8))
         self.logger.debug("Finished allocating "
@@ -608,7 +607,6 @@ class Network:
                                   cutn.WorkspaceKind.SCRATCH if kind == "scratch" else cutn.WorkspaceKind.CACHE,
                                   device_ptr, device_size)
         # Set host workspace.
-        # TODO: ideally we should be manipulating a MemoryPointer object here, but ...
         host_ptr = getattr(self, f"workspace_h_{kind}_ptr").ctypes.data
         cutn.workspace_set_memory(self.handle, self.workspace_desc, cutn.Memspace.HOST,
                                   cutn.WorkspaceKind.SCRATCH if kind == "scratch" else cutn.WorkspaceKind.CACHE,
@@ -1072,7 +1070,6 @@ class Network:
                 # In-place copy to existing device pointers because the new operands are on the CPU.
                 tensor_wrapper.copy_(operands, self.operands, stream_holder)
         else:
-            #  TODO: Remove the requirement for new strides to match the previous ones; this restriction has been lifted with the new APIs.
             check_attributes_match(self.strides_in, [o.strides for o in operands], 'strides')
             if self.device_id != device_id:
                 raise ValueError(f"The new operands must be on the same device ({device_id}) as the original operands "
@@ -1266,7 +1263,9 @@ class Network:
         self.logger.info(f"{self.call_prologue}")
 
         
-        # Allocate input gradient tensors, as needed
+        # Allocate input gradient tensors, as needed. The buffers are left uninitialized: with
+        # accumulate_output=False the library overwrites every gradient it computes, and zeroes
+        # itself the ones it only writes partially (operands with repeated mode labels).
         if self.input_package == "numpy":
             input_grads = [
                 tensor_wrapper._TENSOR_TYPES["numpy"].empty(
@@ -1274,9 +1273,6 @@ class Network:
                 if req_grad else None
                 for ext, strides, req_grad in zip(self.extents_in, self.strides_in, self.qualifiers_in['requires_gradient'])
             ]
-            for o in input_grads:
-                if o is not None:
-                    o.tensor[:] = 0.0
             self.input_grads = [o.to(self.device_id, stream_holder) if o is not None else None for o in input_grads]
         else:
             self.input_grads = [
@@ -1285,10 +1281,6 @@ class Network:
                 if req_grad else None
                 for ext, strides, req_grad in zip(self.extents_in, self.strides_in, self.qualifiers_in['requires_gradient'])
             ]
-            with nvmath_utils.cuda_call_ctx(stream_holder, False, False):
-                for input_grad in self.input_grads:
-                    if input_grad is not None:
-                        input_grad.tensor[:]= 0.0
         self.input_grads_data = get_operands_data(self.input_grads)
         self.input_grads_strides = get_operands_strides(self.input_grads)
         # Set input gradient tensor memory for tensors that require gradients
@@ -1407,8 +1399,13 @@ def contract(*operands, qualifiers=None, options=None, optimize=None, stream=Non
 
     Returns:
         If ``return_info`` is `False`, the output tensor (ndarray-like object) of the same type and on the same device
-        as the operands containing the result of the contraction; otherwise, a 2-tuple consisting of the output tensor and an
-        :class:`OptimizerInfo` object that contains information about the best contraction order etc.
+        as the operands containing the result of the contraction; otherwise, a 2-tuple ``(output, path_info)`` where
+        ``path_info`` is itself a 2-tuple ``(path, opt_info)``:
+
+            - ``path`` : A sequence of pairs of operand ordinals representing the best contraction order in the
+              :func:`numpy.einsum_path` format.
+            - ``opt_info`` : An :class:`OptimizerInfo` object that contains information about the best contraction
+              order etc.
 
     .. note::
         It is encouraged for users to maintain the library handle themselves so as to reduce the context initialization time:
@@ -1445,7 +1442,7 @@ def contract(*operands, qualifiers=None, options=None, optimize=None, stream=Non
 
         Interleaved format using characters for mode labels:
 
-        >>> r = contract(a, ['i', 'j'], b, ['j', 'k'], ['i', 'k'], return_info=True)
+        >>> r = contract(a, ['i', 'j'], b, ['j', 'k'], ['i', 'k'])
 
         Interleaved format using string labels for mode labels and implicit form:
 
@@ -1455,9 +1452,9 @@ def contract(*operands, qualifiers=None, options=None, optimize=None, stream=Non
 
         >>> r = contract(a, [1, 2], b, [2, 3], [1, 3])
 
-        Obtain information ``i`` on the best contraction path along with the result ``r``:
+        Obtain the contraction path and an :class:`OptimizerInfo` object along with the result ``r``:
 
-        >>> r, i = contract('ij,jk', a, b, return_info=True)
+        >>> r, (path, info) = contract('ij,jk', a, b, return_info=True)
 
         Provide options for the tensor network:
 

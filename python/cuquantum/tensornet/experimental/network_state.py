@@ -25,6 +25,7 @@ from ._internal.network_state_utils import (
     get_mps_key,
     host_scalar_to_holder,
     unwrap_output_tensor,
+    resolve_unitary_kwarg,
     state_operands_wrapper,
     state_result_wrapper,
     state_labels_wrapper,
@@ -36,6 +37,7 @@ from .._internal.circuit_converter_utils import EMPTY_DICT, split_mixed_fixed, s
 from .._internal.decomposition_utils import update_tensor_extents_strides
 from nvmath.internal.tensor_wrapper import infer_tensor_package
 import importlib
+import math
 
 
 class NetworkState:
@@ -188,6 +190,13 @@ class NetworkState:
         
         self.operands = {}
         self._gradient_tensor_ids = {}  # tensor_id -> operand (gradient uses operand.shape, operand.strides)
+        # tensor_id -> last-recorded unitary flag for plain and controlled tensor
+        # operators; a flag change on update is a structural modification (plans
+        # must be rebuilt)
+        self._operator_unitarity = {}
+        # ids of diagonal tensor operators (their operands hold only the diagonal entries,
+        # so numeric unitarity classification uses the diagonal check)
+        self._operator_diagonal = set()
         self.owned_network_operators = {}
         self.non_owned_network_operators = {}
 
@@ -553,6 +562,79 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
                     entry.qubits, operand, diagonal=entry.is_diagonal, unitary=True, stream=stream)
         return simulator
 
+    @staticmethod
+    def _operand_is_unitary(tensor, *, diagonal=False):
+        """Numerically classify a native tensor operand as unitary or not.
+
+        ``tensor`` is a native numpy/cupy/torch tensor as passed by the user;
+        the check runs wherever the tensor resides via the array interface
+        those packages share, with no per-backend branching.
+        A non-diagonal operand is reshaped to a square
+        matrix over the first/second halves of its modes; since unitarity is
+        invariant to permutations within each half and to swapping the two halves
+        (transposition), a plain reshape to (D, D) is valid regardless of the
+        bra/ket mode ordering. Diagonal operands hold only the diagonal entries,
+        which are unitary exactly when all magnitudes equal one.
+
+        The tolerance is intentionally tight (64 * eps(dtype) * sqrt(D)): a
+        unitary operand misclassified as non-unitary only costs performance
+        (e.g. an unnecessary gauge refresh in simple-update MPS), while the
+        reverse misclassification would silently produce wrong results.
+        """
+        if hasattr(tensor, 'detach'):
+            # keep torch autograd out of the classification; no-op for other backends
+            tensor = tensor.detach()
+        num_elements = math.prod(tensor.shape) if len(tensor.shape) else 1
+        # normalized dtype name across backends ('complex128', 'torch.complex128', ...)
+        dtype_name = str(tensor.dtype).split('.')[-1]
+        eps = float(np.finfo(np.dtype(dtype_name)).eps)
+        if diagonal:
+            # per-entry magnitude test with no accumulation: the native-precision
+            # measurement error (~eps) is well inside the 64*eps threshold
+            atol = 64.0 * eps * math.sqrt(num_elements)
+            return float(abs(abs(tensor) - 1).max()) <= atol
+        dim = math.isqrt(num_elements)
+        if dim * dim != num_elements:
+            return False
+        atol = 64.0 * eps * math.sqrt(dim)
+        if dtype_name in ('complex64', 'float32'):
+            # Evaluate the Gram residual in double precision so it measures the data's
+            # deviation from unitarity rather than fp32 accumulation noise; the
+            # tolerance stays keyed to the original dtype's eps.
+            if hasattr(tensor, 'astype'):  # numpy/cupy
+                tensor = tensor.astype('complex128')
+            else:  # torch
+                import torch
+                tensor = tensor.to(torch.complex128)
+        matrix = tensor.reshape(dim, dim)
+        gram = matrix @ matrix.conj().T
+        # subtract the identity in place (gram is a fresh tensor)
+        gram[list(range(dim)), list(range(dim))] -= 1
+        return float(abs(gram).max()) <= atol
+
+    def _resolve_apply_unitarity(self, operand, args, kwargs):
+        """unitary=None policy for apply_tensor_operator: classify the native
+        operand. With control modes the operand is the target block, whose
+        unitarity is the whole operator's."""
+        control_modes = kwargs.get('control_modes')
+        # len() rather than truthiness (ambiguous for array-like sequences); an
+        # empty control set denotes a plain (non-controlled) operator, and a
+        # controlled operand is never a diagonal-entries tensor
+        is_controlled = control_modes is not None and len(control_modes) > 0
+        diagonal = (not is_controlled) and bool(kwargs.get('diagonal', False))
+        unitary = self._operand_is_unitary(operand, diagonal=diagonal)
+        self.logger.debug(f"The operand has been numerically classified as {'unitary' if unitary else 'non-unitary'}.")
+        return unitary
+
+    def _resolve_update_unitarity(self, operand, args, kwargs):
+        """unitary=None policy for update_tensor_operator: classify the new
+        native operand, with diagonal-ness looked up from the recorded
+        operator."""
+        tensor_id = args[1]
+        unitary = self._operand_is_unitary(operand, diagonal=(tensor_id in self._operator_diagonal))
+        self.logger.debug(f"The updated operand has been numerically classified as {'unitary' if unitary else 'non-unitary'}.")
+        return unitary
+
     def _mark_updated(self, structural=True):
         """
         When the state is changed, either by applying new operators or updating operands, state_computed and norm must be reset. The cached task objects also should be freed. 
@@ -613,12 +695,13 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
         return
     
     
+    @resolve_unitary_kwarg(operand_arg_index=2, resolver_name='_resolve_apply_unitarity')
     @state_labels_wrapper(marker_index=1, marker_type='seq')
     @state_labels_wrapper(key='control_modes', marker_type='seq')
     # operand indices (b, a, B, A) required for modes a, b
     @state_operands_wrapper(operands_arg_index=2, is_single_operand=True, transpose=True)
     @nvmath_utils.precondition(_check_valid_network)
-    def apply_tensor_operator(self, modes, operand, *, control_modes=None, control_values=None, immutable=False, adjoint=False, unitary=False, diagonal=False, gradient=None, stream=None):
+    def apply_tensor_operator(self, modes, operand, *, control_modes=None, control_values=None, immutable=False, adjoint=False, unitary=None, diagonal=False, gradient=None, stream=None):
         """
         Apply a tensor operator to the network state.
 
@@ -634,7 +717,14 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
                 If ``control_modes`` are specified and ``control_values`` are not provided, control values for all control modes will be set as 1.
             immutable : Whether the operator is immutable (default `False`).
             adjoint : Whether the operator should be applied in its adjoint form (default `False`).
-            unitary : Whether the operator is unitary (default `False`).
+            unitary : Whether the operator is unitary. With ``None`` (default), unitarity is determined
+                numerically from the operand at this call (and again at update time when
+                :meth:`NetworkState.update_tensor_operator` is called with ``unitary=None``) and the
+                determined value is used. Pass an explicit ``True``/``False`` to skip the check;
+                the explicit value is taken as the caller's assertion. With ``control_modes``,
+                the operand is the target block and the controlled operator is unitary exactly
+                when its target block is; classification and update semantics are the same as
+                for a plain operator.
             diagonal : Whether the operator is diagonal (default `False`).
             gradient : Whether to register this operator for expectation gradients.
                 If ``None`` (default), for PyTorch operands the choice follows ``operand.tensor.requires_grad``;
@@ -651,6 +741,14 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
         Notes:
             - For MPS simulation, the size of ``modes`` shall be restricted to no larger than 2 (two-body operator).
         """
+        # An empty control set denotes a plain (non-controlled) operator.
+        if control_modes is not None and len(control_modes) == 0:
+            if control_values is not None and len(control_values) > 0:
+                raise ValueError(
+                    f"control values ({control_values}) were provided without any control modes; "
+                    "pass matching control_modes or omit control_values")
+            control_modes = None
+            control_values = None
         if isinstance(self.config, MPSConfig) and len(operand.shape) > 4:
             raise ValueError(f"MPS simulation only supports one-body and two-body operators, found operator dimension ({len(operand.shape)})")
         if gradient is None:
@@ -665,6 +763,8 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
             raise ValueError(
                 "Gradient registration is only supported for non-controlled, non-diagonal apply_tensor_operator."
             )
+        # unitary=None has been resolved to a concrete bool by resolve_unitary_kwarg
+        # on the raw native operand, before any operand wrapping or device transfer
         if control_modes is None:
             if diagonal:
                 tensor_id = cutn.state_apply_diagonal_tensor_operator(self.handle, self.state, len(modes), 
@@ -694,6 +794,12 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
         
         # keep operand alive otherwise cupy will re-use the memory space
         self.operands[tensor_id] = operand, immutable
+        # remember the unitarity so update_tensor_operator can detect flag changes,
+        # and whether the operand is diagonal so a later numeric classification
+        # at update time applies the matching check
+        self._operator_unitarity[tensor_id] = bool(unitary)
+        if control_modes is None and diagonal:
+            self._operator_diagonal.add(tensor_id)
         # reset norm / state vector
         self._mark_updated()
         return tensor_id
@@ -802,18 +908,28 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
         self.contains_stochastic_channels = True
         return channel_id
     
+    @resolve_unitary_kwarg(operand_arg_index=2, resolver_name='_resolve_update_unitarity')
     # operand indices (b, a, B, A) required for modes a, b
     @state_operands_wrapper(operands_arg_index=2, is_single_operand=True, transpose=True)
     @nvmath_utils.precondition(_check_valid_network)
-    def update_tensor_operator(self, tensor_id, operand, *, unitary=False, stream=None):
+    def update_tensor_operator(self, tensor_id, operand, *, unitary=None, stream=None):
         """
         Update a tensor operator in the state.
 
         Args:
             tensor_id : An integer specifing the tensor id assigned in :meth:`NetworkState.apply_tensor_operator`.
-            operand : A ndarray-like object for the tensor operator. 
-                The operand is expected to follow the same mode ordering, data type and strides as the original operand. 
-            unitary : Whether the operator is unitary (default `False`).
+            operand : A ndarray-like object for the tensor operator.
+                The operand is expected to follow the same mode ordering, data type and strides as the original operand.
+            unitary : Whether the operator is unitary. With ``None`` (default), unitarity is determined
+                numerically from the new operand at this call and the determined value is used.
+                Pass an explicit ``True``/``False`` to skip the check; the explicit value is taken as the
+                caller's assertion.
+                A determined-or-explicit flag change relative to the recorded classification of a plain
+                or controlled tensor operator is a structural update: internal preparation and plans
+                are rebuilt, which is more expensive than a data-only update with an unchanged flag.
+                For a controlled operator the update supplies its target block, and the controlled
+                operator is unitary exactly when its target block is. Only MPO, network-operator and
+                channel operators keep the classification recorded at application.
             stream : Provide the CUDA stream to use for updating tensor operand (this is used to copy the operands to the GPU if they are provided on the CPU). 
                 Acceptable inputs include ``cudaStream_t`` (as Python :class:`int`), :class:`cuda.core.Stream` for NumPy operands, 
                 :class:`cupy.cuda.Stream` for CuPy operands, and :class:`torch.cuda.Stream` for PyTorch operands. 
@@ -826,14 +942,24 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
             raise RuntimeError(f"tensor id ({tensor_id}) has been marked immutable.")
         if operand.strides != prev_operand.strides:
             raise ValueError(f'The new operand must share the same strides as the original operand ({prev_operand.strides[::-1]}), found ({operand.strides[::-1]})')
+        # unitary=None has been resolved to a concrete bool by resolve_unitary_kwarg
+        # on the raw native operand, before any operand wrapping or device transfer
         cutn.state_update_tensor_operator(self.handle, self.state, tensor_id, operand.data_ptr, unitary)
         self.operands[tensor_id] = operand, immutable
+        # A unitarity flag change on a plain or controlled tensor operator is a
+        # structural update: the flag feeds structural decisions frozen into
+        # prepared plans and cached derived-property task objects (e.g. the
+        # gauge-refresh placement), so those must be rebuilt.
+        structural = False
+        if tensor_id in self._operator_unitarity and self._operator_unitarity[tensor_id] != bool(unitary):
+            self._operator_unitarity[tensor_id] = bool(unitary)
+            structural = True
         # If this operator has gradient registered, set gradient output to current operand ptr; compute_expectation_with_gradients will set the correct buffers internally when it runs.
         if tensor_id in self._gradient_tensor_ids:
             cutn.state_update_tensor_operator_gradient(self.handle, self.state, tensor_id, operand.data_ptr)
             self._gradient_tensor_ids[tensor_id] = operand
         self.logger.info(f"Tensor operand with ID ({tensor_id}) has been updated.")
-        self._mark_updated(structural=False)
+        self._mark_updated(structural=structural)
         return
 
 
@@ -1538,6 +1664,8 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
                 cutn.state_capture_mps(self.handle, self.state)
                 self.operands = {}
                 self._gradient_tensor_ids = {}
+                self._operator_unitarity = {}
+                self._operator_diagonal = set()
                 self.owned_network_operators = {}
                 self.non_owned_network_operators = {}
                 self.initial_state = list(self.mps_tensors)
@@ -1742,14 +1870,13 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
         """
         expectation_value, expectation_value_adjoint_arr, return_norm, norm, state_norm_adjoint_arr = self._expectation_grad_run_context
         gradients_out = {}
-        # Allocate gradient tensors with same shape/strides as operands.
+        # Allocate gradient tensors with same shape/strides as operands. 
         if self.internal_package == "cuda":
             for tensor_id in self.gradient_tensor_ids():
                 operand = self._gradient_tensor_ids[tensor_id]
                 ext, strides = operand.shape, operand.strides
                 grad = tensor_wrapper._TENSOR_TYPES["numpy"].empty(
                     ext, device_id="cpu", dtype=self.dtype, stream_holder=None, strides=strides)
-                grad.tensor[:] = 0.0
                 grad = grad.to(self.device_id, stream_holder)
                 gradients_out[tensor_id] = grad
         else:
@@ -1759,9 +1886,6 @@ The memory limit specified is {self.memory_limit}, while the minimum workspace s
                 grad = self.intermediate_class.empty(
                     ext, device_id=self.device_id, dtype=self.dtype, stream_holder=stream_holder, strides=strides)
                 gradients_out[tensor_id] = grad
-            with nvmath_utils.cuda_call_ctx(stream_holder, False, False):
-                for grad in gradients_out.values():
-                    grad.tensor[:] = 0.0
 
         for tensor_id, grad in gradients_out.items():
             cutn.state_update_tensor_operator_gradient(self.handle, self.state, tensor_id, grad.data_ptr)

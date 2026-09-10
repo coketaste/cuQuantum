@@ -8,6 +8,11 @@ import pytest
 import numpy as np
 import math
 import stim
+
+try:
+    import deltakit_stim as _deltakit_stim
+except ImportError:
+    _deltakit_stim = None
 import time
 from typing import Union
 import logging
@@ -22,7 +27,8 @@ try:
     import cupy as cp
 except ImportError:
     cp = np
-from cuquantum.stabilizer import Circuit, FrameSimulator, Options
+from cuquantum.bindings import custabilizer as custab
+from cuquantum.stabilizer import Circuit, FrameSimulator, LeakageFrameSimulator, Options
 
 pytestmark = pytest.mark.custabilizer
 
@@ -31,6 +37,96 @@ def test_circuit_smoke():
     """Test creating a circuit."""
     circ = Circuit("H 0\nCNOT 0 1\nM 0 1")
     assert circ.circuit is not None
+
+
+def test_circuit_attributes():
+    # Chosen so every attribute is non-trivial:
+    # qubits=2, measurements=4 (M 0 1 + REPEAT 2 { M 0 }), detectors=1, repeat_blocks=1,
+    # resets=2 (R 0 1), 1q=1 (H), 2q=1 (CX), has_noise=1 (DEPOLARIZE1).
+    circ = Circuit(
+        "R 0 1\nH 0\nCX 0 1\nDEPOLARIZE1(0.1) 0\nM 0 1\nDETECTOR rec[-1]\nREPEAT 2 {\nM 0\n}"
+    )
+    assert circ.num_qubits == 2
+    assert circ.num_measurements == 4
+    assert circ.num_measurement_gates == 4
+    assert circ.num_detectors == 1
+    assert circ.num_repeat_blocks == 1
+    assert circ.num_resets == 2
+    assert circ.num_1q_gates == 1
+    assert circ.num_2q_gates == 1
+    assert circ.has_noise is True
+    assert circ.has_leakage is False
+    assert circ.num_leakage_readouts == 0
+
+
+def test_circuit_leakage_attributes():
+    circ = Circuit("R 0 1\nLEAKAGE_MARK1(0.5) 0\nHERALD_LEAKAGE_EVENT 0\nM 0 1")
+    assert circ.has_leakage is True
+    assert circ.num_leakage_readouts == 1
+    assert circ.num_measurement_gates == 2
+    assert circ.num_measurements == 3  # gates + herald readouts
+
+
+def test_from_circuit_matches_explicit():
+    circ = Circuit("R 0 1\nH 0\nCNOT 0 1\nM 0 1")
+    a = FrameSimulator.from_circuit(circ, 1024)
+    b = FrameSimulator(
+        circ.num_qubits,
+        1024,
+        num_measurements=circ.num_measurements,
+        num_detectors=circ.num_detectors,
+    )
+    assert a.num_qubits == b.num_qubits
+    assert a.num_measurements == b.num_measurements
+    with pytest.raises(TypeError):
+        FrameSimulator.from_circuit(circ, 1024, num_qubits=99)
+
+
+def test_frame_simulator_rejects_leakage_circuit():
+    circ = Circuit("LEAKAGE_MARK1(1) 0\nM 0")
+    sim = FrameSimulator(1, 1024, num_measurements=1)
+    with pytest.raises(custab.cuStabilizerError):
+        sim.apply(circ)
+
+
+def test_leakage_simulator_smoke():
+    sim = LeakageFrameSimulator(2, 1024, num_measurements=1)
+    assert sim.num_qubits == 2
+    leakage = sim.get_leakage_bits(bit_packed=False)
+    assert leakage.shape == (2, 1024)
+    assert not leakage.any()  # initial state is unleaked
+
+
+def test_leakage_from_circuit_sizing():
+    circ = Circuit("R 0 1\nLEAKAGE_MARK1(0.5) 0\nHERALD_LEAKAGE_EVENT 0\nM 0 1")
+    sim = LeakageFrameSimulator.from_circuit(circ, 1024)
+    # Measurement rows count measurement gates plus herald leakage readouts.
+    assert sim.num_measurements == circ.num_measurements == 3
+    with pytest.raises(TypeError):
+        LeakageFrameSimulator.from_circuit(circ, 1024, num_measurements=99)
+
+
+def test_leakage_simulation_no_leakage_instructions():
+    circ = Circuit("X_ERROR(1) 0\nH 0 1\nCNOT 1 2\nM 2\n")
+    sim = LeakageFrameSimulator(3, 1024, num_measurements=1, randomize_measurements=False)
+    sim.apply(circ)
+    mbits = sim.get_measurement_bits(bit_packed=False)
+    assert mbits.shape == (1, 1024)
+    leakage = sim.get_leakage_bits(bit_packed=False)
+    assert not leakage.any()  # circuit has no leakage instructions
+
+
+def test_leakage_simulation_deterministic():
+    # LEAKAGE_MARK1(1) leaks qubit 0 in every shot; the herald copies the
+    # leakage flag into the measurement table.
+    circ = Circuit("LEAKAGE_MARK1(1) 0\nHERALD_LEAKAGE_EVENT 0")
+    sim = LeakageFrameSimulator.from_circuit(circ, 1024, randomize_measurements=False)
+    sim.apply(circ)
+    leakage = sim.get_leakage_bits(bit_packed=False)
+    assert leakage[0].all()
+    herald = sim.get_measurement_bits(bit_packed=False)
+    assert herald.shape == (1, 1024)
+    assert herald[0].all()
 
 
 def test_frame_simulator_smoke():
@@ -45,8 +141,8 @@ def test_frame_simulator_smoke():
 
 def test_simulation_basic():
     """Test creating a circuit."""
-    circ = Circuit("X_ERROR(1) 0\nZ_ERROR(1) 1\nH 0 1\nCNOT 1 2\n M 2 3\n")
-    possible = ("ZXY.", "ZXX.", "ZXYZ", "ZXXZ")
+    circ = Circuit("X_ERROR(1) 0\nZ_ERROR(1) 1\nY_ERROR(1) 4\nH 0 1\nCNOT 1 2\n M 2 3\n")
+    possible = ("ZXY.Y", "ZXX.Y", "ZXYZY", "ZXXZY")
     sim = FrameSimulator(len(possible[0]), 1024, num_measurements=2, randomize_measurements=False)
     sim.apply(circ)
     table = sim.get_pauli_table()
@@ -406,6 +502,226 @@ def test_multiple_runs_same_simulator():
     finally:
         np.set_printoptions(**original_printoptions)
 
+
+
+def test_leakage_instructions_analytical():
+    """One circuit exercising each leakage instruction family; batch-check
+    l_table, x_table, z_table, and m_table marginals against analytical
+    targets.
+    """
+    nshots = 1024 * 200
+
+    # LEAKAGE_PROPAGATE rates (pairs 0-17)
+    s01, s10, m01, m10 = 0.30, 0.25, 0.20, 0.15
+    s01_c, m01_c = 0.10, 0.05
+    s10_c, m10_c = 0.08, 0.06
+    s01_lo, m10_lo = 0.005, 0.008
+    all_s01, all_s10, all_m01, all_m10 = 0.20, 0.15, 0.10, 0.05
+    # LEAKAGE_MARK1, LEAKAGE_MARK2, LEAKAGE_PROPAGATE_MARK, LEAKAGE_RELAX
+    mk_p_a, mk_p_lo = 0.35, 0.007
+    mk2_ll, mk2_li, mk2_il = 0.20, 0.15, 0.10
+    pm_s01, pm_m01 = 0.25, 0.10
+    relax_p = 0.30
+    # LEAKAGE1, LEAKAGE2, LEAKAGE_PAULI1
+    lk1_p = 0.20
+    lk2_ll, lk2_li, lk2_il = 0.15, 0.10, 0.05
+    pa_x0, pa_y0, pa_z0 = 0.10, 0.05, 0.15
+    pa_x1, pa_y1, pa_z1 = 0.08, 0.12, 0.20
+
+    circuit_str = f"""
+    LEAKAGE_MARK1(1) 0 3 4 7 8 11 12 15
+    LEAKAGE_MARK1(0.5) 16 17
+    CX 0 1
+    LEAKAGE_PROPAGATE({s01},0,0,0) 0 1
+    CX 2 3
+    LEAKAGE_PROPAGATE(0,{s10},0,0) 2 3
+    CX 4 5
+    LEAKAGE_PROPAGATE(0,0,{m01},0) 4 5
+    CX 6 7
+    LEAKAGE_PROPAGATE(0,0,0,{m10}) 6 7
+    CX 8 9
+    LEAKAGE_PROPAGATE({s01_c},0,{m01_c},0) 8 9
+    CX 10 11
+    LEAKAGE_PROPAGATE(0,{s10_c},0,{m10_c}) 10 11
+    CX 12 13
+    LEAKAGE_PROPAGATE({s01_lo},0,0,0) 12 13
+    CX 14 15
+    LEAKAGE_PROPAGATE(0,0,0,{m10_lo}) 14 15
+    CX 16 17
+    LEAKAGE_PROPAGATE({all_s01},{all_s10},{all_m01},{all_m10}) 16 17
+    LEAKAGE_MARK1({mk_p_a}) 18
+    LEAKAGE_MARK1({mk_p_lo}) 19
+    LEAKAGE_MARK2({mk2_ll},{mk2_li},{mk2_il}) 20 21
+    LEAKAGE_MARK1(1) 22
+    LEAKAGE_PROPAGATE_MARK({pm_s01},0,{pm_m01},0) 22 23
+    LEAKAGE_MARK1(1) 24
+    LEAKAGE_RESET 24
+    LEAKAGE_MARK1(1) 25
+    LEAKAGE_RELAX({relax_p}) 25
+    LEAKAGE_MARK1(1) 26
+    LEAKAGE_SCRAMBLE 26
+    LEAKAGE_MARK1(1) 27
+    LEAKAGE_SCRAMBLE_PARTNER 27 28
+    LEAKAGE1({lk1_p}) 29
+    LEAKAGE2({lk2_ll},{lk2_li},{lk2_il}) 30 31
+    LEAKAGE_PAULI1({pa_x0},{pa_y0},{pa_z0},0,0,0) 32
+    LEAKAGE_MARK1(1) 33
+    LEAKAGE_PAULI1(0,0,0,{pa_x1},{pa_y1},{pa_z1}) 33
+    LEAKAGE_MARK1(1) 34
+    HERALD_LEAKAGE_EVENT 34 35
+    """
+    sim = LeakageFrameSimulator(
+        36, nshots, num_measurements=2, seed=0, randomize_measurements=False,
+    )
+    sim.apply(Circuit(circuit_str))
+
+    l_obs = sim.get_leakage_bits(bit_packed=False).mean(axis=1)
+    x_obs, z_obs = (t.mean(axis=1) for t in sim.get_pauli_xz_bits(bit_packed=False))
+    m_obs = sim.get_measurement_bits(bit_packed=False).mean(axis=1)
+
+    l_exp = np.array([
+        # LEAKAGE_PROPAGATE (0..17)
+        1.0,           s01,
+        s10,           1.0,
+        1 - m01,       m01,
+        m10,           1 - m10,
+        1 - m01_c,     s01_c + m01_c,
+        s10_c + m10_c, 1 - m10_c,
+        1.0,           s01_lo,
+        m10_lo,        1 - m10_lo,
+        0.5 + 0.25 * (all_s10 + all_m10 - all_m01),
+        0.5 + 0.25 * (all_s01 + all_m01 - all_m10),
+        # LEAKAGE_MARK1 (18, 19)
+        mk_p_a, mk_p_lo,
+        # LEAKAGE_MARK2 (20, 21)
+        mk2_li + mk2_ll, mk2_il + mk2_ll,
+        # LEAKAGE_PROPAGATE_MARK (22, 23)
+        1 - pm_m01, pm_s01 + pm_m01,
+        # LEAKAGE_RESET (24), LEAKAGE_RELAX (25)
+        0.0, 1 - relax_p,
+        # LEAKAGE_SCRAMBLE (26): l unchanged
+        1.0,
+        # LEAKAGE_SCRAMBLE_PARTNER (27, 28): l unchanged
+        1.0, 0.0,
+        # LEAKAGE1 (29)
+        lk1_p,
+        # LEAKAGE2 (30, 31)
+        lk2_li + lk2_ll, lk2_il + lk2_ll,
+        # LEAKAGE_PAULI1 unleaked (32), leaked (33)
+        0.0, 1.0,
+        # HERALD_LEAKAGE_EVENT source (34), partner (35)
+        1.0, 0.0,
+    ])
+    x_exp = np.array([
+        # LEAKAGE_PROPAGATE (partner-scramble on qubits 1,2,5,6,9,10,13,14)
+        0, 0.5, 0.5, 0, 0, 0.5, 0.5, 0,
+        0, 0.5, 0.5, 0, 0, 0.5, 0.5, 0,
+        0.25, 0.25,
+        # Mark family (18-23) leaves x untouched
+        0, 0, 0, 0, 0, 0,
+        # LEAKAGE_RESET (24), LEAKAGE_RELAX (25)
+        0, 0,
+        # LEAKAGE_SCRAMBLE (26): X or Y flip = 0.5 XOR with 0 = 0.5
+        0.5,
+        # LEAKAGE_SCRAMBLE_PARTNER (27, 28)
+        0, 0.5,
+        # LEAKAGE1 (29): P(mark) * P(X or Y | scramble) = p * 0.5
+        lk1_p * 0.5,
+        # LEAKAGE2 (30, 31)
+        (lk2_li + lk2_ll) * 0.5, (lk2_il + lk2_ll) * 0.5,
+        # LEAKAGE_PAULI1 (32): P(X)+P(Y) = pa_x0 + pa_y0
+        pa_x0 + pa_y0,
+        # LEAKAGE_PAULI1 (33): leaked path
+        pa_x1 + pa_y1,
+        # HERALD (34, 35)
+        0, 0,
+    ])
+    z_exp = np.array([
+        0, 0.5, 0.5, 0, 0, 0.5, 0.5, 0,
+        0, 0.5, 0.5, 0, 0, 0.5, 0.5, 0,
+        0.25, 0.25,
+        0, 0, 0, 0, 0, 0,
+        0, 0,
+        0.5,
+        0, 0.5,
+        lk1_p * 0.5,
+        (lk2_li + lk2_ll) * 0.5, (lk2_il + lk2_ll) * 0.5,
+        # LEAKAGE_PAULI1: P(Y)+P(Z)
+        pa_y0 + pa_z0,
+        pa_y1 + pa_z1,
+        0, 0,
+    ])
+    m_exp = np.array([1.0, 0.0])
+
+    obs = np.concatenate([l_obs, x_obs, z_obs, m_obs])
+    exp = np.concatenate([l_exp, x_exp, z_exp, m_exp])
+    K = len(exp)
+    z_score = np.sqrt(2 * np.log(K) + 15)
+    atol = z_score * np.sqrt(exp * (1 - exp) / nshots)
+    assert np.allclose(obs, exp, atol=atol, rtol=1 / nshots), \
+        f"obs={obs}\nexp={exp}\ndiff={obs - exp}\natol={atol}"
+
+
+def test_leakage_statistical_wrt_deltakit_stim():
+    """Statistical measurement comparison against deltakit-stim on a
+    leakage-augmented rotated_memory_z surface code.
+    """
+    if _deltakit_stim is None:
+        pytest.skip("deltakit_stim not installed")
+    deltakit_stim = _deltakit_stim
+    from cuquantum.stabilizer._internal.deltakit_parser import rewrite_deltakit_stim
+
+    # nshots x p_lk sized for a few expected events per HERALD_LEAKAGE_EVENT
+    # row; nshots additionally sized so per-bit tolerance is seed-stable.
+    # p_m parametric for future coverage.
+    d, r, nshots = 5, 3, 1024 * 300
+    p_depol, p_lk, p_s, p_m = 0.005, 0.015, 0.005, 0
+    base_text = str(stim.Circuit.generated(
+        "surface_code:rotated_memory_z",
+        distance=d, rounds=r,
+        after_clifford_depolarization=p_depol,
+        before_round_data_depolarization=p_depol,
+        after_reset_flip_probability=p_depol,
+    ))
+
+    dk_lines: list[str] = []
+    for line in base_text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped == "}":
+            dk_lines.append(line)
+            continue
+        indent = line[: len(line) - len(line.lstrip())]
+        name = stripped.split("(", 1)[0].split()[0]
+        targets = stripped.split(None, 1)[1] if " " in stripped else ""
+        if name in ("H", "H_XZ"):
+            dk_lines.append(line)
+            dk_lines.append(f"{indent}LEAKAGE({p_lk}) {targets}")
+        elif name in ("CX", "CNOT"):
+            dk_lines.append(f"{indent}CX({p_s}, {p_s}, {p_m}, {p_m}) {targets}")
+        else:
+            dk_lines.append(line)
+    dk_text = "\n".join(dk_lines) + "\n"
+    _nq = deltakit_stim.Circuit(dk_text).num_qubits
+    dk_text += "HERALD_LEAKAGE_EVENT " + " ".join(str(q) for q in range(_nq)) + "\n"
+
+    dk_circuit = deltakit_stim.Circuit(dk_text)
+    dk_m = np.asarray(dk_circuit.compile_sampler(seed=0).sample(shots=nshots))
+
+    cust_text = rewrite_deltakit_stim(dk_text, reject_unsupported=True)
+    cust_circuit = Circuit(cust_text)
+    sim = LeakageFrameSimulator.from_circuit(
+        cust_circuit, nshots, seed=0, randomize_measurements=True,
+    )
+    sim.apply(cust_circuit)
+    cust_m = np.asarray(sim.get_measurement_bits(bit_packed=False)).T
+
+    dk_p = dk_m.mean(axis=0)
+    cust_p = cust_m.mean(axis=0)
+    K = len(dk_p)
+    z_score = np.sqrt(2 * np.log(K) + 15)
+    atol = z_score * np.sqrt(dk_p * (1 - dk_p) / nshots)
+    assert np.allclose(cust_p, dk_p, atol=atol, rtol=1 / nshots), \
+        f"cust={cust_p} dk={dk_p}"
 
 
 if __name__ == "__main__":

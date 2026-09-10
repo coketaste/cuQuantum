@@ -45,6 +45,11 @@ class PauliExpansionOptions:
 
     def __post_init__(self):
         check_memory_str(self.memory_limit, "memory limit")
+        # check_memory_str skips int/float values, so a negative numeric memory_limit
+        # would otherwise pass validation here and only fail deep inside Workspace
+        # construction -- after C descriptors have already been created. Reject it up front.
+        if isinstance(self.memory_limit, (int, float)) and not isinstance(self.memory_limit, bool) and self.memory_limit < 0:
+            raise ValueError("memory_limit must be non-negative.")
         if self.allocator is not None and not isinstance(self.allocator, nvmath_memory.BaseCUDAMemoryManagerAsync):
             raise TypeError("allocator must fulfill the BaseCUDAMemoryManagerAsync protocol.")
         if not isinstance(self.blocking, bool):
@@ -260,20 +265,26 @@ class PauliExpansion:
             num_terms,
             sort_order_to_cupp(sort_order),
             int(has_duplicates))
-        self._logger.debug(f"C API cupaulipropCreatePauliExpansion returned ptr={self._ptr}")
-        self._update_stamp: int = 0
-        self._is_rehearsal: bool = False
-        # Create allocator based on array package (use "cuda" as fallback for CPU tensors)
-        allocator_package = self._package if self._package != "numpy" else "cuda"
-        if options.allocator is not None:
-            allocator = options.allocator
-        else:
-            maybe_register_package(allocator_package)
-            allocator = nvmath_memory._MEMORY_MANAGER[allocator_package](self._library_handle.device_id, self._library_handle._logger)
-        self._workspace = Workspace(self._library_handle, allocator, options.memory_limit)
-        self._blocking = options.blocking
-        # Register cleanup finalizer for safe resource release
-        self._finalizer = register_finalizer(self, cupp.destroy_pauli_expansion, self._ptr, self._logger, "PauliExpansion")
+
+        try:
+            self._logger.debug(f"C API cupaulipropCreatePauliExpansion returned ptr={self._ptr}")
+            self._update_stamp: int = 0
+            self._is_rehearsal: bool = False
+            # Create allocator based on array package (use "cuda" as fallback for CPU tensors)
+            allocator_package = self._package if self._package != "numpy" else "cuda"
+            if options.allocator is not None:
+                allocator = options.allocator
+            else:
+                maybe_register_package(allocator_package)
+                allocator = nvmath_memory._MEMORY_MANAGER[allocator_package](self._library_handle.device_id, self._library_handle._logger)
+            self._workspace = Workspace(self._library_handle, allocator, options.memory_limit)
+            self._blocking = options.blocking
+            # Register cleanup finalizer for safe resource release
+            self._finalizer = register_finalizer(self, cupp.destroy_pauli_expansion, self._ptr, self._logger, "PauliExpansion")
+        except Exception:
+            cupp.destroy_pauli_expansion(self._ptr)
+            self._ptr = None
+            raise
         self._logger.info(f"PauliExpansion created: {num_qubits} qubits, {num_terms} terms, dtype={self._coefs.dtype}, sort_order={sort_order}")
 
     @classmethod
@@ -341,17 +352,23 @@ class PauliExpansion:
             sort_order_to_cupp(sort_order),
             int(has_duplicates)
         )
-        library_handle.logger.debug(f"C API cupaulipropCreatePauliExpansion (rehearsal) returned ptr={expansion._ptr}")
-        expansion._update_stamp = 0
-        expansion._is_rehearsal = True
-        
-        if options.allocator is not None:
-            allocator = options.allocator
-        else:
-            allocator = nvmath_memory._MEMORY_MANAGER["cuda"](library_handle.device_id, library_handle._logger)
-        expansion._workspace = Workspace(library_handle, allocator, options.memory_limit)
-        expansion._blocking = options.blocking
-        expansion._finalizer = register_finalizer(expansion, cupp.destroy_pauli_expansion, expansion._ptr, expansion._logger, "PauliExpansion")
+
+        try:
+            library_handle.logger.debug(f"C API cupaulipropCreatePauliExpansion (rehearsal) returned ptr={expansion._ptr}")
+            expansion._update_stamp = 0
+            expansion._is_rehearsal = True
+
+            if options.allocator is not None:
+                allocator = options.allocator
+            else:
+                allocator = nvmath_memory._MEMORY_MANAGER["cuda"](library_handle.device_id, library_handle._logger)
+            expansion._workspace = Workspace(library_handle, allocator, options.memory_limit)
+            expansion._blocking = options.blocking
+            expansion._finalizer = register_finalizer(expansion, cupp.destroy_pauli_expansion, expansion._ptr, expansion._logger, "PauliExpansion")
+        except Exception:
+            cupp.destroy_pauli_expansion(expansion._ptr)
+            expansion._ptr = None
+            raise
         expansion._logger.info(f"PauliExpansion (rehearsal) created: {num_qubits} qubits, {num_terms} terms")
         
         return expansion
@@ -664,7 +681,7 @@ class PauliExpansion:
                 "Create a non-rehearsal expansion using rehearsal_expansion.from_empty(...)."
             )
         if other._library_handle != self._library_handle:
-            raise ValueError(f"Other Pauli expansion must be on the same device as the current Pauli expansion, got {other.library_handle} and {self._library_handle}")
+            raise ValueError(f"Other Pauli expansion must be on the same device as the current Pauli expansion, got {other._library_handle} and {self._library_handle}")
         if isinstance(other, PauliExpansionView):
             if other.base == self:
                 raise ValueError(f"Cannot populate Pauli expansion from a view on itself")
@@ -921,8 +938,6 @@ class PauliExpansion:
         This is a convenience method that creates a default view covering all terms
         and delegates to :meth:`PauliExpansionView.deduplicate`.
 
-        Note: The expansion must be sorted before calling this method.
-
         Args:
             expansion_out: The Pauli expansion to write the deduplicated result to. If not provided,
                 a new expansion will be allocated with the required capacity.
@@ -1069,12 +1084,13 @@ class PauliExpansion:
         cotangent_out: "PauliExpansionView",
         truncation: Truncation | None = None,
         cotangent_in: Optional["PauliExpansion"] = None,
+        param_grads_out: "np.ndarray | None" = None,
         adjoint: bool = False,
         sort_order: "SortOrder | SortOrderLiteral" = None,
         keep_duplicates: bool = False,
         rehearse: bool | None = None,
         stream=None,
-    ) -> "GateApplicationRehearsalInfo | PauliExpansion":
+    ) -> "GateApplicationRehearsalInfo | tuple[PauliExpansion, np.ndarray | None]":
         """Backward pass for :meth:`apply_gate`.
 
         Convenience method that creates a default view and delegates to
@@ -1085,6 +1101,9 @@ class PauliExpansion:
             cotangent_out: Cotangent of the forward output.
             truncation: Must match the forward call.
             cotangent_in: Pre-allocated expansion for the input cotangent, or None.
+            param_grads_out: A numpy array to accumulate parameter gradients into
+                (shape ``(gate.num_differentiable_params,)`` and the coefficient
+                dtype), or ``None`` to auto-allocate one.
             adjoint: Must match the forward call.
             sort_order: Sort order for the cotangent expansion.
             keep_duplicates: Whether duplicates are allowed.
@@ -1093,13 +1112,17 @@ class PauliExpansion:
 
         Returns:
             If ``rehearse=True``: a :class:`GateApplicationRehearsalInfo`.
-            If ``rehearse=False``: the *cotangent_in* expansion.
+            If ``rehearse=False``: a tuple ``(cotangent_in, param_grads)`` where
+            *cotangent_in* is the input cotangent :class:`PauliExpansion` and
+            *param_grads* is a numpy array of parameter gradients (or ``None``
+            for non-differentiable operators).
         """
         return self.view().apply_gate_backward_diff(
             gate=gate,
             cotangent_out=cotangent_out,
             truncation=truncation,
             cotangent_in=cotangent_in,
+            param_grads_out=param_grads_out,
             adjoint=adjoint,
             sort_order=sort_order,
             keep_duplicates=keep_duplicates,
@@ -1170,7 +1193,30 @@ class PauliExpansionView:
             return False
         else:
             return True
-        
+
+    def _check_operand_compatible(self, operand: "PauliExpansion | PauliExpansionView", name: str) -> None:
+        """Validate that a user-provided expansion operand is compatible with this view
+        (same num_qubits / dtype / LibraryHandle / storage location) before its C
+        descriptor is passed into a call bound to this view's handle. Mixing operands
+        across handles/devices, storage locations, or dtypes is undefined behavior at
+        the C layer, so reject it early with a clear error. A view operand whose base
+        was mutated after it was created (``is_valid`` False) is likewise rejected, so a
+        stale view is not silently forwarded to C."""
+        if isinstance(operand, PauliExpansionView) and not operand.is_valid:
+            raise ValueError(
+                f"{name} is a stale PauliExpansionView (its base expansion was mutated "
+                f"after the view was created); recreate it with base.view(...)."
+            )
+        base = operand.base if isinstance(operand, PauliExpansionView) else operand
+        if base.num_qubits != self.base.num_qubits:
+            raise ValueError(f"{name} must have the same number of qubits as the view, got {base.num_qubits} and {self.base.num_qubits}")
+        if base.dtype != self.base.dtype:
+            raise ValueError(f"{name} must have the same data type as the view, got {base.dtype} and {self.base.dtype}")
+        if base._library_handle != self.base._library_handle:
+            raise ValueError(f"{name} must share the same LibraryHandle/device as the view; transfer it with .to(...) first.")
+        if base.storage_location != self.base.storage_location:
+            raise ValueError(f"{name} must be on the same storage location as the view, got {base.storage_location} and {self.base.storage_location}; transfer it with .to(...) first.")
+
     @property
     def start_index(self) -> int:
         """
@@ -1329,7 +1375,10 @@ class PauliExpansionView:
         
         truncation_strategies = create_truncation_strategies(truncation)
         cupp_sort_order = sort_order_to_cupp(sort_order)
-        
+
+        # Reject out-of-range qubit indices.
+        gate._validate_against_num_qubits(self.base.num_qubits)
+
         with gate._as_c_operator(self._library_handle) as gate_ptr:
             # Prepare phase
             self._logger.debug("Preparing operator application...")
@@ -1529,8 +1578,7 @@ class PauliExpansionView:
             # Allocate output buffers on host: trace significand and base-2 exponent.
             trace_significand_buffer = np.zeros(1, dtype=self.base.dtype)
             trace_exponent_buffer = np.zeros(1, dtype=np.float64)
-            
-            # Compute trace (C++ implementation copies result from device to host pointer)
+
             with nvmath_utils.cuda_call_ctx(stream_holder, self._blocking, timing) as (self._last_compute_event, elapsed):
                 cupp.pauli_expansion_view_compute_trace_with_zero_state(
                     int(self._library_handle),
@@ -1606,7 +1654,14 @@ class PauliExpansionView:
         
         if self.base.dtype != other.base.dtype:
             raise ValueError(f"Views must have the same data type, got {self.base.dtype} and {other.base.dtype}")
-        
+        if self.base._library_handle != other.base._library_handle:
+            raise ValueError("product_trace operands must share the same LibraryHandle/device; transfer one with .to(...) first.")
+        if self.base.storage_location != other.base.storage_location:
+            raise ValueError(
+                f"product_trace operands must be on the same storage location, got "
+                f"{self.base.storage_location} and {other.base.storage_location}; transfer one with .to(...) first."
+            )
+
         # Prepare workspace
         self._logger.debug("Preparing product trace computation...")
         cupp.pauli_expansion_view_prepare_trace_with_expansion_view(
@@ -1633,7 +1688,6 @@ class PauliExpansionView:
             trace_significand_buffer = np.zeros(1, dtype=self.base.dtype)
             trace_exponent_buffer = np.zeros(1, dtype=np.float64)
             
-            # Compute product trace (C++ implementation copies result from device to host pointer)
             with nvmath_utils.cuda_call_ctx(stream_holder, self._blocking, timing) as (self._last_compute_event, elapsed):
                 cupp.pauli_expansion_view_compute_trace_with_expansion_view(
                     int(self._library_handle),
@@ -1749,8 +1803,6 @@ class PauliExpansionView:
         Deduplicates the Pauli expansion view (removes duplicate Pauli strings and 
         sums their coefficients) and writes the result to the output expansion.
         
-        Note: The input view must be sorted before calling this method.
-        
         If ``rehearse=True``, only the prepare phase is executed to determine resource requirements.
         
         Args:
@@ -1804,15 +1856,22 @@ class PauliExpansionView:
         device_ws, host_ws = self._workspace.get_required_sizes()
         self._logger.debug(f"Prepare complete: device_ws={device_ws}, host_ws={host_ws}")
         
-        # Deduplication output has at most as many terms as input
+        # A single process never grows under deduplication. Multi-process
+        # deduplication redistributes terms, and a process's share of the
+        # result is only statistically bounded; twice the local term count
+        # comfortably covers the library's requirement for roughly balanced
+        # inputs, and an insufficient output is still reported cleanly at
+        # execution for pathologically imbalanced ones.
+        num_ranks = cupp.get_num_ranks(int(self._library_handle))
+        required_terms = num_terms_in if num_ranks <= 1 else 2 * num_terms_in
         if rehearse:
             self._logger.info("Rehearsal complete for deduplicate")
-            return GateApplicationRehearsalInfo(device_ws, host_ws, num_terms_in)
-        
+            return GateApplicationRehearsalInfo(device_ws, host_ws, required_terms)
+
         # Compute phase - allocate expansion_out if not provided
         if expansion_out is None:
-            self._logger.debug(f"Allocating output expansion with capacity {num_terms_in}")
-            expansion_out = self._allocate_expansion(num_terms_in)
+            self._logger.debug(f"Allocating output expansion with capacity {required_terms}")
+            expansion_out = self._allocate_expansion(required_terms)
         
         if host_ws > 0 and not self._blocking:
             raise RuntimeError("Host workspace requires blocking execution.")
@@ -1998,10 +2057,12 @@ class PauliExpansionView:
             alloc_capacity = max(required_terms, 1)
             self._logger.debug(f"Allocating cotangent_expansion with capacity {alloc_capacity}")
             cotangent_expansion = self._allocate_expansion(alloc_capacity, stream=stream)
-        elif cotangent_expansion.capacity < required_terms:
-            raise ValueError(
-                f"cotangent_expansion capacity is too small, required {required_terms} terms, got {cotangent_expansion.capacity} terms"
-            )
+        else:
+            self._check_operand_compatible(cotangent_expansion, "cotangent_expansion")
+            if cotangent_expansion.capacity < required_terms:
+                raise ValueError(
+                    f"cotangent_expansion capacity is too small, required {required_terms} terms, got {cotangent_expansion.capacity} terms"
+                )
 
         # Compute
         if host_ws > 0 and not self._blocking:
@@ -2086,6 +2147,20 @@ class PauliExpansionView:
         stream_holder = nvmath_utils.get_or_create_stream(
             self._library_handle.device_id, stream, stream_package)
 
+        # Validate that both views are compatible (same as the forward product_trace),
+        # so mismatched inputs are rejected with a clear ValueError rather than an opaque
+        # C-side INVALID_VALUE (or, for a dtype mismatch, silently wrong cotangents).
+        if self.base.num_qubits != other.base.num_qubits:
+            raise ValueError(f"Views must have the same number of qubits, got {self.base.num_qubits} and {other.base.num_qubits}")
+        if self.base.dtype != other.base.dtype:
+            raise ValueError(f"Views must have the same data type, got {self.base.dtype} and {other.base.dtype}")
+        if self.base._library_handle != other.base._library_handle:
+            raise ValueError("product_trace operands must share the same LibraryHandle/device; transfer one with .to(...) first.")
+        if self.base.storage_location != other.base.storage_location:
+            raise ValueError(
+                f"product_trace operands must be on the same storage location, got "
+                f"{self.base.storage_location} and {other.base.storage_location}; transfer one with .to(...) first."
+            )
         # Prepare
         self._logger.debug("Preparing backward product trace...")
         (_, required_coef_bytes1,
@@ -2096,7 +2171,7 @@ class PauliExpansionView:
             self._workspace.memory_limit,
             int(self._workspace))
         required_terms1 = required_coef_bytes1 // self.base._coefs.itemsize if required_coef_bytes1 > 0 else 0
-        required_terms2 = required_coef_bytes2 // self.base._coefs.itemsize if required_coef_bytes2 > 0 else 0
+        required_terms2 = required_coef_bytes2 // other.base._coefs.itemsize if required_coef_bytes2 > 0 else 0
 
         device_ws, host_ws = self._workspace.get_required_sizes()
         self._logger.debug(
@@ -2116,18 +2191,22 @@ class PauliExpansionView:
             alloc_capacity = max(required_terms1, 1)
             self._logger.debug(f"Allocating cotangent_expansion1 with capacity {alloc_capacity}")
             cotangent_expansion1 = self._allocate_expansion(alloc_capacity, stream=stream)
-        elif cotangent_expansion1.capacity < required_terms1:
-            raise ValueError(
-                f"cotangent_expansion1 capacity is too small, required {required_terms1} terms, got {cotangent_expansion1.capacity} terms"
-            )
+        else:
+            self._check_operand_compatible(cotangent_expansion1, "cotangent_expansion1")
+            if cotangent_expansion1.capacity < required_terms1:
+                raise ValueError(
+                    f"cotangent_expansion1 capacity is too small, required {required_terms1} terms, got {cotangent_expansion1.capacity} terms"
+                )
         if cotangent_expansion2 is None:
             alloc_capacity = max(required_terms2, 1)
             self._logger.debug(f"Allocating cotangent_expansion2 with capacity {alloc_capacity}")
             cotangent_expansion2 = other._allocate_expansion(alloc_capacity, stream=stream)
-        elif cotangent_expansion2.capacity < required_terms2:
-            raise ValueError(
-                f"cotangent_expansion2 capacity is too small, required {required_terms2} terms, got {cotangent_expansion2.capacity} terms"
-            )
+        else:
+            self._check_operand_compatible(cotangent_expansion2, "cotangent_expansion2")
+            if cotangent_expansion2.capacity < required_terms2:
+                raise ValueError(
+                    f"cotangent_expansion2 capacity is too small, required {required_terms2} terms, got {cotangent_expansion2.capacity} terms"
+                )
 
         # Compute
         if host_ws > 0 and not self._blocking:
@@ -2222,8 +2301,17 @@ class PauliExpansionView:
         truncation_strategies = create_truncation_strategies(truncation)
         cupp_sort_order = sort_order_to_cupp(sort_order)
 
+        # cotangent_out is passed into the prepare/compute C call, so validate it up
+        # front (handle/storage/dtype/num_qubits). The output buffer cotangent_in is
+        # only used in the compute phase and is validated there (after the rehearse
+        # early-return).
+        self._check_operand_compatible(cotangent_out, "cotangent_out")
+
         # Infer gradient dtype from the expansion's coefficient type
         grad_dtype = str(self.base._coefs.dtype)
+
+        # Reject out-of-range qubit indices.
+        gate._validate_against_num_qubits(self.base.num_qubits)
 
         with gate._as_c_operator_with_grad(self._library_handle, param_grads_out, grad_dtype) as (gate_ptr, param_grads):
             # Prepare: get required buffer sizes for cotangent_in and workspace
@@ -2256,11 +2344,13 @@ class PauliExpansionView:
                 alloc_capacity = max(num_terms, 1)
                 self._logger.debug(f"Allocating cotangent_in with capacity {alloc_capacity} (num_terms={num_terms})")
                 cotangent_in = self._allocate_expansion(alloc_capacity, stream=stream)
-            elif cotangent_in.capacity < num_terms:
-                raise ValueError(
-                    f"cotangent_in capacity too small: need {num_terms} terms, "
-                    f"got {cotangent_in.capacity}"
-                )
+            else:
+                self._check_operand_compatible(cotangent_in, "cotangent_in")
+                if cotangent_in.capacity < num_terms:
+                    raise ValueError(
+                        f"cotangent_in capacity too small: need {num_terms} terms, "
+                        f"got {cotangent_in.capacity}"
+                    )
 
             if host_ws > 0 and not self._blocking:
                 raise RuntimeError("Host workspace requires blocking execution.")

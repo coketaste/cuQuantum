@@ -143,6 +143,9 @@ elseif(EXISTS ${CUTENSOR_ROOT}/lib/aarch64-linux-gnu)
 else()
   set(CUTENSOR_LIB_DIR ${CUTENSOR_ROOT}/lib)
 endif()
+if(EXISTS "${CUTENSOR_LIB_DIR}/${CUDAToolkit_VERSION_MAJOR}")
+  set(CUTENSOR_LIB_DIR "${CUTENSOR_LIB_DIR}/${CUDAToolkit_VERSION_MAJOR}")
+endif()
 
 
 # cuTensorNet
@@ -165,6 +168,9 @@ elseif(EXISTS "${CUTENSORNET_ROOT}/lib")
   set(CUTENSORNET_LIB_DIR "${CUTENSORNET_ROOT}/lib")
 else()
   message(FATAL_ERROR "Could not find 'lib' or 'lib64' in CUTENSORNET_ROOT: ${CUTENSORNET_ROOT}")
+endif()
+if(EXISTS "${CUTENSORNET_LIB_DIR}/${CUDAToolkit_VERSION_MAJOR}")
+  set(CUTENSORNET_LIB_DIR "${CUTENSORNET_LIB_DIR}/${CUDAToolkit_VERSION_MAJOR}")
 endif()
 message(STATUS "Found cuTensorNet library directory: ${CUTENSORNET_LIB_DIR}")
 
@@ -534,6 +540,84 @@ target_link_libraries(dmrg_eigensolver_two_site_example
     cutensornet
     cutensor
     CUDA::cusolver
+    CUDA::cublas
+    CUDA::curand
+    CUDA::cudart
+)
+
+# Single-GPU one-site shift-invert DMRG eigensolver example
+add_executable(shift_invert_dmrg_eigensolver_one_site_example
+  shift_invert_dmrg_eigensolver_one_site_example.cpp
+)
+
+set_target_properties(shift_invert_dmrg_eigensolver_one_site_example
+  PROPERTIES
+    CXX_STANDARD ${CMAKE_CXX_STANDARD}
+    CUDA_STANDARD ${CMAKE_CUDA_STANDARD}
+    POSITION_INDEPENDENT_CODE ON
+    CUDA_SEPARABLE_COMPILATION ON
+    CUDA_RESOLVE_DEVICE_SYMBOLS ON
+)
+
+target_include_directories(shift_invert_dmrg_eigensolver_one_site_example
+  PUBLIC
+    ${CUDENSITYMAT_INC_DIR}
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+)
+
+target_link_directories(shift_invert_dmrg_eigensolver_one_site_example
+  PUBLIC
+    ${CUDENSITYMAT_LIB_DIR}
+    ${CUTENSORNET_LIB_DIR}
+    ${CUTENSOR_LIB_DIR}
+)
+
+target_link_libraries(shift_invert_dmrg_eigensolver_one_site_example
+  PUBLIC
+    cudensitymat
+    cutensornet
+    cutensor
+    CUDA::cusolver
+    CUDA::cublasLt
+    CUDA::cublas
+    CUDA::curand
+    CUDA::cudart
+)
+
+# Single-GPU two-site shift-invert DMRG eigensolver example
+add_executable(shift_invert_dmrg_eigensolver_two_site_example
+  shift_invert_dmrg_eigensolver_two_site_example.cpp
+)
+
+set_target_properties(shift_invert_dmrg_eigensolver_two_site_example
+  PROPERTIES
+    CXX_STANDARD ${CMAKE_CXX_STANDARD}
+    CUDA_STANDARD ${CMAKE_CUDA_STANDARD}
+    POSITION_INDEPENDENT_CODE ON
+    CUDA_SEPARABLE_COMPILATION ON
+    CUDA_RESOLVE_DEVICE_SYMBOLS ON
+)
+
+target_include_directories(shift_invert_dmrg_eigensolver_two_site_example
+  PUBLIC
+    ${CUDENSITYMAT_INC_DIR}
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+)
+
+target_link_directories(shift_invert_dmrg_eigensolver_two_site_example
+  PUBLIC
+    ${CUDENSITYMAT_LIB_DIR}
+    ${CUTENSORNET_LIB_DIR}
+    ${CUTENSOR_LIB_DIR}
+)
+
+target_link_libraries(shift_invert_dmrg_eigensolver_two_site_example
+  PUBLIC
+    cudensitymat
+    cutensornet
+    cutensor
+    CUDA::cusolver
+    CUDA::cublasLt
     CUDA::cublas
     CUDA::curand
     CUDA::cudart

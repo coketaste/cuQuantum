@@ -11,6 +11,6 @@ Thank you for your interest in contributing to cuQuantum Python! Based on the ty
 2. You want to implement a feature or bug-fix
     - At this time we do not accept code contributions.
 3. You want to share your nice work built upon cuQuantum:
-    - We would love to hear more about your work! Please share with us on [NVIDIA/cuQuantum GitHub Discussions](https://github.com/NVIDIA/cuQuantum/discussions>)! We also take any cuQuantum-related questions on this forum.
+    - We would love to hear more about your work! Please share with us on [NVIDIA/cuQuantum GitHub Discussions](https://github.com/NVIDIA/cuQuantum/discussions)! We also take any cuQuantum-related questions on this forum.
 
 **Note:** Contributions are only accepted on files licensed under the BSD 3-Clause license. Do not modify files marked as proprietary unless you have written authorization from NVIDIA.

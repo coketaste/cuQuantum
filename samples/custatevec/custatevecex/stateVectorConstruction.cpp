@@ -30,8 +30,6 @@
 #include <cstdarg>  // va_list, va_start, va_end
 #include <unistd.h> // getopt
 
-
-
 //
 // Module-level variables
 //
@@ -54,8 +52,6 @@ static int exCommunicatorRank_ = 0;
 
 // Module-level data type for state vector
 static cudaDataType_t svDataType_ = CUDA_C_32F;
-
-
 
 //
 // Helper functions for gracefully exiting
@@ -101,8 +97,6 @@ static void errorThenExit(const char* format, ...)
     exit(EXIT_FAILURE);
 }
 
-
-
 //
 // Cmd-line arg parsing
 //
@@ -145,7 +139,8 @@ static void showHelpMessage(const char* programName)
     output("Examples:\n");
     output("  %s                          # Use default settings\n", programName);
     output("  %s -d 2                     # Use 2 GPUs in multi-device mode\n", programName);
-    output("  %s -m 2                     # Use 2 migration wires, storing 75%% of state in host memory\n",
+    output("  %s -m 2                     # Use 2 migration wires, storing 75%% of state in host "
+           "memory\n",
            programName);
     output("  %s -t double                # Use double precision\n", programName);
     output("  mpirun -np 4 %s -p          # Use 4 processes\n", programName);
@@ -329,8 +324,6 @@ static CmdLineArgs processCmdLineArgs(int argc, char* argv[])
     return out;
 }
 
-
-
 //
 // Multi-process Environment Preparation
 //
@@ -360,7 +353,7 @@ void bootstrapMultiProcessEnvironment(int* argc, char*** argv)
 
     // Option 2: Use external communicator plugin (uncomment to enable)
     // custatevecCommunicatorType_t communicatorType = CUSTATEVEC_COMMUNICATOR_TYPE_EXTERNAL;
-    // const char* libraryPath = "./libmpiCommunicator.so";  // or nullptr to search in process
+    // const char* libraryPath = "./libexMpiCommunicator.so";  // or nullptr to search in process
 
     // Try to initialize communicator
     custatevecExCommunicatorStatus_t commStatus;
@@ -448,12 +441,10 @@ int getMultiProcessRank()
  * This is distinct to whether output is enabled, since when quiet mode is NOT
  * enabled, non-root output may still be disabled, to suppress duplicate output
  */
- bool isQuietModeEnabled()
- {
-     return isQuietModeEnabled_;
- }
-
-
+bool isQuietModeEnabled()
+{
+    return isQuietModeEnabled_;
+}
 
 //
 // State Vector Configuration Factory
@@ -696,8 +687,6 @@ cudaDataType_t getStateVectorDataType()
 {
     return svDataType_;
 }
-
-
 
 //
 // State Vector Creation

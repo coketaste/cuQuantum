@@ -66,6 +66,14 @@ class CudensitymatContext:
         cls._maybe_create_handle_and_workspace()
 
         if op._ptr is None or (op._ptr, batch_size) not in cls._operator_contexts:
+            if op._ptr is not None:
+                # Operators are frozen once used, matching append()'s "Cannot modify
+                # operator after it has been used" guard: reusing at a different batch
+                # size is a form of post-use mutation and is disallowed the same way.
+                raise RuntimeError(
+                    "Cannot reuse an operator at a different batch size after it has "
+                    "been used in an operator action."
+                )
             op_ctx = OperatorContext(op, batch_size)
             # op._ptr is now set (op._create was called inside OperatorContext.__init__)
             cls._operator_contexts[(op._ptr, batch_size)] = op_ctx
@@ -205,8 +213,15 @@ class OperatorContext:
 
         # Derived attributes from operator.
         self._space_mode_extents = op.dims
-        self._data_type = typemaps.NAME_TO_DATA_TYPE[op.dtype.name]
-        self._compute_type = typemaps.NAME_TO_COMPUTE_TYPE[op.dtype.name]
+        # op.dtype is None when no operator term contributed one, which happens for an operator
+        # built only from identity/scalar terms: those carry no data and are skipped when
+        # inferring the dtype, so that they cannot constrain an operator built from real
+        # float32/float64/complex64 operators. Such an operator still needs a concrete compute
+        # type, so fall back to the widest one; safe here because there is no operator data whose
+        # precision could be demoted.
+        dtype = op.dtype if op.dtype is not None else jnp.dtype(jnp.complex128)
+        self._data_type = typemaps.NAME_TO_DATA_TYPE[dtype.name]
+        self._compute_type = typemaps.NAME_TO_COMPUTE_TYPE[dtype.name]
 
         # Create opaque handle to the operator.
         op._create(CudensitymatContext._handle, batch_size)

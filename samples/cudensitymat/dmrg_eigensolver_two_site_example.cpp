@@ -17,10 +17,8 @@
 // bond extents strictly between 1 and the buffer maximum) exercise the 2-site
 // memory-layout and adaptive-growth contracts.
 //
-// 3 MPS sites is intentionally small: both bonds are boundary-adjacent, so the
-// partial-fill current<max layout works here pending a cuTensorNet update that
-// enables N>=4 interior-bond growth.
-//
+// 3 MPS sites is intentionally small: both bonds are boundary-adjacent.
+
 // Workflow:
 //  1. Build the blocked-TFIM MPO (bond dim 3)
 //  2. Wrap the MPO into a Hamiltonian operator

@@ -58,7 +58,7 @@ These multi-device/multi-process samples support the following command line opti
              Network structure for multi-process: 3=SuperPOD (indicated by default =0), 4=GB200NVL, 5=SwitchTree, 6=Communicator
 ```
 
-6. **interoperability_dot.cpp**
+1. **interoperability_dot.cpp**
    cuStateVec Ex API interoperability with cuBLAS for dot product computation.
    - Create two state vector instances with different wire orderings.
    - Modify using cuStateVec API.
@@ -67,12 +67,12 @@ These multi-device/multi-process samples support the following command line opti
    - Demonstrates a common way to permute wires for two state vectors to have the
      same wire ordering.
 
-7. **quantum_volume.cpp**
+2. **quantum_volume.cpp**
    Quick performance check using quantum volume circuits.
    Demonstrates quantum volume circuit generation, scalability analysis
    across multiple qubit counts, and reports performance metrics.
 
-8. **substatevector_indices.cpp**
+3. **substatevector_indices.cpp**
    Reports all substatevector (subSV) indices in any deployment configuration.
    This is pedagogical, helping illustrate the cuStateVec Ex distribution
    schemes possible, and complements the interoperability_dot.cpp sample.
@@ -83,7 +83,7 @@ The cuStateVec Ex API supports custom inter-process communicators through
 an external plugin interface. This allows users to implement their own
 communication layer instead of using the built-in OPENMPI/MPICH support.
 
-9. **mpiCommunicator.c**
+1. **exMpiCommunicator.c**
    Example C-based external MPI communicator plugin demonstrating how to
    implement a custom communicator. This plugin wraps MPI functions to provide
    inter-process communication for distributed quantum circuit simulation.
@@ -91,11 +91,11 @@ communication layer instead of using the built-in OPENMPI/MPICH support.
 #### Building the External Communicator
 
 ```bash
-./build_mpi_communicator.sh              # Build with default MPI
-./build_mpi_communicator.sh /opt/mpi     # Build with MPI from custom path
+./buildExMpiCommunicator.sh              # Build with default MPI
+./buildExMpiCommunicator.sh /opt/mpi     # Build with MPI from custom path
 ```
 
-This generates `libmpiCommunicator.so` in the current directory, which can be loaded by `custatevecExCommunicatorInitialize()` at runtime. Refer to API reference for details.
+This generates `libexMpiCommunicator.so` in the current directory, which can be loaded by `custatevecExCommunicatorInitialize()` at runtime. Refer to API reference for details.
 
 #### Using the External Communicator
 

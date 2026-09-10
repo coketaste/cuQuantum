@@ -150,10 +150,7 @@ class MPS:
         self.gauges = dict()
         self._norm_trace_counter = 0
         if self.gauge_option == 'simple':
-            # First canonicalization sweep to generate a left canonical MPS representation without gauges 
-            self._minimal_compression(0, self.n-1, False, check_minimal=False)
-            # Make it inverse canonical
-            self._make_canonical()
+            self._reestablish_su_gauges()
         else: # gauge_option is 'free'
             # To generate a left canonical MPS representation without gauges
             self._minimal_compression(0, self.n-1, False, check_minimal=True) 
@@ -391,6 +388,13 @@ class MPS:
             self[i+1] = self.backend.einsum('jlm,ij->ilm', self[i+1], V) 
             self._check_nonzero_norms("make_canonical", qudits=(self.qudits[i], self.qudits[i+1]))
 
+    def _reestablish_su_gauges(self):
+        # Absorb current (possibly stale) gauges, restore mixed-canonical form
+        # with orthogonality center at site 0, then re-extract the SU gauges.
+        # Exact QR/SVD: no user cutoffs / max-extent.
+        self._minimal_compression(0, self.n-1, False, check_minimal=False)
+        self._make_canonical()
+
     def mps_tensor_absorb_gauge(self, site, s, *, direction='left', inverse=False):
         assert direction in {'left', 'right'}
         if s is not None:
@@ -477,7 +481,7 @@ class MPS:
             for x, direction in swaps[::-1]:
                 self._swap(x, direction, exact=self.is_exact_mps)
     
-    def apply_gate(self, qudits, operand):
+    def apply_gate(self, qudits, operand, *, unitary=True):
         gauge_option = self.gauge_option             
         if gauge_option == 'simple':
             assert self.svd_options['partition'] is None, "For MPS with gauges, SVD partition must be set to None"
@@ -491,6 +495,8 @@ class MPS:
             self._apply_gate_2q(*sites, operand)
         else:
             raise NotImplementedError("Only single- and two- qubit gate supported")
+        if gauge_option == 'simple' and not unitary and not self.is_exact_mps:
+            self._reestablish_su_gauges()
         self._check_nonzero_norms("apply_gate", qudits=qudits)
         return
     
@@ -504,7 +510,7 @@ class MPS:
             self.mps_tensor_absorb_gauge(i, s, direction='left')
         return self.mps_tensors
 
-    def apply_mpo(self, qudits, mpo_operands):
+    def apply_mpo(self, qudits, mpo_operands, *, unitary=False):
         # map from site to the associated qudit id
         qudits_order = list(range(self.n))
         sites = [self.qudits.index(q) for q in qudits]
@@ -614,6 +620,12 @@ class MPS:
             # TODO: Handle rare case where mpo_application is exact for MPS-MPO contraction but not for gate application process
             keep_gauges = self.gauge_option == 'simple'
             self._minimal_compression(min(qudits), max(qudits), keep_gauges, check_minimal=False)
+        # A non-unitary MPO changes the Schmidt spectra across every bond, but the
+        # sweep only rewrites tensors inside its span, so truncations away from the
+        # span would otherwise consume gauges describing the pre-MPO state -- same
+        # contract as apply_gate.
+        if self.gauge_option == 'simple' and not unitary and not self.is_exact_mps:
+            self._reestablish_su_gauges()
 
     @classmethod
     def from_converter(cls, converter, **kwargs):
@@ -653,18 +665,20 @@ class MPS:
                     # MPO
                     mps.apply_mpo(modes, op)
                 else:
-                    # Gate
-                    mps.apply_gate(modes, op)
+                    # Match NetworkState.apply_tensor_operator default (unitary=False).
+                    mps.apply_gate(modes, op, unitary=False)
             else:
                 if 'diagonal_gate' in gate_info:
                     # diagonal_gate is inferred from operand shape in apply_gate
-                    mps.apply_gate(modes, op)
+                    mps.apply_gate(modes, op, unitary=False)
                 elif 'control_values' in gate_info and 'control_modes' in gate_info:
                     ctrl_modes, ctrl_vals = gate_info['control_modes'], gate_info['control_values']
                     ct_tensors = factory.compute_ct_mpo_tensors(ctrl_modes, ctrl_vals, modes, op) 
                     new_modes = modes + ctrl_modes
                     new_modes = sorted(new_modes)
                     mps.apply_mpo(new_modes, ct_tensors)
+                elif 'unitary' in gate_info or 'gradient' in gate_info:
+                    mps.apply_gate(modes, op, unitary=gate_info.get('unitary', True))
                 else:
                     raise RuntimeError("Not expected code path")
         mps.canonicalize()

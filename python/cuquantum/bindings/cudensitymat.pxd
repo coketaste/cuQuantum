@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated with version 26.06.0, generator version 0.3.1.dev1663+gc4ecc6582.d20260605. Do not modify it directly.
+# This code was automatically generated with version 26.06.0. Do not modify it directly.
 
 from libc.stdint cimport intptr_t
 
@@ -30,6 +30,7 @@ ctypedef cudensitymatTimePropagationApproachKrylovConfig_t TimePropagationApproa
 ctypedef cudensitymatEigenDecompositionApproachKrylovConfig_t EigenDecompositionApproachKrylovConfig
 ctypedef cudensitymatTimePropagationScopeSplitTDVPConfig_t TimePropagationScopeSplitTDVPConfig
 ctypedef cudensitymatEigenDecompositionScopeSplitDMRGConfig_t EigenDecompositionScopeSplitDMRGConfig
+ctypedef cudensitymatEigenDecompositionApproachLinearConfig_t EigenDecompositionApproachLinearConfig
 ctypedef cudensitymatStateFittingScopeSplitALSConfig_t StateFittingScopeSplitALSConfig
 ctypedef cudensitymatStateFittingApproachLinSolveConfig_t StateFittingApproachLinSolveConfig
 ctypedef cudensitymatSVDConfig_t SVDConfig
@@ -98,6 +99,7 @@ ctypedef cudensitymatTimePropagationApproachKrylovConfigAttribute_t _TimePropaga
 ctypedef cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t _EigenDecompositionApproachKrylovConfigAttribute
 ctypedef cudensitymatTimePropagationScopeSplitTDVPConfigAttribute_t _TimePropagationScopeSplitTDVPConfigAttribute
 ctypedef cudensitymatEigenDecompositionScopeSplitDMRGConfigAttribute_t _EigenDecompositionScopeSplitDMRGConfigAttribute
+ctypedef cudensitymatEigenDecompositionApproachLinearConfigAttribute_t _EigenDecompositionApproachLinearConfigAttribute
 ctypedef cudensitymatStateFittingScopeKind_t _StateFittingScopeKind
 ctypedef cudensitymatStateFittingScopeSplitKind_t _StateFittingScopeSplitKind
 ctypedef cudensitymatStateFittingApproachKind_t _StateFittingApproachKind
@@ -217,6 +219,11 @@ cpdef destroy_eigen_decomposition_approach_krylov_config(intptr_t config)
 cpdef get_eigen_decomposition_approach_krylov_config_attribute_dtype(int attr)
 cpdef eigen_decomposition_approach_krylov_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
 cpdef eigen_decomposition_approach_krylov_config_get_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
+cpdef intptr_t create_eigen_decomposition_approach_linear_config(intptr_t handle) except? 0
+cpdef destroy_eigen_decomposition_approach_linear_config(intptr_t config)
+cpdef get_eigen_decomposition_approach_linear_config_attribute_dtype(int attr)
+cpdef eigen_decomposition_approach_linear_config_set_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
+cpdef eigen_decomposition_approach_linear_config_get_attribute(intptr_t handle, intptr_t config, int attribute, intptr_t attribute_value, size_t attribute_size)
 cpdef intptr_t create_eigen_decomposition(intptr_t handle, intptr_t superoperator, int32_t is_hermitian, int spectrum_kind, int scope_kind, int approach_kind) except? 0
 cpdef destroy_eigen_decomposition(intptr_t eigen_decomposition)
 cpdef get_eigen_decomposition_attribute_dtype(int attr)

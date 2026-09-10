@@ -2,10 +2,22 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated across versions from 23.03.0 to 26.06.0, generator version 0.3.1.dev1668+gb1eb0b259. Do not modify it directly.
+# This code was automatically generated across versions from 23.03.0 to 26.09.0. Do not modify it directly.
 # This layer exposes the C header to Cython as-is.
 
-from libc.stdint cimport int32_t, int64_t, uint32_t, uint64_t
+
+# <<<< PREAMBLE CONTENT >>>>
+
+from libc.stdint cimport (
+    int32_t,
+    int64_t,
+    uint32_t,
+    uint64_t,
+)
+
+
+# <<<< END OF PREAMBLE CONTENT >>>>
+
 from libc.stdio cimport FILE
 
 
@@ -37,6 +49,7 @@ ctypedef enum cutensornetStatus_t "cutensornetStatus_t":
     CUTENSORNET_STATUS_DEVICE_ALLOCATOR_ERROR "CUTENSORNET_STATUS_DEVICE_ALLOCATOR_ERROR" = 26
     CUTENSORNET_STATUS_DISTRIBUTED_FAILURE "CUTENSORNET_STATUS_DISTRIBUTED_FAILURE" = 27
     CUTENSORNET_STATUS_INTERRUPTED "CUTENSORNET_STATUS_INTERRUPTED" = 28
+    CUTENSORNET_STATUS_CUTENSOR_ERROR "CUTENSORNET_STATUS_CUTENSOR_ERROR" = 29
     _CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR "_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR" = -42
 
 ctypedef enum cutensornetComputeType_t "cutensornetComputeType_t":
@@ -257,6 +270,15 @@ ctypedef enum cutensornetStateProjectionMPSMaxExtentPreparePolicy_t "cutensornet
     CUTENSORNET_STATE_PROJECTION_MPS_MAX_EXTENT_PREPARE_POLICY_BUFFER "CUTENSORNET_STATE_PROJECTION_MPS_MAX_EXTENT_PREPARE_POLICY_BUFFER" = 0
     CUTENSORNET_STATE_PROJECTION_MPS_MAX_EXTENT_PREPARE_POLICY_CONFIG "CUTENSORNET_STATE_PROJECTION_MPS_MAX_EXTENT_PREPARE_POLICY_CONFIG" = 1
 
+ctypedef enum cutensornetTensorDescriptorAttributes_t "cutensornetTensorDescriptorAttributes_t":
+    CUTENSORNET_TENSOR_DESCRIPTOR_IS_DISTRIBUTED "CUTENSORNET_TENSOR_DESCRIPTOR_IS_DISTRIBUTED" = 0
+    CUTENSORNET_TENSOR_DESCRIPTOR_ELEMENT_STRIDES "CUTENSORNET_TENSOR_DESCRIPTOR_ELEMENT_STRIDES" = 1
+    CUTENSORNET_TENSOR_DESCRIPTOR_BLOCK_SIZES "CUTENSORNET_TENSOR_DESCRIPTOR_BLOCK_SIZES" = 2
+    CUTENSORNET_TENSOR_DESCRIPTOR_BLOCK_STRIDES "CUTENSORNET_TENSOR_DESCRIPTOR_BLOCK_STRIDES" = 3
+    CUTENSORNET_TENSOR_DESCRIPTOR_NRANKS_PER_MODE "CUTENSORNET_TENSOR_DESCRIPTOR_NRANKS_PER_MODE" = 4
+    CUTENSORNET_TENSOR_DESCRIPTOR_LOCAL_DATA_SIZE "CUTENSORNET_TENSOR_DESCRIPTOR_LOCAL_DATA_SIZE" = 5
+    CUTENSORNET_TENSOR_DESCRIPTOR_LOCAL_EXTENTS "CUTENSORNET_TENSOR_DESCRIPTOR_LOCAL_EXTENTS" = 6
+
 
 # types
 cdef extern from *:
@@ -317,6 +339,8 @@ ctypedef void* cutensornetNetworkOperator_t 'cutensornetNetworkOperator_t'
 ctypedef void* cutensornetStateProjectionMPS_t 'cutensornetStateProjectionMPS_t'
 
 ctypedef void* cutensornetNetworkAutotunePreference_t 'cutensornetNetworkAutotunePreference_t'
+
+ctypedef void* cutensornetBinaryTensorContraction_t 'cutensornetBinaryTensorContraction_t'
 
 ctypedef struct cutensornetNodePair_t 'cutensornetNodePair_t':
     int32_t first
@@ -550,4 +574,11 @@ cdef cutensornetStatus_t cutensornetStateUpdateTensorOperatorGradient(const cute
 cdef cutensornetStatus_t cutensornetExpectationComputeWithGradientsBackward(const cutensornetHandle_t handle, cutensornetStateExpectation_t tensorNetworkExpectation, int32_t accumulateGradients, const void* expectationValueAdjoint, const void* stateNormAdjoint, cutensornetWorkspaceDescriptor_t workDesc, void* expectationValue, void* stateNorm, cudaStream_t cudaStream) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cutensornetStatus_t cutensornetStateProjectionMPSUpdateCoefficients(const cutensornetHandle_t handle, cutensornetStateProjectionMPS_t tensorNetworkProjection, int32_t numCoeffs, const cuDoubleComplex coeffs[]) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
 cdef cutensornetStatus_t cutensornetStateProjectionMPSUpdateDualTensors(const cutensornetHandle_t handle, cutensornetStateProjectionMPS_t tensorNetworkProjection, const int64_t* maxExtents[], const int64_t* validExtents[], const int64_t* strides[], void* dualTensorsData[], const cutensornetMPSEnvBounds_t* orthoSpec, cudaStream_t cudaStream) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef const char* cutensornetGetLastError() except?NULL nogil
 cdef cutensornetStatus_t cutensornetCreateMarginalDiagonal(const cutensornetHandle_t handle, cutensornetState_t tensorNetworkState, int32_t numMarginalModes, const int32_t* marginalModes, int32_t numProjectedModes, const int32_t* projectedModes, const int64_t* marginalDiagonalTensorStrides, cutensornetStateMarginal_t* tensorNetworkMarginal) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cutensornetStatus_t cutensornetCreateDistributedTensorDescriptor(const cutensornetHandle_t handle, int32_t numModes, const int64_t extents[], const int64_t elementStrides[], const int64_t blockSizes[], const int64_t blockStrides[], const int64_t nranksPerMode[], const int32_t modeLabels[], cudaDataType_t dataType, cutensornetTensorDescriptor_t* tensorDesc) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cutensornetStatus_t cutensornetCreateBinaryTensorContraction(cutensornetHandle_t handle, cutensornetTensorDescriptor_t descA, cutensornetTensorDescriptor_t descB, cutensornetTensorDescriptor_t descC, cutensornetTensorDescriptor_t descD, cutensornetComputeType_t computeType, cutensornetBinaryTensorContraction_t* contraction) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cutensornetStatus_t cutensornetBinaryTensorContractionPrepare(cutensornetHandle_t handle, cutensornetBinaryTensorContraction_t contraction, cutensornetWorkspaceDescriptor_t workDesc) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cutensornetStatus_t cutensornetBinaryTensorContractionCompute(cutensornetHandle_t handle, cutensornetBinaryTensorContraction_t contraction, const void* alpha, const void* A, const void* B, const void* beta, const void* C, void* D, cutensornetWorkspaceDescriptor_t workDesc, cudaStream_t stream) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cutensornetStatus_t cutensornetDestroyBinaryTensorContraction(cutensornetBinaryTensorContraction_t contraction) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil
+cdef cutensornetStatus_t cutensornetTensorDescriptorGetAttribute(const cutensornetHandle_t handle, const cutensornetTensorDescriptor_t tensorDesc, cutensornetTensorDescriptorAttributes_t attr, void* buffer, size_t sizeInBytes) except?_CUTENSORNETSTATUS_T_INTERNAL_LOADING_ERROR nogil

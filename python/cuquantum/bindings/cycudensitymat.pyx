@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# This code was automatically generated with version 26.06.0, generator version 0.3.1.dev1663+gc4ecc6582.d20260605. Do not modify it directly.
+# This code was automatically generated with version 26.06.0. Do not modify it directly.
 
 from ._internal cimport cudensitymat as _cudensitymat
 
@@ -385,6 +385,22 @@ cdef cudensitymatStatus_t cudensitymatEigenDecompositionApproachKrylovConfigSetA
 
 cdef cudensitymatStatus_t cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatEigenDecompositionApproachKrylovConfig_t config, cudensitymatEigenDecompositionApproachKrylovConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
     return _cudensitymat._cudensitymatEigenDecompositionApproachKrylovConfigGetAttribute(handle, config, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t cudensitymatCreateEigenDecompositionApproachLinearConfig(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionApproachLinearConfig_t* config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cudensitymat._cudensitymatCreateEigenDecompositionApproachLinearConfig(handle, config)
+
+
+cdef cudensitymatStatus_t cudensitymatDestroyEigenDecompositionApproachLinearConfig(cudensitymatEigenDecompositionApproachLinearConfig_t config) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cudensitymat._cudensitymatDestroyEigenDecompositionApproachLinearConfig(config)
+
+
+cdef cudensitymatStatus_t cudensitymatEigenDecompositionApproachLinearConfigSetAttribute(const cudensitymatHandle_t handle, cudensitymatEigenDecompositionApproachLinearConfig_t config, cudensitymatEigenDecompositionApproachLinearConfigAttribute_t attribute, const void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cudensitymat._cudensitymatEigenDecompositionApproachLinearConfigSetAttribute(handle, config, attribute, attributeValue, attributeSize)
+
+
+cdef cudensitymatStatus_t cudensitymatEigenDecompositionApproachLinearConfigGetAttribute(const cudensitymatHandle_t handle, const cudensitymatEigenDecompositionApproachLinearConfig_t config, cudensitymatEigenDecompositionApproachLinearConfigAttribute_t attribute, void* attributeValue, size_t attributeSize) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
+    return _cudensitymat._cudensitymatEigenDecompositionApproachLinearConfigGetAttribute(handle, config, attribute, attributeValue, attributeSize)
 
 
 cdef cudensitymatStatus_t cudensitymatCreateEigenDecomposition(const cudensitymatHandle_t handle, cudensitymatOperator_t superoperator, int32_t isHermitian, cudensitymatEigenDecompositionSpectrumKind_t spectrumKind, cudensitymatEigenDecompositionScopeKind_t scopeKind, cudensitymatEigenDecompositionApproachKind_t approachKind, cudensitymatEigenDecomposition_t* eigenDecomposition) except?_CUDENSITYMATSTATUS_T_INTERNAL_LOADING_ERROR nogil:
